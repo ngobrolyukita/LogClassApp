@@ -404,6 +404,8 @@
         <option value="gaji">↕ Gaji tertinggi</option>
         <option value="murid">↕ Murid terbanyak</option>
         <option value="pasif">↕ Murid tidak aktif terbanyak</option>
+        <option value="topup">↕ Murid top up terbanyak</option>
+        <option value="turate">↕ % top up tertinggi</option>
         <option value="comp">↕ Completion tertinggi</option>
         <option value="batal">↕ Paling banyak batal</option>
         <option value="sesi">↕ Sesi terbanyak</option>
@@ -436,6 +438,16 @@
     </div>
     <div class="card"><h2>Kelas Selesai per Hari <span style="font-weight:600;font-size:11px;color:var(--ink-soft)">(periode terpilih)</span></h2><div class="chartbox" id="chDaily"></div></div>
     <div class="card"><h2>Gaji Tutor per Hari</h2><div class="chartbox" id="chGaji"></div></div>
+    <div class="card">
+      <h2>🔁 Top Up &amp; Loyalitas Murid</h2>
+      <div id="tuRingkas"></div>
+      <h2 style="font-size:12px;margin:12px 0 6px">Transaksi Top Up per Bulan <span style="font-weight:600;font-size:11px;color:var(--ink-soft)">(seluruh data)</span></h2>
+      <div class="chartbox" id="chTuTren"></div>
+    </div>
+    <div class="two-col">
+      <div class="card"><h2>Sebaran Jumlah Top Up per Murid <small style="font-weight:600;color:var(--ink-soft)">· periode terpilih</small></h2><div class="bars" id="chTuDist"></div></div>
+      <div class="card"><h2>🔁 Murid Paling Loyal <small style="font-weight:600;color:var(--ink-soft)">· top up terbanyak</small></h2><div class="bars" id="chTuTop"></div></div>
+    </div>
     <div class="two-col">
       <div class="card"><h2>🏆 Murid Paling Rajin <small style="font-weight:600;color:var(--ink-soft)">· private saja</small></h2><div class="bars" id="chRajin"></div></div>
       <div class="card"><h2>⚠️ Paling Sering Postponed <small style="font-weight:600;color:var(--ink-soft)">· private saja</small></h2><div class="bars" id="chPost"></div></div>
@@ -794,6 +806,21 @@ function tuEra(nm,tgl){
   return e;
 }
 function tuJam(nm){return tuList(nm).reduce((a,t)=>a+(+t.jam||0),0);}
+/* ringkasan top up per nama murid (huruf kecil) — dipakai KPI loyalitas.
+   { n:total transaksi seumur hidup, inR:transaksi bertanggal di rentang, last:tgl terakhir } */
+function tuIndex(from,to){
+  const ix={};
+  Object.keys(U.topup||{}).forEach(nm=>{
+    const lc=normName(nm).toLowerCase(); if(!lc)return;
+    (U.topup[nm]||[]).forEach(t=>{
+      const o=ix[lc]=ix[lc]||{n:0,inR:0,last:""};
+      o.n++;
+      if(t.tgl&&(!o.last||t.tgl>o.last))o.last=t.tgl;
+      if(from&&to&&t.tgl&&t.tgl>=from&&t.tgl<=to)o.inR++;
+    });
+  });
+  return ix;
+}
 function pushTU(nm,seq,rec){
   cacheAll();
   if(!CFG.url)return;
@@ -1848,10 +1875,11 @@ function payAgg(){
   const get=t=>A[t]=A[t]||{t,n:0,jam:0,gaji:0,total:0,sudah:0,due:0,done:0,batal:0,
     murid:new Set(),aktif:new Set(),kelar:new Set(),tu:new Set()};
   const stKelar=nm=>{const m=mstatNow(nm);return !!(m&&m.st==="selesai");};
+  const IX=tuIndex(payMode==="range"?pFrom:pa, payMode==="range"?pTo:pb);
   classes.filter(inScope).forEach(c=>{
     const o=get(c.tutor), nmAsli=normName(c.cls||""), nm=nmAsli.toLowerCase();
     if(nm){o.murid.add(nm);if(stKelar(nmAsli))o.kelar.add(nm);
-      if(tuCount(nmAsli)||tuCount((c.cls||"").trim()))o.tu.add(nm);}
+      if(IX[nm])o.tu.add(nm);}
     if(c.ov==="Postponed"){o.due++;o.batal++;}
     else if(statusOf(c,now)==="Selesai"){
       o.due++;o.done++;o.n++;o.jam+=durasi(c.start,c.end);o.gaji+=feeOf(c,now);
@@ -1865,6 +1893,9 @@ function payAgg(){
     o.comp=o.due?o.done/o.due:null;
     o.retensi=o.murid.size?1-o.kelar.size/o.murid.size:null;
     o.rasioTU=o.murid.size?o.tu.size/o.murid.size:null;
+    o.tuTrx=[...o.tu].reduce((a,m)=>a+(IX[m]?IX[m].n:0),0);
+    o.tuTrxR=[...o.tu].reduce((a,m)=>a+(IX[m]?IX[m].inR:0),0);
+    o.tuAvg=o.tu.size?o.tuTrx/o.tu.size:null;
     o.lunas=o.total>0&&o.sisa<1; o.sebagian=o.sudah>0&&!o.lunas;});
   return {A,list:Object.values(A),pa,pb,key,now,inScope};
 }
@@ -1877,6 +1908,8 @@ const PFILTER={
   pasif:{l:"tutor yang punya murid belum jalan",f:o=>o.murid.size>o.aktif.size+o.kelar.size},
   kelar:{l:"tutor yang punya murid dengan paket selesai",f:o=>o.kelar.size>0},
   retensi:{l:"tutor dengan retensi murid di bawah 80%",f:o=>o.retensi!=null&&o.retensi<0.8},
+  topup:{l:"tutor yang punya murid pernah top up",f:o=>o.tu.size>0},
+  notopup:{l:"tutor yang belum punya murid top up",f:o=>o.murid.size>0&&o.tu.size===0},
   rendah:{l:"tutor dengan completion di bawah 85%",f:o=>o.comp!=null&&o.comp<0.85}
 };
 function setPayFilter(k){payFilter=(payFilter===k?"":k);closeDrill();renderTutorCards();
@@ -1930,11 +1963,24 @@ function renderTutorCards(){
   const compWarna=t=>{const v=compOf(t);
     return v==null?"var(--ink-soft)":v>=.95?"#1B6B47":v>=.85?"#A9761B":"var(--red)";};
 
+  /* --- top up murid: acuan loyalitas ---
+     tuMuridOf  = berapa murid tutor ini yang tercatat pernah top up (sekali hitung per murid)
+     tuTrxOf    = berapa transaksi top up seluruhnya dari murid-murid itu
+     tuTrxROf   = transaksi yang tanggalnya jatuh di periode/rentang yang sedang dibuka */
+  const TUI=tuIndex(payMode==="range"?pFrom:pa, payMode==="range"?pTo:pb);
+  const tuMuridOf=t=>stat[t]?[...stat[t].murid].filter(m=>TUI[m]).length:0;
+  const tuTrxOf=t=>stat[t]?[...stat[t].murid].reduce((a,m)=>a+(TUI[m]?TUI[m].n:0),0):0;
+  const tuTrxROf=t=>stat[t]?[...stat[t].murid].reduce((a,m)=>a+(TUI[m]?TUI[m].inR:0),0):0;
+  const tuRateOf=t=>{const m=muridOf(t);return m?tuMuridOf(t)/m:null;};
+
   let allDue=0,allDone=0,allBatal=0;const allMurid=new Set(),allAktif=new Set(),allKelar=new Set();
   Object.values(stat).forEach(s=>{allDue+=s.due;allDone+=s.done;allBatal+=s.batal;
     s.murid.forEach(m=>{allMurid.add(m);if(msLC[m]==="selesai")allKelar.add(m);});
     s.aktif.forEach(m=>{if(msLC[m]!=="selesai")allAktif.add(m);});});
   const retensiAll=allMurid.size?1-allKelar.size/allMurid.size:null;
+  let allTUm=0,allTUt=0,allTUr=0;
+  allMurid.forEach(m=>{if(TUI[m]){allTUm++;allTUt+=TUI[m].n;allTUr+=TUI[m].inR;}});
+  const tuRateAll=allMurid.size?allTUm/allMurid.size:null;
 
   const sortBy=(document.getElementById("tSort")||{}).value||"gaji";
   const rows=Object.entries(by).sort((a,b)=>{
@@ -1942,6 +1988,9 @@ function renderTutorCards(){
     if(sortBy==="pasif")return pasifOf(b[0])-pasifOf(a[0])||muridOf(b[0])-muridOf(a[0]);
     if(sortBy==="comp"){const x=compOf(a[0]),y=compOf(b[0]);
       return (y==null?-1:y)-(x==null?-1:x)||(stat[b[0]].due-stat[a[0]].due);}
+    if(sortBy==="topup")return tuMuridOf(b[0])-tuMuridOf(a[0])||tuTrxOf(b[0])-tuTrxOf(a[0]);
+    if(sortBy==="turate"){const x=tuRateOf(a[0]),y=tuRateOf(b[0]);
+      return (y==null?-1:y)-(x==null?-1:x)||muridOf(b[0])-muridOf(a[0]);}
     if(sortBy==="batal")return batalOf(b[0])-batalOf(a[0])||b[1].n-a[1].n;
     if(sortBy==="sesi")return b[1].n-a[1].n||b[1].gaji-a[1].gaji;
     if(sortBy==="nama")return a[0].localeCompare(b[0],"id");
@@ -1968,6 +2017,8 @@ function renderTutorCards(){
     <div class="kpi${sel("batal")||sel("rendah")}" onclick="drillG('comp')"><div class="v" style="color:${allDue?(allDone/allDue>=.95?"#1B6B47":allDone/allDue>=.85?"#A9761B":"var(--red)"):"var(--ink-soft)"}">${allDue?Math.round(allDone/allDue*100)+"%":"—"}</div><div class="l">Completion · ${allBatal} batal</div></div>
     <div class="kpi${sel("pasif")}" onclick="drillG('murid')"><div class="v">${allMurid.size}</div><div class="l">Murid · ${allAktif.size} aktif</div></div>
     <div class="kpi${sel("kelar")}" onclick="drillG('selesai')"><div class="v" style="color:#1B6B47">${allKelar.size}</div><div class="l">Paket Selesai · retensi ${retensiAll==null?"—":Math.round(retensiAll*100)+"%"}</div></div>
+    <div class="kpi${sel("topup")||sel("notopup")}" onclick="drillG('topup')" title="${allTUm} dari ${allMurid.size} murid tercatat pernah top up · ${allTUt} transaksi seluruhnya · ${allTUr} transaksi bertanggal di ${payMode==="range"?"rentang ini":"periode ini"}"><div class="v" style="color:#0E5F8A">${allTUm}</div><div class="l">Murid Top Up · ${allTUt} transaksi</div></div>
+    <div class="kpi${sel("topup")}" onclick="drillG('topup')" title="Berapa persen murid yang tercatat pernah top up — makin tinggi makin loyal."><div class="v" style="color:${tuRateAll==null?"var(--ink-soft)":tuRateAll>=.4?"#1B6B47":tuRateAll>=.2?"#A9761B":"var(--red)"}">${tuRateAll==null?"—":Math.round(tuRateAll*100)+"%"}</div><div class="l">Rasio Top Up · ${allTUr} di periode</div></div>
     ${payMode==="range"?`<div class="kpi" onclick="drillG('sesi')"><div class="v" style="font-size:14px">${rp(tot.gaji)}</div><div class="l">Gaji di Rentang ${pFrom}–${pTo}</div></div>`:""}`;
   const box=document.getElementById("tutorCards");
   const cocokMurid=t=>stat[t]?[...stat[t].murid].some(m=>m.includes(q)):false;
@@ -2000,6 +2051,8 @@ function renderTutorCards(){
         <span>Paket Selesai</span><b>${doneOfT(t)?`<span style="color:#1B6B47">🎓 ${doneOfT(t)}</span>`:"—"}</b></div>
       <div class="row klik" onclick="drill('selesai','${eu(t)}')" title="Berapa persen murid tutor ini yang paketnya belum selesai — makin tinggi makin bagus retensinya.">
         <span>Retensi Murid</span><b style="color:${retensiOf(t)==null?"var(--ink-soft)":retensiOf(t)>=.9?"#1B6B47":retensiOf(t)>=.75?"#A9761B":"var(--red)"}">${retensiOf(t)==null?"—":Math.round(retensiOf(t)*100)+"%"}</b></div>
+      <div class="row klik" onclick="drill('topup','${eu(t)}')" title="${tuMuridOf(t)} dari ${muridOf(t)} murid tercatat pernah top up · ${tuTrxOf(t)} transaksi seluruhnya · ${tuTrxROf(t)} bertanggal di ${payMode==="range"?"rentang ini":"periode ini"}">
+        <span>Top Up Murid</span><b>${tuMuridOf(t)?`<span style="color:#0E5F8A">🔁 ${tuMuridOf(t)}</span> <small style="font-weight:700;color:var(--ink-soft)">(${tuTrxOf(t)}× · ${Math.round(tuRateOf(t)*100)}%)</small>`:"—"}</b></div>
       <div class="row klik" onclick="drill('comp','${eu(t)}')" title="${stat[t]?stat[t].done+" jalan dari "+stat[t].due+" terjadwal · "+stat[t].batal+" postponed":""}">
         <span>Completion</span><b style="color:${compWarna(t)}">${compTxt(t)}${batalOf(t)?` <small style="font-weight:700;color:var(--ink-soft)">(${batalOf(t)} batal)</small>`:""}</b></div>
       ${payMode==="range"?`<div class="row klik" onclick="drill('sesi','${eu(t)}')"><span>Gaji di rentang</span><b>${rp(r.gaji)}</b></div>`:""}
@@ -2086,6 +2139,43 @@ function renderDrill(){
       </div>`;
     }
     html+=barisKelas(rows,kind==="sudah");
+  }
+  else if(kind==="topup"){
+    const nama={};
+    classes.filter(c=>c.tutor===t&&inScope(c)).forEach(c=>{
+      const nm=normName(c.cls||"");if(!nm)return;
+      const o=nama[nm]=nama[nm]||{sesi:0,last:""};
+      if(c.ov!=="Postponed"&&statusOf(c,now)==="Selesai"){o.sesi++;if(!o.last||c.date>o.last)o.last=c.date;}
+    });
+    const a_=pakaiRange?pFrom:pa, b_=pakaiRange?pTo:pb;
+    const list=Object.keys(nama).map(nm=>({nm,...nama[nm],tu:tuList(nm)}))
+      .filter(x=>x.tu.length)
+      .sort((x,y)=>y.tu.length-x.tu.length||x.nm.localeCompare(y.nm,"id"));
+    const trx=list.reduce((s,x)=>s+x.tu.length,0);
+    const trxR=list.reduce((s,x)=>s+x.tu.filter(r=>r.tgl&&r.tgl>=a_&&r.tgl<=b_).length,0);
+    const totM=Object.keys(nama).length;
+    judul="Top Up Murid";
+    sub=`${t} · ${lblScope}`;
+    html=`<p class="dnote"><b>${list.length}</b> dari ${totM} murid tercatat pernah top up
+      (<b>${totM?Math.round(list.length/totM*100):0}%</b>) · <b>${trx}</b> transaksi seluruhnya ·
+      <b>${trxR}</b> di antaranya bertanggal dalam ${lblScope}.
+      Angka ini hanya sebaik kelengkapan pencatatan manualnya — top up yang belum dicatat di panel murid tidak akan muncul di sini.</p>`+
+      (list.length?`<div class="scroll"><table class="dtab">
+      <thead><tr><th>Murid</th><th class="num">Top Up</th><th>Riwayat</th>
+        <th>Top Up Terakhir</th><th class="num">Sesi di Periode</th><th>Status</th></tr></thead>
+      <tbody>${list.map(x=>{
+        const ms=mstatNow(x.nm), akhir=x.tu[x.tu.length-1];
+        return `<tr>
+        <td><span class="link" onclick="closeDrill();openStudent(du('${eu(x.nm)}'))">${x.nm}</span></td>
+        <td class="num"><b style="color:#0E5F8A">${x.tu.length}×</b></td>
+        <td>${x.tu.map(r=>`<span class="tup" title="${r.tgl?fmtD_(r.tgl):"tanpa tanggal"}${r.jam?" · "+r.jam+" jam":""}${r.note?" · "+r.note:""}">TU${r.ke}</span>`).join(" ")}</td>
+        <td>${akhir&&akhir.tgl?fmtD_(akhir.tgl):"—"}</td>
+        <td class="num">${x.sesi}</td>
+        <td>${ms&&ms.ada&&!ms.lewat?mstatLabel(ms):'<span class="buytag b">AKTIF</span>'}</td>
+      </tr>`;}).join("")}</tbody>
+      <tfoot><tr><td>${list.length} murid</td><td class="num">${trx}×</td><td colspan="2"></td>
+        <td class="num">${list.reduce((s,x)=>s+x.sesi,0)}</td><td></td></tr></tfoot></table></div>`
+      :`<div class="empty">Belum ada murid tutor ini yang tercatat top up.</div>`);
   }
   else if(kind==="selesai"){
     const rows=classes.filter(c=>c.tutor===t&&inScope(c));
@@ -2286,6 +2376,62 @@ function drillG(kind){
         ["Top Up",o=>o.tu.size?`<b style="color:#0E5F8A">${o.tu.size}</b>`:"—",r=>jum(r,o=>o.tu.size)],
         ["% Top Up",o=>o.rasioTU==null?"—":Math.round(o.rasioTU*100)+"%",
           r=>{const m=jum(r,o=>o.murid.size);return m?Math.round(jum(r,o=>o.tu.size)/m*100)+"%":"—";}]]);
+  }
+  else if(kind==="topup"){
+    const a_=payMode==="range"?pFrom:pa, b_=payMode==="range"?pTo:pb;
+    const by={};
+    classes.filter(inScope).forEach(c=>{
+      const nm=normName(c.cls||"");if(!nm)return;
+      const o=by[nm]=by[nm]||{sesi:0,tutor:new Set(),lang:new Set(),last:""};
+      o.tutor.add(c.tutor);if(c.lang)o.lang.add(c.lang);
+      if(c.ov!=="Postponed"&&statusOf(c,now)==="Selesai"){o.sesi++;if(!o.last||c.date>o.last)o.last=c.date;}
+    });
+    const semuaM=Object.keys(by).length;
+    const murid=Object.keys(by).map(nm=>({nm,...by[nm],tu:tuList(nm)})).filter(x=>x.tu.length)
+      .sort((x,y)=>y.tu.length-x.tu.length||y.sesi-x.sesi||x.nm.localeCompare(y.nm,"id"));
+    const trx=murid.reduce((s,x)=>s+x.tu.length,0);
+    const trxR=murid.reduce((s,x)=>s+x.tu.filter(r=>r.tgl&&r.tgl>=a_&&r.tgl<=b_).length,0);
+    const dist={};murid.forEach(x=>{const k=Math.min(x.tu.length,4);dist[k]=(dist[k]||0)+1;});
+    const rowsT=[...list].filter(o=>o.murid.size).sort((a,b)=>(b.rasioTU??-1)-(a.rasioTU??-1)||b.tu.size-a.tu.size);
+    judul="Top Up & Loyalitas Murid";
+    html=`<p class="dnote"><b>${murid.length}</b> dari ${semuaM} murid yang terjadwal di ${lbl} tercatat pernah top up
+      (<b>${semuaM?Math.round(murid.length/semuaM*100):0}%</b>) · <b>${trx}</b> transaksi top up seluruhnya ·
+      <b>${trxR}</b> di antaranya bertanggal dalam ${lbl} ·
+      rata-rata <b>${murid.length?(Math.round(trx/murid.length*100)/100).toLocaleString("id-ID"):0}×</b> per murid yang top up.
+      Ini acuan loyalitas: makin banyak murid yang memperpanjang, makin sehat retensinya.
+      Angka bergantung pada kelengkapan pencatatan top up di panel murid.</p>
+      <div class="row-actions" style="margin:0 0 10px">
+        ${saring("topup","Saring kartu: tutor yang punya murid top up")}${saring("notopup","Yang belum punya murid top up")}
+      </div>
+      <div class="card" style="padding:10px 12px;margin-bottom:10px">
+        <h2 style="font-size:12px">Sebaran Jumlah Top Up per Murid</h2>
+        ${[1,2,3,4].map(k=>`<div class="bar-row"><div class="lbl">${k===4?"4× atau lebih":k+"× top up"}</div>
+          <div class="track"><div class="fill" style="width:${murid.length?(dist[k]||0)/murid.length*100:0}%"></div></div>
+          <div class="val">${dist[k]||0} murid</div></div>`).join("")}
+      </div>
+      <h2 style="font-size:12px;margin:0 0 6px">Rekap per Tutor</h2>`+
+      tblTutor(rowsT,[["Total Murid",o=>o.murid.size,r=>jum(r,o=>o.murid.size)],
+        ["Murid Top Up",o=>o.tu.size?`<b style="color:#0E5F8A">${o.tu.size}</b>`:"—",r=>jum(r,o=>o.tu.size)],
+        ["Transaksi",o=>o.tuTrx||"—",r=>jum(r,o=>o.tuTrx)],
+        ["Di Periode",o=>o.tuTrxR||"—",r=>jum(r,o=>o.tuTrxR)],
+        ["% Top Up",o=>o.rasioTU==null?"—":`<b style="color:${o.rasioTU>=.4?"#1B6B47":o.rasioTU>=.2?"#A9761B":"var(--red)"}">${Math.round(o.rasioTU*100)}%</b>`,
+          r=>{const m=jum(r,o=>o.murid.size);return m?Math.round(jum(r,o=>o.tu.size)/m*100)+"%":"—";}]])+
+      `<h2 style="font-size:12px;margin:14px 0 6px">Murid Paling Loyal</h2>`+
+      (murid.length?`<div class="scroll"><table class="dtab">
+      <thead><tr><th>Murid</th><th>Tutor</th><th>Bahasa</th><th class="num">Top Up</th>
+        <th>Riwayat</th><th>Terakhir Top Up</th><th class="num">Sesi</th></tr></thead>
+      <tbody>${murid.slice(0,200).map(x=>{const ak=x.tu[x.tu.length-1];return `<tr>
+        <td><span class="link" onclick="closeDrill();openStudent(du('${eu(x.nm)}'))">${x.nm}</span></td>
+        <td>${[...x.tutor].map(t=>buka(t)).join(", ")}</td>
+        <td>${[...x.lang].join(", ")||"—"}</td>
+        <td class="num"><b style="color:#0E5F8A">${x.tu.length}×</b></td>
+        <td>${x.tu.map(r=>`<span class="tup" title="${r.tgl?fmtD_(r.tgl):"tanpa tanggal"}${r.jam?" · "+r.jam+" jam":""}${r.note?" · "+r.note:""}">TU${r.ke}</span>`).join(" ")}</td>
+        <td>${ak&&ak.tgl?fmtD_(ak.tgl):"—"}</td>
+        <td class="num">${x.sesi}</td></tr>`;}).join("")}</tbody>
+      <tfoot><tr><td>${murid.length} murid</td><td colspan="2"></td><td class="num">${trx}×</td>
+        <td colspan="2"></td><td class="num">${jum(murid,x=>x.sesi)}</td></tr></tfoot></table></div>`
+      +(murid.length>200?`<p class="dnote" style="margin-top:8px">Menampilkan 200 murid teratas dari ${murid.length}.</p>`:"")
+      :`<div class="empty">Belum ada catatan top up untuk murid di periode ini.</div>`);
   }
   else if(kind==="murid"){
     const by={};
@@ -2611,12 +2757,65 @@ function renderStats(){
   const tutorAktif=new Set(cs.map(c=>c.tutor)).size;
   const cr=cs.length+post.length?Math.round(cs.length/(cs.length+post.length)*100):0;
   const hariAktif=new Set(cs.map(c=>c.date)).size||1;
+  /* --- top up murid (acuan loyalitas) --- */
+  const [pa_,pb_]=periodRange(key);
+  const TUALL={};
+  Object.keys(U.topup||{}).forEach(nm=>{
+    const lc=normName(nm).toLowerCase(); if(!lc)return;
+    const o=TUALL[lc]=TUALL[lc]||{n:0,nama:normName(nm),tgl:[]};
+    (U.topup[nm]||[]).forEach(t=>{o.n++;if(t.tgl)o.tgl.push(t.tgl);});
+  });
+  // A. transaksi yang benar-benar terjadi di periode ini
+  let tuTrxP=0; const tuMuridP=new Set();
+  Object.entries(TUALL).forEach(([lc,o])=>{
+    const n=o.tgl.filter(d=>d>=pa_&&d<=pb_).length;
+    if(n){tuTrxP+=n;tuMuridP.add(lc);}
+  });
+  // B. murid yang aktif di periode ini dan tercatat pernah top up (kumulatif)
+  const muridLC=new Set(cs.map(c=>normName(c.cls||"").toLowerCase()).filter(Boolean));
+  const everM=[...muridLC].filter(m=>TUALL[m]);
+  const everT=everM.reduce((s,m)=>s+TUALL[m].n,0);
+  const everRate=muridLC.size?everM.length/muridLC.size:null;
+
   document.getElementById("statKpis").innerHTML=`
     <div class="kpi hi"><div class="v">${cs.length}</div><div class="l">Kelas Selesai</div></div>
     <div class="kpi"><div class="v">${muridAktif}</div><div class="l">Murid Aktif</div></div>
     <div class="kpi"><div class="v">${tutorAktif}</div><div class="l">Tutor Aktif</div></div>
     <div class="kpi"><div class="v">${cr}%</div><div class="l">Completion Rate</div></div>
-    <div class="kpi"><div class="v">${(Math.round(cs.length/hariAktif*10)/10).toLocaleString("id-ID")}</div><div class="l">Kelas / Hari</div></div>`;
+    <div class="kpi"><div class="v">${(Math.round(cs.length/hariAktif*10)/10).toLocaleString("id-ID")}</div><div class="l">Kelas / Hari</div></div>
+    <div class="kpi" title="Murid yang punya catatan top up bertanggal di periode ini"><div class="v" style="color:#0E5F8A">${tuMuridP.size}</div><div class="l">Murid Top Up · periode ini</div></div>
+    <div class="kpi" title="Jumlah transaksi top up bertanggal di periode ini"><div class="v" style="color:#0E5F8A">${tuTrxP}</div><div class="l">Transaksi Top Up</div></div>
+    <div class="kpi" title="Berapa persen murid aktif periode ini yang tercatat pernah top up (kumulatif, bukan hanya periode ini)"><div class="v" style="color:${everRate==null?"var(--ink-soft)":everRate>=.4?"#1B6B47":everRate>=.2?"#A9761B":"var(--red)"}">${everRate==null?"—":Math.round(everRate*100)+"%"}</div><div class="l">Rasio Loyalitas</div></div>`;
+
+  // ringkasan + grafik top up
+  document.getElementById("tuRingkas").innerHTML=`
+    <p class="note" style="margin:0 0 6px"><b>Periode ini:</b> ${tuMuridP.size} murid melakukan top up ·
+      ${tuTrxP} transaksi.</p>
+    <p class="note" style="margin:0"><b>Kumulatif:</b> ${everM.length} dari ${muridLC.size} murid aktif periode ini
+      tercatat pernah top up (<b>${everRate==null?"—":Math.round(everRate*100)+"%"}</b>) ·
+      ${everT} transaksi seluruhnya ·
+      rata-rata ${everM.length?(Math.round(everT/everM.length*100)/100).toLocaleString("id-ID"):0}× per murid.
+      Angka ini hanya sebaik kelengkapan pencatatan top up di panel murid — top up yang belum dicatat tidak terhitung.</p>`;
+
+  const tuBulan={};
+  Object.values(TUALL).forEach(o=>o.tgl.forEach(d=>{const k=d.slice(0,7);tuBulan[k]=(tuBulan[k]||0)+1;}));
+  const tuItems=Object.keys(tuBulan).sort().slice(-18).map(k=>({
+    l:["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"][+k.slice(5)-1]+" "+k.slice(2,4),
+    v:tuBulan[k]}));
+  document.getElementById("chTuTren").innerHTML=tuItems.length?svgBars(tuItems,"#0E5F8A")
+    :`<div class="empty">Belum ada catatan top up bertanggal.</div>`;
+
+  const dist={1:0,2:0,3:0,4:0};
+  everM.forEach(m=>{dist[Math.min(TUALL[m].n,4)]++;});
+  document.getElementById("chTuDist").innerHTML=everM.length?hbars(
+    [1,2,3,4].map(k=>({l:k===4?"4× atau lebih":k+"× top up",v:dist[k]})),v=>v+" murid")
+    :`<div class="empty">Belum ada murid periode ini yang tercatat top up.</div>`;
+
+  document.getElementById("chTuTop").innerHTML=everM.length?hbars(
+    everM.map(m=>TUALL[m]).sort((x,y)=>y.n-x.n).slice(0,10)
+      .map(o=>({l:`<span class="link" onclick="openStudent(du('${eu(o.nama)}'))">${o.nama}</span>`,v:o.n})),
+    v=>v+"× top up")
+    :`<div class="empty">Belum ada data top up.</div>`;
 
   // --- Progresi (seluruh data, semua kelas Selesai berdasarkan waktu) ---
   const allDone=classes.filter(c=>statusOf(c,now)==="Selesai");
