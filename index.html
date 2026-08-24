@@ -179,6 +179,16 @@
   .sheet-head .ttl{font-weight:800;font-size:15.5px}
   .sheet-head .sub{font-size:11.5px;color:var(--ink-soft);font-weight:600}
   .sheet-body{padding:13px 14px 30px}
+  .langbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0 2px}
+  .langbar .lb-lbl{font-size:11px;font-weight:800;color:var(--ink-soft);margin-right:2px}
+  .lchip{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid var(--line);
+        color:var(--ink);padding:4px 11px 4px 8px;border-radius:99px;font-size:11.5px;font-weight:700;cursor:pointer}
+  .lchip:hover{border-color:var(--iris)}
+  .lchip .bx{width:13px;height:13px;border:1.5px solid #C3BEDA;border-radius:4px;display:inline-block;
+        line-height:11px;text-align:center;font-size:10px;color:transparent}
+  .lchip.on{background:var(--iris-tint);border-color:var(--iris);color:var(--iris-dark)}
+  .lchip.on .bx{background:var(--iris);border-color:var(--iris);color:#fff}
+  .lchip .n{font-weight:600;opacity:.7;font-size:10px}
   .chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
   .chip{background:var(--iris-tint);color:var(--iris-dark);padding:3px 10px;border-radius:99px;font-size:11.5px;font-weight:800}
   .mini-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(95px,1fr));gap:7px;margin:10px 0}
@@ -411,7 +421,6 @@
   <div class="panel" id="p-tutor">
     <div class="datebar">
       <select id="fPeriod" onchange="renderAll()"></select>
-      <select id="tLang" onchange="renderTutorCards()" title="Saring tutor berdasarkan bahasa yang diajarkan"></select>
       <input type="text" id="tSearch" placeholder="Cari tutor atau nama murid..." oninput="renderTutorCards()" style="flex:1;min-width:130px">
       <select id="tSort" onchange="renderTutorCards()" title="Urutkan kartu tutor">
         <option value="gaji">↕ Gaji tertinggi</option>
@@ -425,6 +434,7 @@
         <option value="nama">↕ Nama A–Z</option>
       </select>
     </div>
+    <div class="langbar" id="langBar" title="Centang satu atau beberapa bahasa"></div>
     <div class="rangerow" id="payRangeRow">
       <button class="btn ghost small" id="btnPayMode" onclick="togglePayMode()">📅 Rentang tanggal sendiri</button>
       <span id="payRangeCtl"></span>
@@ -2039,7 +2049,7 @@ const PFILTER={
   notopup:{l:"tutor yang belum punya murid top up",f:o=>o.murid.size>0&&o.tu.size===0},
   rendah:{l:"tutor dengan completion di bawah 85%",f:o=>o.comp!=null&&o.comp<0.85}
 };
-function resetLangSel(){const el=document.getElementById("tLang");if(el)el.value="";renderTutorCards();}
+function resetLangSel(){langPilih.clear();closeDrill();renderTutorCards();}
 function setPayFilter(k){payFilter=(payFilter===k?"":k);closeDrill();renderTutorCards();
   const el=document.getElementById("p-tutor");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});}
 /* daftar bahasa yang diajarkan tiap tutor — diambil dari SELURUH riwayat kelas,
@@ -2049,26 +2059,43 @@ function langPerTutor(){
   classes.forEach(c=>{if(c.tutor&&c.lang)(m[c.tutor]=m[c.tutor]||new Set()).add(c.lang);});
   return m;
 }
-function isiLangSel(){
-  const el=document.getElementById("tLang"); if(!el)return "";
-  const kini=el.value||"";
+/* saringan bahasa bisa lebih dari satu — kosong berarti semua bahasa */
+let langPilih=new Set();
+function daftarBahasa(){
   const set=new Set();
   classes.forEach(c=>{if(c.lang)set.add(c.lang);});
-  const opts=[...set].sort((a,b)=>a.localeCompare(b,"id"));
-  el.innerHTML=`<option value="">🌐 Semua bahasa</option>`+
-    opts.map(l=>`<option value="${l}">${l}</option>`).join("");
-  el.value=opts.includes(kini)?kini:"";
-  return el.value;
+  return [...set].sort((a,b)=>a.localeCompare(b,"id"));
+}
+function toggleLang(l){
+  const v=du(l);
+  if(langPilih.has(v))langPilih.delete(v);else langPilih.add(v);
+  closeDrill();renderTutorCards();
+}
+function pilihSemuaLang(){langPilih=new Set(daftarBahasa());closeDrill();renderTutorCards();}
+function renderLangBar(LPT){
+  const e=document.getElementById("langBar"); if(!e)return;
+  const opts=daftarBahasa();
+  [...langPilih].forEach(l=>{if(!opts.includes(l))langPilih.delete(l);});   // buang bahasa yang sudah tidak ada
+  const jml={};
+  opts.forEach(l=>jml[l]=Object.keys(LPT).filter(t=>LPT[t].has(l)).length);
+  e.innerHTML=`<span class="lb-lbl">Bahasa:</span>`+
+    `<span class="lchip${langPilih.size?"":" on"}" onclick="resetLangSel()" title="Tampilkan semua tutor">`+
+      `<span class="bx">${langPilih.size?"":"\u2713"}</span>🌐 Semua</span>`+
+    opts.map(l=>`<span class="lchip${langPilih.has(l)?" on":""}" onclick="toggleLang('${eu(l)}')">`+
+      `<span class="bx">${langPilih.has(l)?"\u2713":""}</span>${l} <span class="n">${jml[l]}</span></span>`).join("")+
+    (langPilih.size>1?`<button class="btn ghost small" onclick="resetLangSel()">✕ Hapus ${langPilih.size} saringan</button>`:"");
 }
 function renderTutorCards(){
   const now=new Date(), key=document.getElementById("fPeriod").value;
   const q=(document.getElementById("tSearch").value||"").toLowerCase();
-  const langSel=isiLangSel();
   const LPT=langPerTutor();
-  /* okT = tutor ini mengajar bahasa yang sedang disaring.
+  renderLangBar(LPT);
+  const langAktif=[...langPilih];
+  const langSel=langAktif.join(" + ");
+  /* okT = tutor ini mengajar SALAH SATU bahasa yang dicentang (gabungan, bukan irisan).
      Saringan bekerja di tingkat TUTOR, bukan per kelas — jadi angka gaji, sudah dibayar,
      dan sisa dibayar tiap tutor tetap utuh (semua bahasa) supaya penandaan bayar tidak salah. */
-  const okT=t=>!langSel||(LPT[t]&&LPT[t].has(langSel));
+  const okT=t=>!langAktif.length||(LPT[t]&&langAktif.some(l=>LPT[t].has(l)));
   const[pa,pb]=periodRange(key);
   const bm=document.getElementById("btnPayMode"), rc=document.getElementById("payRangeCtl");
   if(bm)bm.className="btn "+(payMode==="range"?"":"ghost")+" small";
