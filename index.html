@@ -411,6 +411,7 @@
   <div class="panel" id="p-tutor">
     <div class="datebar">
       <select id="fPeriod" onchange="renderAll()"></select>
+      <select id="tLang" onchange="renderTutorCards()" title="Saring tutor berdasarkan bahasa yang diajarkan"></select>
       <input type="text" id="tSearch" placeholder="Cari tutor atau nama murid..." oninput="renderTutorCards()" style="flex:1;min-width:130px">
       <select id="tSort" onchange="renderTutorCards()" title="Urutkan kartu tutor">
         <option value="gaji">↕ Gaji tertinggi</option>
@@ -1453,7 +1454,7 @@ async function fullSync(){
     // Sheet = satu-satunya sumber data. Tidak pernah ada pengisian otomatis.
     classes=raw.map(normClass).filter(c=>c.tutor&&/^\d{4}-\d{2}-\d{2}$/.test(c.date));
     if(raw.length&&!classes.length)toast("Data terbaca "+raw.length+" baris tapi format tanggalnya tidak dikenali — hubungi admin");
-    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{}};sisaJual=[];
+    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{}};sisaJual=[];
     (all.rates||[]).forEach(r=>{
       const id=String(r.id||""), val=+r.rate;
       if(id.slice(0,2)==="N:"){U.newTag[id.slice(2)]=r.lang||"nama";return;}   // penanda nama baru
@@ -1473,6 +1474,10 @@ async function fullSync(){
           (U.topup[nm]=U.topup[nm]||[]).push({ke:+p[1]||seq,tgl:p[2]||"",jam:val||0,
             note:p[3]||"",by:p[4]||"",at:p[5]||"",seq});
         }
+        return;}
+      if(id.slice(0,2)==="K:"){                                                 // kontak tutor (WA & email)
+        const nm=id.slice(2), p=String(r.lang||"").split("~");
+        if(p[0]==="v1"&&nm)U.kontak[nm]={wa:p[1]||"",email:p[2]||"",by:p[3]||"",at:p[4]||""};
         return;}
       if(id.slice(0,2)==="J:"){                                                 // jumlah transaksi penjualan harian
         const tgl=id.slice(2), p=String(r.lang||"").split("~");
@@ -2034,11 +2039,36 @@ const PFILTER={
   notopup:{l:"tutor yang belum punya murid top up",f:o=>o.murid.size>0&&o.tu.size===0},
   rendah:{l:"tutor dengan completion di bawah 85%",f:o=>o.comp!=null&&o.comp<0.85}
 };
+function resetLangSel(){const el=document.getElementById("tLang");if(el)el.value="";renderTutorCards();}
 function setPayFilter(k){payFilter=(payFilter===k?"":k);closeDrill();renderTutorCards();
   const el=document.getElementById("p-tutor");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});}
+/* daftar bahasa yang diajarkan tiap tutor — diambil dari SELURUH riwayat kelas,
+   bukan cuma periode berjalan, supaya identitas bahasa tutor tidak berubah-ubah tiap ganti periode */
+function langPerTutor(){
+  const m={};
+  classes.forEach(c=>{if(c.tutor&&c.lang)(m[c.tutor]=m[c.tutor]||new Set()).add(c.lang);});
+  return m;
+}
+function isiLangSel(){
+  const el=document.getElementById("tLang"); if(!el)return "";
+  const kini=el.value||"";
+  const set=new Set();
+  classes.forEach(c=>{if(c.lang)set.add(c.lang);});
+  const opts=[...set].sort((a,b)=>a.localeCompare(b,"id"));
+  el.innerHTML=`<option value="">🌐 Semua bahasa</option>`+
+    opts.map(l=>`<option value="${l}">${l}</option>`).join("");
+  el.value=opts.includes(kini)?kini:"";
+  return el.value;
+}
 function renderTutorCards(){
   const now=new Date(), key=document.getElementById("fPeriod").value;
   const q=(document.getElementById("tSearch").value||"").toLowerCase();
+  const langSel=isiLangSel();
+  const LPT=langPerTutor();
+  /* okT = tutor ini mengajar bahasa yang sedang disaring.
+     Saringan bekerja di tingkat TUTOR, bukan per kelas — jadi angka gaji, sudah dibayar,
+     dan sisa dibayar tiap tutor tetap utuh (semua bahasa) supaya penandaan bayar tidak salah. */
+  const okT=t=>!langSel||(LPT[t]&&LPT[t].has(langSel));
   const[pa,pb]=periodRange(key);
   const bm=document.getElementById("btnPayMode"), rc=document.getElementById("payRangeCtl");
   if(bm)bm.className="btn "+(payMode==="range"?"":"ghost")+" small";
@@ -2050,8 +2080,8 @@ function renderTutorCards(){
      <button class="btn ghost small" onclick="pRangeQuick(14)">14 hari</button>`;
   const inScope=c=>payMode==="range"?(c.date>=pFrom&&c.date<=pTo):inPay(c,key);
   // periode penuh tetap dipakai untuk kolom "total" & "sudah dibayar"
-  const semua=classes.filter(c=>inPay(c,key)&&statusOf(c,now)==="Selesai");
-  const cs=classes.filter(c=>inScope(c)&&statusOf(c,now)==="Selesai");
+  const semua=classes.filter(c=>okT(c.tutor)&&inPay(c,key)&&statusOf(c,now)==="Selesai");
+  const cs=classes.filter(c=>okT(c.tutor)&&inScope(c)&&statusOf(c,now)==="Selesai");
   const by={};
   cs.forEach(c=>{
     by[c.tutor]=by[c.tutor]||{n:0,jam:0,gaji:0};
@@ -2060,7 +2090,7 @@ function renderTutorCards(){
   /* murid = SEMUA nama murid unik yang punya jadwal dengan tutor ini (aktif maupun tidak).
      Satu murid tetap satu, berapa pun jumlah sesinya. "aktif" = punya minimal 1 kelas Selesai. */
   const stat={};
-  classes.filter(inScope).forEach(c=>{
+  classes.filter(c=>okT(c.tutor)&&inScope(c)).forEach(c=>{
     const s=stat[c.tutor]=stat[c.tutor]||{murid:new Set(),aktif:new Set(),due:0,done:0,batal:0};
     const nm=normName(c.cls).toLowerCase();
     if(nm)s.murid.add(nm);
@@ -2149,11 +2179,15 @@ function renderTutorCards(){
   if(payFilter&&PFILTER[payFilter]){
     const ag=payAgg().A;
     f=f.filter(([t])=>ag[t]&&PFILTER[payFilter].f(ag[t]));
-    if(chipBox)chipBox.innerHTML=`<div class="filterchip">Disaring: ${PFILTER[payFilter].l}
+    if(chipBox)chipBox.innerHTML=`<div class="filterchip">${langSel?"Bahasa <b>"+langSel+"</b> · ":""}Disaring: ${PFILTER[payFilter].l}
       <span style="font-weight:600;color:var(--ink-soft)">${f.length} tutor</span>
       <button class="btn ghost small" onclick="setPayFilter('${payFilter}')">✕ Hapus saringan</button></div>`;
-  }else if(chipBox)chipBox.innerHTML="";
-  if(!f.length){box.innerHTML=`<div class="empty">${payFilter?"Tidak ada tutor yang cocok dengan saringan ini.":"Belum ada kelas Selesai di periode ini."}</div>`;return;}
+  }else if(chipBox)chipBox.innerHTML=langSel
+    ? `<div class="filterchip">Bahasa: <b>${langSel}</b>
+        <span style="font-weight:600;color:var(--ink-soft)">${f.length} tutor</span>
+        <button class="btn ghost small" onclick="resetLangSel()">✕ Tampilkan semua bahasa</button></div>`
+    : "";
+  if(!f.length){box.innerHTML=`<div class="empty">${payFilter||langSel?"Tidak ada tutor yang cocok dengan saringan ini.":"Belum ada kelas Selesai di periode ini."}</div>`;return;}
   box.innerHTML=f.map(([t,r])=>{
     const total=totT[t]||0, sudah=bayarT[t]||0, sisa=Math.max(0,total-sudah);
     const lunas=total>0&&sisa<1, sebagian=sudah>0&&!lunas;
@@ -2610,6 +2644,148 @@ function drillG(kind){
   document.getElementById("drBody").innerHTML=html;
   document.getElementById("drillOv").classList.add("on");
 }
+/* ---------- kontak tutor & berbagi slip ke WhatsApp / Email ----------
+   Kontak disimpan sebagai baris "K:<nama tutor>" di sheet Rates (lang = v1~wa~email~oleh~waktu). */
+function kontakOf(t){return (U.kontak||{})[t]||{wa:"",email:""};}
+/* 0815-9633-119 / +62 815 ... / 815... -> 62815963119 */
+function waNorm(v){
+  let d=String(v||"").replace(/\D/g,"");
+  if(!d)return "";
+  if(d.slice(0,2)==="62")return d;
+  if(d[0]==="0")return "62"+d.slice(1);
+  if(d[0]==="8")return "62"+d;
+  return d;
+}
+function waTampil(v){const d=waNorm(v);return d?"+"+d:"";}
+function emailValid(v){return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v||"").trim());}
+function setKontak(t,wa,email){
+  if(!guard())return false;
+  const w=waNorm(wa), e=String(email||"").trim();
+  if(w&&(w.length<9||w.length>15)){toast("Nomor WA-nya kelihatan tidak wajar: "+w);return false;}
+  if(e&&!emailValid(e)){toast("Format emailnya belum benar");return false;}
+  U.kontak=U.kontak||{};
+  if(!w&&!e){delete U.kontak[t];cacheAll();if(CFG.url)push({action:"delrate",ids:["K:"+t]});return true;}
+  U.kontak[t]={wa:w,email:e,by:meName(),at:new Date().toISOString()};
+  cacheAll();
+  if(CFG.url)push({action:"setrate",rows:[{id:"K:"+t,tutor:t,cls:"",rate:0,
+    lang:["v1",w,e,meName()||"",U.kontak[t].at].join("~")}]});
+  return true;
+}
+function editKontak(t,lanjut){
+  if(!guard())return;
+  const k=kontakOf(t);
+  const wa=prompt("Nomor WhatsApp "+t+"\n(boleh 0815..., +62815..., atau 62815...)\nKosongkan untuk menghapus.",k.wa?waTampil(k.wa):"");
+  if(wa===null)return;
+  const em=prompt("Email "+t+"\nKosongkan kalau tidak ada.",k.email||"");
+  if(em===null)return;
+  if(setKontak(t,wa,em)){
+    toast("Kontak "+t+" tersimpan");
+    if(document.getElementById("shareRow"))renderShareRow();
+    if(typeof lanjut==="function")lanjut();
+  }
+}
+/* --- isi pesan --- */
+function slipTeks(){
+  if(!slipCtx)return "";
+  const{rows,jam,gaji}=slipData();
+  const t=slipCtx.tutor, sudah=slipCtx.stamp;
+  const _pc=paidList(t); const paidAt=_pc.length?fmtD_(String(_pc[_pc.length-1].at).slice(0,10)):"";
+  const L=[];
+  L.push("*SLIP GAJI TUTOR — Ngobrol Yuk!*");
+  L.push("PT Jelajah Bahasa Dunia");
+  L.push("");
+  L.push("Halo Kak "+t+",");
+  L.push("");
+  L.push("Periode: *"+slipPeriodLabel()+"*"+(slipRange()?" (rentang pembayaran)":""));
+  L.push("Status: "+(sudah?"*SUDAH DIBAYAR*"+(paidAt?" — "+paidAt:""):"*BELUM DIBAYAR — mohon dikonfirmasi*"));
+  L.push("");
+  L.push("Total sesi: "+rows.length+" sesi");
+  L.push("Total jam: "+(Math.round(jam*100)/100).toLocaleString("id-ID")+" jam");
+  L.push("Jumlah diterima: *Rp "+gaji.toLocaleString("id-ID")+"*");
+  L.push("");
+  const BATAS=30;
+  if(slipCtx.mode==="lengkap"){
+    L.push("*Rincian per sesi:*");
+    rows.slice(0,BATAS).forEach((c,i)=>{
+      const d=durasi(c.start,c.end);
+      L.push((i+1)+". "+fmtD_(c.date)+" "+c.start+"–"+c.end+" · "+(c.cls||"—")+" · "+d+" jam · Rp "+Math.round(ratePerJam(c.tutor,c.cls)*d).toLocaleString("id-ID"));
+    });
+    if(rows.length>BATAS)L.push("… dan "+(rows.length-BATAS)+" sesi lainnya (lihat slip PDF).");
+  }else{
+    const by={};
+    rows.forEach(c=>{const k=c.cls||"—";
+      by[k]=by[k]||{n:0,jam:0,g:0};
+      by[k].n++;by[k].jam+=durasi(c.start,c.end);by[k].g+=feeOf(c,new Date());});
+    const items=Object.entries(by).sort((a,b)=>b[1].g-a[1].g);
+    L.push("*Rincian per murid/kelas:*");
+    items.slice(0,BATAS).forEach(([nm,o],i)=>
+      L.push((i+1)+". "+nm+" · "+o.n+" sesi · "+(Math.round(o.jam*100)/100)+" jam · Rp "+o.g.toLocaleString("id-ID")));
+    if(items.length>BATAS)L.push("… dan "+(items.length-BATAS)+" lainnya (lihat slip PDF).");
+  }
+  L.push("");
+  if(sudah){
+    L.push("Pembayaran sudah kami proses. Slip ini sebagai bukti pembayaran.");
+    L.push("Kalau ada yang tidak sesuai, silakan balas pesan ini.");
+  }else{
+    L.push("Mohon dicek: tanggal, jam, nama murid, dan jumlah sesinya.");
+    L.push("Kalau *sudah sesuai*, cukup balas: SESUAI.");
+    L.push("Kalau *ada yang tidak sesuai*, balas pesan ini sebelum pembayaran diproses.");
+  }
+  L.push("");
+  L.push("Terima kasih atas kerja samanya 🙏");
+  L.push("— Finance, Ngobrol Yuk!");
+  return L.join("\n");
+}
+function slipJudul(){
+  return "Slip Gaji Tutor — "+slipCtx.tutor+" — "+slipPeriodLabel()+
+    (slipCtx.stamp?" (SUDAH DIBAYAR)":" (DRAF KONFIRMASI)");
+}
+/* --- aksi berbagi --- */
+function shareWA(){
+  if(!slipCtx)return;
+  const t=slipCtx.tutor, k=kontakOf(t);
+  if(!k.wa)return editKontak(t,()=>{if(kontakOf(t).wa)shareWA();});
+  const url="https://wa.me/"+waNorm(k.wa)+"?text="+encodeURIComponent(slipTeks());
+  const w=window.open(url,"_blank");
+  if(!w)location.href=url;                    // kalau pop-up diblokir
+  toast("Membuka WhatsApp ke "+waTampil(k.wa));
+}
+function shareEmail(){
+  if(!slipCtx)return;
+  const t=slipCtx.tutor, k=kontakOf(t);
+  if(!k.email)return editKontak(t,()=>{if(kontakOf(t).email)shareEmail();});
+  const url="mailto:"+encodeURIComponent(k.email)+
+    "?subject="+encodeURIComponent(slipJudul())+
+    "&body="+encodeURIComponent(slipTeks().replace(/\*/g,""));
+  location.href=url;
+  toast("Membuka aplikasi email ke "+k.email);
+}
+function shareNative(){
+  if(!slipCtx)return;
+  const data={title:slipJudul(),text:slipTeks()};
+  if(navigator.share){
+    navigator.share(data).catch(()=>{});
+  }else if(navigator.clipboard){
+    navigator.clipboard.writeText(slipTeks())
+      .then(()=>toast("Isi slip disalin — tinggal tempel di WhatsApp / email"))
+      .catch(()=>toast("Browser ini tidak mendukung berbagi langsung"));
+  }else toast("Browser ini tidak mendukung berbagi langsung");
+}
+function renderShareRow(){
+  const e=document.getElementById("shareRow"); if(!slipCtx||!e)return;
+  const t=slipCtx.tutor, k=kontakOf(t);
+  const adaWA=!!k.wa, adaEm=!!k.email;
+  e.innerHTML=`
+    <span style="font-weight:800;font-size:12px">Kirim ke tutor:</span>
+    <button class="btn small" onclick="shareWA()">📲 WhatsApp${adaWA?" · "+waTampil(k.wa):" (isi nomor)"}</button>
+    <button class="btn small ghost" onclick="shareEmail()">✉️ Email${adaEm?" · "+k.email:" (isi email)"}</button>
+    <button class="btn small ghost" onclick="shareNative()">📤 Bagikan / Salin</button>
+    <button class="btn small ghost editonly" onclick="editKontak(du('${eu(t)}'))">✏️ Ubah kontak</button>
+    <div class="hint" style="margin-top:4px">Pesan berisi periode, total sesi, total jam, jumlah diterima, dan rinciannya —
+      isinya mengikuti versi slip yang sedang dipilih (${slipCtx.mode==="lengkap"?"per sesi":"per murid"})
+      dan status ${slipCtx.stamp?"<b>sudah dibayar</b>":"<b>belum dibayar / minta konfirmasi</b>"}.
+      File PDF-nya tidak ikut terkirim otomatis — kalau perlu, cetak dulu jadi PDF lalu lampirkan sendiri.</div>`;
+}
 let slipCtx=null;
 function slipPDF(tutorEnc,from,to){
   const tutor=du(tutorEnc);
@@ -2748,6 +2924,7 @@ function paintSlip(){
   const br=document.getElementById("sc_range"), bp=document.getElementById("sc_periode");
   if(br)br.className="btn small"+(isR?"":" ghost");
   if(bp)bp.className="btn small"+(isR?" ghost":"");
+  renderShareRow();
 }
 function openSlipView(){
   const hide=[document.querySelector(".wrap"),...document.querySelectorAll(".sheetov"),document.getElementById("toast")].filter(Boolean);
@@ -2765,9 +2942,10 @@ function openSlipView(){
       <button class="btn warn small" id="btnStamp" onclick="toggleStamp()">Cap PAID: OFF</button>
       <button class="btn" onclick="window.print()">🖨 Cetak / Simpan PDF</button>
       <button class="btn ghost" onclick="_printCleanup&&_printCleanup()">← Kembali</button>
+      <div class="noprint" id="shareRow" style="width:100%;border-top:1px solid #DDD;padding-top:8px;margin-top:2px"></div>
       <div class="hint">✏️ Preview bisa diedit langsung sebelum cetak (tap teksnya). Ganti versi akan memuat ulang isi slip. <b>Lengkap</b> = rincian tiap sesi · <b>Ringkas</b> = rekap per murid · <b>Keduanya</b> = 2 halaman.</div>
     </div><div id="slipContent" contenteditable="true" spellcheck="false"></div>`;
-  paintSlip();
+  paintSlip();renderShareRow();
   pa.style.display="block";
   window.scrollTo(0,0);
   let done=false;
@@ -4291,7 +4469,7 @@ function boot(){
   if(!ME)setTimeout(pickUser,300);
   undoStack=lget(UKEY,[]);
   classes=lget(CKEY,[]).map(normClass);U=lget(RKEY,{rates:{},tutors:{}});paid=lget(PKEY,{});queue=lget(QKEY,[]);
-  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};
+  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};
   // tidak ada injeksi data bawaan — kalau cache kosong, tunggu sinkron dari Sheet
   document.getElementById("cfgUrl").value=CFG.url;
   document.getElementById("cfgToken").value=CFG.token;
