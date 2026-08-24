@@ -131,6 +131,8 @@
         border-radius:11px;padding:9px 12px;margin-bottom:11px;font-size:12px;color:var(--ink-soft)}
   .meetbar input{width:112px;padding:5px 7px;font-size:12px;border:1px solid var(--line);border-radius:7px}
   .meetbar input.num{width:58px}
+  .pert.over{background:#FDECEC!important;border-color:#E5B4B4!important;color:#9B2C2C!important}
+  .pert small{font-weight:600;opacity:.75;font-size:9px}
   .cls-fee{text-align:right;min-width:90px}
   .cls-fee .f{font-weight:800;font-size:12.5px;font-variant-numeric:tabular-nums}
   .cls-fee .f.zero{color:var(--ink-soft);font-weight:600}
@@ -1060,7 +1062,7 @@ const MKEY="ny_meet_v1";
 const RE_REG=/(^|\s)([ABC][12])[.\s]?\d?(\s|$)|HSK\s*\d|reguler|regular|conversation\s*club/i;
 // Nama kohort yang memuat bulan (mis. "A1.2 JULY") = angkatan, dihitung sejak awal.
 const RE_BLN=/\b(JAN|FEB|MAR|APR|MAY|MEI|JUN|JUNE|JUL|JULY|AUG|AGU|SEP|OCT|OKT|NOV|DEC|DES)\w*\b/i;
-let MEET={on:false,since:"2026-07-26",tReg:0,tPriv:0}, MEETN={}, MEETE={};
+let MEET={on:false,since:"2026-07-26",tReg:0,tPriv:0}, MEETN={}, MEETE={}, MEETB={}, MEETS={};
 function isReg(c){return RE_REG.test(c.cls||"");}
 function isPriv(c){return !!(c.cls||"").trim()&&!isReg(c);}
 function isClub(c){return /conversation\s*club/i.test(c.cls||"");}
@@ -1072,8 +1074,25 @@ function meetKey(c){
   const base="R|"+(c.lang||"")+"|"+cls.toLowerCase()+"|"+(c.tutor||"").toLowerCase();
   return RE_BLN.test(cls)?base:base+"|"+c.date.slice(0,7);   // tanpa bulan di nama -> dihitung per bulan
 }
+/* Bobot pertemuan mengikuti durasi: 1 jam = 1 pertemuan, tiap 30 menit = 0,5.
+   90 menit -> 1,5 · 2 jam -> 2. Durasi ganjil dibulatkan ke kelipatan 30 menit terdekat.
+   Sesi tanpa jam mulai/selesai dianggap 1 pertemuan. */
+function meetBobot(c){
+  const h=durasi(c.start,c.end);
+  if(!(h>0))return 1;
+  return Math.max(.5,Math.round(h*2)/2);
+}
+/* tampilan angka pertemuan: 3 -> "3", 3.5 -> "3,5" */
+function fmtP(v){
+  const x=Math.round((+v||0)*100)/100;
+  return Number.isInteger(x)?String(x):String(x).replace(".",",");
+}
+function jamTeks(h){
+  const m=Math.round(h*60), j=Math.floor(m/60), sisa=m%60;
+  return (j?j+" jam":"")+(j&&sisa?" ":"")+(sisa?sisa+" menit":"")||"0 menit";
+}
 function buildMeet(){
-  MEETN={};MEETE={};if(!MEET.on)return;
+  MEETN={};MEETE={};MEETB={};MEETS={};if(!MEET.on)return;
   const now=new Date();
   const src=classes.filter(c=>c.cls&&c.date>=MEET.since&&statusOf(c,now)==="Selesai")
     .sort((a,b)=>a.date===b.date?(a.start<b.start?-1:1):(a.date<b.date?-1:1));
@@ -1083,18 +1102,35 @@ function buildMeet(){
     // tiap top up memulai hitungan baru dari pertemuan 1
     const era=tuEra((c.cls||"").trim(),c.date);
     const k=era?k0+"|#"+era:k0;
-    n[k]=(n[k]||0)+1;MEETN[c.id]=n[k];MEETE[c.id]=era;tot[k]=n[k];});
+    const b=meetBobot(c);
+    MEETS[c.id]=Math.round((n[k]||0)*100)/100;           // akumulasi SEBELUM sesi ini
+    n[k]=Math.round(((n[k]||0)+b)*100)/100;
+    MEETN[c.id]=n[k];MEETB[c.id]=b;MEETE[c.id]=era;tot[k]=n[k];});
   MEETN._tot=tot;
 }
+/* Target: kalau paketnya berasal dari top up dan jumlah jamnya dicatat,
+   jam itulah targetnya (1 jam = 1 pertemuan). Kalau tidak, pakai target umum. */
 function meetTarget(c){
   if(isClub(c))return 0;                 // conversation club tidak punya target
+  const era=MEETE[c.id]||0;
+  if(era){
+    const t=tuList((c.cls||"").trim()).find(x=>(+x.ke||0)===era);
+    if(t&&+t.jam>0)return +t.jam;
+  }
   return isReg(c)?(+MEET.tReg||0):(+MEET.tPriv||0);
 }
 function meetBadge(c){
   if(!MEET.on)return "";
-  const n=MEETN[c.id];if(!n)return "";
+  const n=MEETN[c.id];if(n==null)return "";
   const t=meetTarget(c), sel=t&&n>=t, e=MEETE[c.id]||0;
-  return `<span class="pert${sel?" full":""}" title="Pertemuan ke-${n}${t?" dari "+t:""}${e?" · paket top up ke-"+e:" · paket awal"}">P${n}${t?"/"+t:""}</span>`
+  const b=MEETB[c.id]||1, mulai=Math.round(((MEETS[c.id]||0)+.5)*100)/100;
+  const lewat=t&&n>t;
+  const span=b===1?("Pertemuan ke-"+fmtP(n)):("Mencakup pertemuan ke-"+fmtP(mulai)+" s/d "+fmtP(n));
+  const judul=span+(t?" dari "+fmtP(t):"")
+    +" · sesi "+jamTeks(durasi(c.start,c.end))+" = "+fmtP(b)+" pertemuan"
+    +(e?" · paket top up ke-"+e:" · paket awal")
+    +(lewat?" · SUDAH LEWAT TARGET":"");
+  return `<span class="pert${sel?" full":""}${lewat?" over":""}" title="${judul}">P${fmtP(n)}${t?"/"+fmtP(t):""}${b!==1?` <small>(${fmtP(b)}p)</small>`:""}</span>`
     +(e?`<span class="tup" title="Sedang menjalani paket hasil top up ke-${e}">TU${e}</span>`:"");
 }
 function saveMeet(){lset(MKEY,MEET);buildMeet();renderAll();}
@@ -1111,7 +1147,8 @@ function renderMeetBar(){
     <input class="num" type="number" min="0" value="${MEET.tReg||""}" placeholder="—" onchange="setMeetTarget('reg',this.value)">
     <span>target private</span>
     <input class="num" type="number" min="0" value="${MEET.tPriv||""}" placeholder="—" onchange="setMeetTarget('priv',this.value)">
-    <span style="opacity:.85">· ${n.toLocaleString("id-ID")} sesi bernomor · Conversation Club dihitung per bulan, tanpa target</span>`
+    <span style="opacity:.85">· ${n.toLocaleString("id-ID")} sesi bernomor · <b>1 jam = 1 pertemuan</b>, tiap 30 menit = 0,5
+      · target otomatis ikut jumlah jam top up kalau sudah dicatat · Conversation Club dihitung per bulan, tanpa target</span>`
     :`<span>Aktifkan kalau riwayat sebelum ${MEET.since} sudah lengkap — kalau belum, nomornya akan salah.</span>`);
 }
 function toggleMeet(){MEET.on=!MEET.on;saveMeet();
