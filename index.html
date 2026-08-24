@@ -438,9 +438,9 @@
     <div class="card" id="cardExport">
       <h2>📦 Export Data · periode bebas</h2>
       <div class="row-actions" style="margin:0 0 7px">
-        <button class="btn ghost small" onclick="exPreset('bulan')">Bulan berjalan</button>
-        <button class="btn ghost small" onclick="exPreset('lalu')">Bulan lalu</button>
-        <button class="btn ghost small" onclick="exPreset('gaji')">Periode gaji berjalan</button>
+        <button class="btn ghost small" onclick="exPreset('bulan')">Periode berjalan (26–25)</button>
+        <button class="btn ghost small" onclick="exPreset('lalu')">Periode lalu</button>
+        <button class="btn ghost small" onclick="exPreset('kalender')">Bulan kalender ini</button>
         <button class="btn ghost small" onclick="exPreset('30')">30 hari terakhir</button>
         <button class="btn ghost small" onclick="exPreset('all')">Seluruh data</button>
       </div>
@@ -490,19 +490,32 @@
         <label>Tanggal<input type="date" id="jDate"></label>
         <label>Jumlah transaksi penjualan<input type="number" min="0" step="1" class="s" id="jN" placeholder="0"></label>
         <button class="btn small" onclick="simpanJual()">Simpan</button>
+        <button class="btn ghost small" onclick="toggleJBulk()">📥 Isi Massal</button>
         <button class="btn ghost small" onclick="exportJual()">Export CSV</button>
+      </div>
+      <div id="jBulkBox" class="editonly" style="display:none;margin-top:9px">
+        <p class="note" style="margin:0 0 5px">Tempel satu hari per baris — <b>tanggal lalu jumlah transaksi</b>,
+          dipisah spasi, koma, titik koma, atau tab. Tanggal boleh <b>2026-08-03</b>, <b>26-Jul-2026</b>, atau <b>3/8/2026</b> (hari dulu, lalu bulan).
+          Baris yang tanggalnya tidak dikenali dilewati.</p>
+        <textarea id="jBulk" rows="6" placeholder="2026-08-03 28&#10;2026-08-04 27&#10;2026-08-05 24"
+          style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:ui-monospace,monospace"></textarea>
+        <div class="row-actions" style="margin:6px 0 0">
+          <button class="btn small" onclick="simpanJBulk()">Simpan Semua</button>
+          <button class="btn ghost small" onclick="toggleJBulk()">Tutup</button>
+        </div>
       </div>
       <h2 style="font-size:12px;margin:13px 0 5px">Isian Harian
         <small style="font-weight:600;color:var(--ink-soft)">· klik kotak untuk isi / ubah · badge biru = jumlah top up hari itu</small></h2>
       <div class="jgrid" id="jGrid"></div>
       <h2 style="font-size:12px;margin:13px 0 5px">Penjualan vs Top Up per Hari</h2>
       <div class="chartbox" id="chJualDay"></div>
-      <h2 style="font-size:12px;margin:13px 0 5px">Rasio Top Up per Bulan
-        <small style="font-weight:600;color:var(--ink-soft)">· hanya bulan yang penjualannya sudah diisi</small></h2>
+      <h2 style="font-size:12px;margin:13px 0 5px">Rasio Top Up per Periode
+        <small style="font-weight:600;color:var(--ink-soft)">· cut-off 26–25 · hanya periode yang penjualannya sudah diisi</small></h2>
       <div class="chartbox" id="chJualRasio"></div>
       <p class="note" style="margin:9px 0 0">Jumlah transaksi penjualan diisi manual per hari (jumlah <b>transaksi</b>, bukan nominal rupiah) —
         biasanya diambil dari rekap WooCommerce harian. Jumlah top up dihitung otomatis dari catatan top up di panel murid.
-        <b>Rasio = transaksi top up ÷ transaksi penjualan</b> pada periode yang dipilih. Periode bawaan = bulan berjalan.</p>
+        <b>Rasio = transaksi top up ÷ transaksi penjualan</b> pada periode yang dipilih.
+        Periode bawaan = <b>periode berjalan dengan cut-off 26–25</b> (tanggal 26 bulan sebelumnya s/d 25 bulan berjalan), sama seperti periode gaji.</p>
     </div>
 
     <div class="card">
@@ -2823,7 +2836,7 @@ let xFrom="", xTo="";
 const HARI7=["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 function exRange(){
   if(xFrom&&xTo)return xFrom<=xTo?[xFrom,xTo]:[xTo,xFrom];
-  const m=monthNow();return [m+"-01",monthEnd(m)];
+  return periodRange(monthNow());
 }
 function exAllRange(){
   let a="",b="";
@@ -2831,15 +2844,18 @@ function exAllRange(){
   classes.forEach(c=>cek(c.date));
   Object.keys(U.jual||{}).forEach(cek);
   Object.values(U.topup||{}).forEach(arr=>(arr||[]).forEach(t=>cek(t.tgl)));
-  if(!a){const m=monthNow();return [m+"-01",monthEnd(m)];}
+  if(!a)return periodRange(monthNow());
   return [a,b];
 }
 function exPreset(k){
   const t=todayStr();
-  if(k==="bulan"){const m=monthNow();xFrom=m+"-01";xTo=monthEnd(m);}
-  else if(k==="lalu"){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);
-    const m=d.getFullYear()+"-"+pad(d.getMonth()+1);xFrom=m+"-01";xTo=monthEnd(m);}
-  else if(k==="gaji"){const[a,b]=periodRange(periodKeyOf(t));xFrom=a;xTo=b;}
+  if(k==="bulan"){const r=periodRange(monthNow());xFrom=r[0];xTo=r[1];}
+  else if(k==="lalu"){const[y,m]=monthNow().split("-").map(Number);
+    let pm=m-1,py=y;if(pm<1){pm=12;py--;}
+    const r=periodRange(py+"-"+pad(pm));xFrom=r[0];xTo=r[1];}
+  else if(k==="kalender"){const d=new Date();
+    const m=d.getFullYear()+"-"+pad(d.getMonth()+1);
+    xFrom=m+"-01";xTo=m+"-"+pad(new Date(d.getFullYear(),d.getMonth()+1,0).getDate());}
   else if(k==="30"){const d=new Date();d.setDate(d.getDate()-29);
     xFrom=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());xTo=t;}
   else if(k==="all"){const r=exAllRange();xFrom=r[0];xTo=r[1];}
@@ -2848,7 +2864,7 @@ function exPreset(k){
 function setXRange(w,v){if(w==="a")xFrom=v;else xTo=v;renderExport();}
 function renderExport(){
   const ea=document.getElementById("xFrom"); if(!ea)return;
-  if(!xFrom||!xTo){const m=monthNow();xFrom=m+"-01";xTo=monthEnd(m);}
+  if(!xFrom||!xTo){const r=periodRange(monthNow());xFrom=r[0];xTo=r[1];}
   const[a,b]=exRange();
   ea.value=xFrom;document.getElementById("xTo").value=xTo;
   const now=new Date();
@@ -3028,13 +3044,14 @@ function exStatRows(a,b){
   done.forEach(c=>{W[new Date(c.date+"T00:00:00").getDay()]++;});
   [1,2,3,4,5,6,0].forEach(i=>R.push([HARI7[i],W[i]]));
 
-  sec("RASIO TOP UP PER BULAN (seluruh data)");
-  R.push(["Bulan","Transaksi Penjualan","Transaksi Top Up","Rasio (%)"]);
+  sec("RASIO TOP UP PER PERIODE (cut-off 26-25, seluruh data)");
+  R.push(["Periode","Dari","Sampai","Transaksi Penjualan","Transaksi Top Up","Rasio (%)"]);
   const MO={};
-  Object.entries(U.jual||{}).forEach(([d,r])=>{const k=d.slice(0,7);(MO[k]=MO[k]||{j:0,t:0}).j+=(+r.n||0);});
+  Object.entries(U.jual||{}).forEach(([d,r])=>{const k=periodKeyOf(d);(MO[k]=MO[k]||{j:0,t:0}).j+=(+r.n||0);});
   Object.values(U.topup||{}).forEach(arr=>(arr||[]).forEach(t=>{
-    const k=String(t.tgl||"").slice(0,7);if(MO[k])MO[k].t++;}));
-  Object.keys(MO).sort().forEach(k=>R.push([k,MO[k].j,MO[k].t,MO[k].j?Math.round(MO[k].t/MO[k].j*1000)/10:""]));
+    if(!t.tgl)return;const k=periodKeyOf(t.tgl);if(MO[k])MO[k].t++;}));
+  Object.keys(MO).sort().forEach(k=>{const[pa,pb]=periodRange(k);
+    R.push([periodLabel(k),pa,pb,MO[k].j,MO[k].t,MO[k].j?Math.round(MO[k].t/MO[k].j*1000)/10:""]);});
   return R;
 }
 function exStat(){
@@ -3058,13 +3075,14 @@ function exSemua(){
    Rasio = transaksi top up / transaksi penjualan pada periode terpilih (bawaan: bulan berjalan). */
 const BLN3=["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
 let jPeriod="", jFrom="", jTo="";
-function monthNow(){const d=new Date();return d.getFullYear()+"-"+pad(d.getMonth()+1);}
-function monthLabel(k){return BLN3[+k.slice(5)-1]+" "+k.slice(0,4);}
-function monthEnd(k){const[y,m]=k.split("-").map(Number);return k+"-"+pad(new Date(y,m,0).getDate());}
+/* "Bulan berjalan" = periode cut-off 26 s/d 25, sama seperti periode gaji.
+   Kunci periode memakai periodKeyOf()/periodRange() yang sudah ada di app ini. */
+function monthNow(){return periodKeyOf(todayStr());}
+function monthLabel(k){return periodLabel(k);}
+function monthShort(k){return BLN3[+k.slice(5)-1]+" "+k.slice(2,4);}
 function jualRange(){
-  if(jPeriod==="custom")return jFrom&&jTo?[jFrom,jTo].sort():[monthNow()+"-01",monthEnd(monthNow())];
-  const k=jPeriod||monthNow();
-  return [k+"-01",monthEnd(k)];
+  if(jPeriod==="custom")return jFrom&&jTo?(jFrom<=jTo?[jFrom,jTo]:[jTo,jFrom]):periodRange(monthNow());
+  return periodRange(jPeriod||monthNow());
 }
 function jualLabel(){
   const[a,b]=jualRange();
@@ -3072,9 +3090,9 @@ function jualLabel(){
 }
 function listJMonths(){
   const s=new Set();
-  classes.forEach(c=>{if(c.date)s.add(c.date.slice(0,7));});
-  Object.keys(U.jual||{}).forEach(d=>s.add(d.slice(0,7)));
-  Object.values(U.topup||{}).forEach(a=>a.forEach(t=>{if(t.tgl)s.add(t.tgl.slice(0,7));}));
+  classes.forEach(c=>{if(c.date)s.add(periodKeyOf(c.date));});
+  Object.keys(U.jual||{}).forEach(d=>s.add(periodKeyOf(d)));
+  Object.values(U.topup||{}).forEach(a=>(a||[]).forEach(t=>{if(t.tgl)s.add(periodKeyOf(t.tgl));}));
   s.add(monthNow());
   return [...s].filter(k=>/^\d{4}-\d{2}$/.test(k)).sort().reverse();
 }
@@ -3142,6 +3160,51 @@ function simpanJual(){
     setJual(d,null);
   }else setJual(d,v);
   document.getElementById("jN").value="";
+}
+/* Parser tanggal untuk isi massal. Sengaja TIDAK memakai normDate() karena
+   normDate membaca 7/28/2026 sebagai bulan/hari (gaya AS) — di sini urutannya hari/bulan. */
+function jParseTgl(s){
+  s=String(s||"").trim().replace(/^["']|["']$/g,"");
+  let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);                 // 2026-08-03
+  if(m)return m[1]+"-"+pad(+m[2])+"-"+pad(+m[3]);
+  m=s.match(/^(\d{1,2})[-\/\s]([A-Za-z]{3,})[-\/\s](\d{4})$/);    // 26-Jul-2026 / 26 Juli 2026
+  if(m){const mo=MON3[m[2].slice(0,3).toLowerCase()];if(mo)return m[3]+"-"+pad(mo)+"-"+pad(+m[1]);}
+  m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);           // 3/8/2026 = 3 Agustus 2026
+  if(m&&+m[2]>=1&&+m[2]<=12)return m[3]+"-"+pad(+m[2])+"-"+pad(+m[1]);
+  m=s.match(/^(\d{1,2})[\/.-](\d{1,2})$/);                        // 3/8 -> tahun periode terpilih
+  if(m&&+m[2]>=1&&+m[2]<=12){const[a]=jualRange();return a.slice(0,4)+"-"+pad(+m[2])+"-"+pad(+m[1]);}
+  return "";
+}
+function toggleJBulk(){
+  const b=document.getElementById("jBulkBox");
+  b.style.display=b.style.display==="none"?"":"none";
+  if(b.style.display!=="none")document.getElementById("jBulk").focus();
+}
+function simpanJBulk(){
+  if(!guard())return;
+  const txt=document.getElementById("jBulk").value||"";
+  const baris=txt.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  if(!baris.length)return toast("Kotaknya masih kosong");
+  const ok=[], gagal=[];
+  baris.forEach(b=>{
+    const p=b.split(/[\s,;\t]+/).filter(Boolean);
+    if(p.length<2){gagal.push(b);return;}
+    const n=p[p.length-1].replace(/[^\d]/g,"");
+    const tgl=jParseTgl(p.slice(0,p.length-1).join(" "));
+    if(!tgl||n===""||isNaN(+n)){gagal.push(b);return;}
+    ok.push([tgl,Math.max(0,Math.round(+n))]);
+  });
+  if(!ok.length)return toast("Tidak ada baris yang bisa dibaca — cek formatnya");
+  if(!confirm(ok.length+" hari akan disimpan / ditimpa"+(gagal.length?"\n"+gagal.length+" baris dilewati karena tidak terbaca":"")+
+    "\n\n"+ok.slice(0,5).map(x=>x[0]+" → "+x[1]).join("\n")+(ok.length>5?"\n…":"")))return;
+  U.jual=U.jual||{};
+  ok.forEach(([tgl,n])=>{
+    U.jual[tgl]={n,by:meName(),at:new Date().toISOString()};
+    pushJUAL(tgl,U.jual[tgl]);
+  });
+  cacheAll();renderJual();
+  document.getElementById("jBulk").value="";
+  toast(ok.length+" hari tersimpan"+(gagal.length?" · "+gagal.length+" baris dilewati":""));
 }
 function editJual(d){
   if(!canEdit())return guard();
@@ -3252,11 +3315,11 @@ function renderJual(){
 
   // rasio per bulan (semua bulan yang penjualannya sudah diisi)
   const mo={};
-  Object.entries(U.jual||{}).forEach(([dt,r])=>{const k=dt.slice(0,7);(mo[k]=mo[k]||{j:0,t:0}).j+=(+r.n||0);});
+  Object.entries(U.jual||{}).forEach(([dt,r])=>{const k=periodKeyOf(dt);(mo[k]=mo[k]||{j:0,t:0}).j+=(+r.n||0);});
   Object.values(U.topup||{}).forEach(arr=>(arr||[]).forEach(t=>{
-    const k=(t.tgl||"").slice(0,7);if(mo[k])mo[k].t++;}));
+    if(!t.tgl)return;const k=periodKeyOf(t.tgl);if(mo[k])mo[k].t++;}));
   const mItems=Object.keys(mo).filter(k=>mo[k].j>0).sort().slice(-18)
-    .map(k=>({l:BLN3[+k.slice(5)-1]+" "+k.slice(2,4),v:Math.round(mo[k].t/mo[k].j*1000)/10}));
+    .map(k=>({l:monthShort(k),v:Math.round(mo[k].t/mo[k].j*1000)/10}));
   document.getElementById("chJualRasio").innerHTML=mItems.length?svgBars(mItems,"#1B6B47",v=>v+"%")
     :`<div class="empty">Isi dulu jumlah transaksi penjualan hariannya.</div>`;
 }
