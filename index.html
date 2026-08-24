@@ -2741,14 +2741,26 @@ function slipJudul(){
     (slipCtx.stamp?" (SUDAH DIBAYAR)":" (DRAF KONFIRMASI)");
 }
 /* --- aksi berbagi --- */
-function shareWA(){
+/* mode "app"  -> protokol whatsapp:// (aplikasi WhatsApp Desktop di Windows/macOS, atau app di HP)
+   mode "web"  -> web.whatsapp.com (tab browser, tidak butuh aplikasi terpasang)
+   tanpa mode  -> wa.me, biar perangkatnya sendiri yang memutuskan */
+function shareWA(mode){
   if(!slipCtx)return;
   const t=slipCtx.tutor, k=kontakOf(t);
-  if(!k.wa)return editKontak(t,()=>{if(kontakOf(t).wa)shareWA();});
-  const url="https://wa.me/"+waNorm(k.wa)+"?text="+encodeURIComponent(slipTeks());
+  if(!k.wa)return editKontak(t,()=>{if(kontakOf(t).wa)shareWA(mode);});
+  const no=waNorm(k.wa), txt=encodeURIComponent(slipTeks());
+  if(mode==="app"){
+    // protokol kustom harus lewat location, window.open sering diblokir browser
+    location.href="whatsapp://send?phone="+no+"&text="+txt;
+    toast("Membuka aplikasi WhatsApp ke "+waTampil(k.wa)+" — kalau tidak terbuka, pakai tombol WhatsApp Web");
+    return;
+  }
+  const url=mode==="web"
+    ? "https://web.whatsapp.com/send?phone="+no+"&text="+txt
+    : "https://wa.me/"+no+"?text="+txt;
   const w=window.open(url,"_blank");
   if(!w)location.href=url;                    // kalau pop-up diblokir
-  toast("Membuka WhatsApp ke "+waTampil(k.wa));
+  toast("Membuka WhatsApp "+(mode==="web"?"Web":"")+" ke "+waTampil(k.wa));
 }
 function shareEmail(){
   if(!slipCtx)return;
@@ -2777,13 +2789,16 @@ function renderShareRow(){
   const adaWA=!!k.wa, adaEm=!!k.email;
   e.innerHTML=`
     <span style="font-weight:800;font-size:12px">Kirim ke tutor:</span>
-    <button class="btn small" onclick="shareWA()">📲 WhatsApp${adaWA?" · "+waTampil(k.wa):" (isi nomor)"}</button>
+    <button class="btn small" onclick="shareWA('app')" title="Buka aplikasi WhatsApp yang terpasang (WhatsApp Desktop di Windows/macOS, atau app di HP)">📲 WA Aplikasi${adaWA?" · "+waTampil(k.wa):" (isi nomor)"}</button>
+    <button class="btn small" onclick="shareWA('web')" title="Buka web.whatsapp.com di tab browser — tidak perlu aplikasi terpasang">🌐 WA Web</button>
     <button class="btn small ghost" onclick="shareEmail()">✉️ Email${adaEm?" · "+k.email:" (isi email)"}</button>
     <button class="btn small ghost" onclick="shareNative()">📤 Bagikan / Salin</button>
     <button class="btn small ghost editonly" onclick="editKontak(du('${eu(t)}'))">✏️ Ubah kontak</button>
     <div class="hint" style="margin-top:4px">Pesan berisi periode, total sesi, total jam, jumlah diterima, dan rinciannya —
       isinya mengikuti versi slip yang sedang dipilih (${slipCtx.mode==="lengkap"?"per sesi":"per murid"})
       dan status ${slipCtx.stamp?"<b>sudah dibayar</b>":"<b>belum dibayar / minta konfirmasi</b>"}.
+      <b>WA Aplikasi</b> membuka WhatsApp Desktop/HP yang terpasang · <b>WA Web</b> membuka web.whatsapp.com di tab browser
+      (perlu sudah scan QR sekali). Kalau WA Aplikasi tidak bereaksi, berarti aplikasinya belum terpasang — pakai WA Web.
       File PDF-nya tidak ikut terkirim otomatis — kalau perlu, cetak dulu jadi PDF lalu lampirkan sendiri.</div>`;
 }
 let slipCtx=null;
