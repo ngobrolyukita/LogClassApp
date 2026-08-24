@@ -32,6 +32,16 @@
   .tuform label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--ink-soft)}
   .tuform input{padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px}
   .tuform input.s{width:72px}
+  .jgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:5px;margin-top:4px}
+  .jcell{position:relative;border:1px solid var(--line);border-radius:8px;padding:5px 3px 4px;text-align:center;
+        cursor:pointer;background:#fff;line-height:1.15}
+  .jcell:hover{border-color:var(--iris);background:var(--iris-tint)}
+  .jcell b{display:block;font-size:9.5px;font-weight:700;color:var(--ink-soft)}
+  .jcell span{display:block;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:#132A2E}
+  .jcell.kosong span{color:#C3BEDA}
+  .jcell.hariini{border-color:var(--iris);box-shadow:0 0 0 2px var(--iris-tint)}
+  .jcell i{position:absolute;top:-5px;right:-4px;background:#0E5F8A;color:#fff;border-radius:9px;
+        font-style:normal;font-size:9px;font-weight:700;padding:1px 4px;line-height:1.3}
   .acc-body{flex:1;padding:10px 13px;min-width:0}
   .acc-body p{font-size:12px;color:var(--ink-soft);line-height:1.45}
   .acc-sign{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
@@ -425,6 +435,32 @@
 
   <!-- ============ STATISTIK ============ -->
   <div class="panel" id="p-stat">
+    <div class="card" id="cardExport">
+      <h2>📦 Export Data · periode bebas</h2>
+      <div class="row-actions" style="margin:0 0 7px">
+        <button class="btn ghost small" onclick="exPreset('bulan')">Bulan berjalan</button>
+        <button class="btn ghost small" onclick="exPreset('lalu')">Bulan lalu</button>
+        <button class="btn ghost small" onclick="exPreset('gaji')">Periode gaji berjalan</button>
+        <button class="btn ghost small" onclick="exPreset('30')">30 hari terakhir</button>
+        <button class="btn ghost small" onclick="exPreset('all')">Seluruh data</button>
+      </div>
+      <div class="rangerow">
+        <span>Dari</span><input type="date" id="xFrom" onchange="setXRange('a',this.value)">
+        <span>s/d</span><input type="date" id="xTo" onchange="setXRange('b',this.value)">
+      </div>
+      <div id="xInfo" style="margin:8px 0 9px"></div>
+      <div class="row-actions" style="margin:0">
+        <button class="btn small" onclick="exSemua()">📦 Semua (3 file)</button>
+        <button class="btn ghost small" onclick="exLog()">📋 Log Kelas</button>
+        <button class="btn ghost small" onclick="exTutor()">👥 Tutor Card</button>
+        <button class="btn ghost small" onclick="exStat()">📊 Statistik</button>
+      </div>
+      <p class="note" style="margin:9px 0 0">Semua file berbentuk CSV (UTF-8) — tinggal buka di Excel atau Google Sheets.
+        Rentang tanggalnya bebas dan tidak terikat periode gaji cut-off 25.
+        <b>Log Kelas</b> = satu baris per kelas lengkap dengan status, fee, dan status bayar.
+        <b>Tutor Card</b> = rekap per tutor (sesi, jam, gaji, sisa dibayar, murid, top up).
+        <b>Statistik</b> = satu file berisi beberapa bagian: ringkasan, per hari, per bahasa, per tutor, per murid, jam &amp; hari tersibuk, dan rasio top up.</p>
+    </div>
     <div class="datebar"><select id="fPeriod2" onchange="syncPeriod(this)"></select></div>
     <div class="kpis" id="statKpis"></div>
     <div class="card">
@@ -438,6 +474,37 @@
     </div>
     <div class="card"><h2>Kelas Selesai per Hari <span style="font-weight:600;font-size:11px;color:var(--ink-soft)">(periode terpilih)</span></h2><div class="chartbox" id="chDaily"></div></div>
     <div class="card"><h2>Gaji Tutor per Hari</h2><div class="chartbox" id="chGaji"></div></div>
+    <div class="card" id="cardJual">
+      <h2>💰 Rasio Top Up terhadap Penjualan</h2>
+      <div class="rangerow">
+        <span>Periode</span>
+        <select id="jPeriod" onchange="setJPeriod(this.value)"></select>
+        <span id="jRangeBox" style="display:none">dari
+          <input type="date" id="jFrom" onchange="setJRange('a',this.value)"> s/d
+          <input type="date" id="jTo" onchange="setJRange('b',this.value)"></span>
+        <button class="btn ghost small" onclick="setJPeriod('')">Bulan berjalan</button>
+      </div>
+      <div class="mini-kpis" id="jKpis"></div>
+      <div id="jRingkas"></div>
+      <div class="tuform editonly">
+        <label>Tanggal<input type="date" id="jDate"></label>
+        <label>Jumlah transaksi penjualan<input type="number" min="0" step="1" class="s" id="jN" placeholder="0"></label>
+        <button class="btn small" onclick="simpanJual()">Simpan</button>
+        <button class="btn ghost small" onclick="exportJual()">Export CSV</button>
+      </div>
+      <h2 style="font-size:12px;margin:13px 0 5px">Isian Harian
+        <small style="font-weight:600;color:var(--ink-soft)">· klik kotak untuk isi / ubah · badge biru = jumlah top up hari itu</small></h2>
+      <div class="jgrid" id="jGrid"></div>
+      <h2 style="font-size:12px;margin:13px 0 5px">Penjualan vs Top Up per Hari</h2>
+      <div class="chartbox" id="chJualDay"></div>
+      <h2 style="font-size:12px;margin:13px 0 5px">Rasio Top Up per Bulan
+        <small style="font-weight:600;color:var(--ink-soft)">· hanya bulan yang penjualannya sudah diisi</small></h2>
+      <div class="chartbox" id="chJualRasio"></div>
+      <p class="note" style="margin:9px 0 0">Jumlah transaksi penjualan diisi manual per hari (jumlah <b>transaksi</b>, bukan nominal rupiah) —
+        biasanya diambil dari rekap WooCommerce harian. Jumlah top up dihitung otomatis dari catatan top up di panel murid.
+        <b>Rasio = transaksi top up ÷ transaksi penjualan</b> pada periode yang dipilih. Periode bawaan = bulan berjalan.</p>
+    </div>
+
     <div class="card">
       <h2>🔁 Top Up &amp; Loyalitas Murid</h2>
       <div id="tuRingkas"></div>
@@ -1336,7 +1403,7 @@ async function fullSync(){
     // Sheet = satu-satunya sumber data. Tidak pernah ada pengisian otomatis.
     classes=raw.map(normClass).filter(c=>c.tutor&&/^\d{4}-\d{2}-\d{2}$/.test(c.date));
     if(raw.length&&!classes.length)toast("Data terbaca "+raw.length+" baris tapi format tanggalnya tidak dikenali — hubungi admin");
-    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{}};sisaJual=[];
+    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{}};sisaJual=[];
     (all.rates||[]).forEach(r=>{
       const id=String(r.id||""), val=+r.rate;
       if(id.slice(0,2)==="N:"){U.newTag[id.slice(2)]=r.lang||"nama";return;}   // penanda nama baru
@@ -1356,6 +1423,11 @@ async function fullSync(){
           (U.topup[nm]=U.topup[nm]||[]).push({ke:+p[1]||seq,tgl:p[2]||"",jam:val||0,
             note:p[3]||"",by:p[4]||"",at:p[5]||"",seq});
         }
+        return;}
+      if(id.slice(0,2)==="J:"){                                                 // jumlah transaksi penjualan harian
+        const tgl=id.slice(2), p=String(r.lang||"").split("~");
+        if(p[0]==="v1"&&/^\d{4}-\d{2}-\d{2}$/.test(tgl))
+          U.jual[tgl]={n:val||0,by:p[1]||"",at:p[2]||""};
         return;}
       if(id.slice(0,2)==="C:"){                                                 // catatan status murid
         const p=String(r.lang||"").split("~"), nm=id.slice(2);
@@ -2745,6 +2817,449 @@ function weekStart(ds){
   d.setDate(d.getDate()-wd);
   return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 }
+/* ---------- export data: log kelas, tutor card, statistik ----------
+   Rentang tanggal bebas (bawaan: bulan berjalan), tidak terikat periode gaji cut-off 25. */
+let xFrom="", xTo="";
+const HARI7=["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
+function exRange(){
+  if(xFrom&&xTo)return xFrom<=xTo?[xFrom,xTo]:[xTo,xFrom];
+  const m=monthNow();return [m+"-01",monthEnd(m)];
+}
+function exAllRange(){
+  let a="",b="";
+  const cek=d=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(String(d||"")))return;if(!a||d<a)a=d;if(!b||d>b)b=d;};
+  classes.forEach(c=>cek(c.date));
+  Object.keys(U.jual||{}).forEach(cek);
+  Object.values(U.topup||{}).forEach(arr=>(arr||[]).forEach(t=>cek(t.tgl)));
+  if(!a){const m=monthNow();return [m+"-01",monthEnd(m)];}
+  return [a,b];
+}
+function exPreset(k){
+  const t=todayStr();
+  if(k==="bulan"){const m=monthNow();xFrom=m+"-01";xTo=monthEnd(m);}
+  else if(k==="lalu"){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);
+    const m=d.getFullYear()+"-"+pad(d.getMonth()+1);xFrom=m+"-01";xTo=monthEnd(m);}
+  else if(k==="gaji"){const[a,b]=periodRange(periodKeyOf(t));xFrom=a;xTo=b;}
+  else if(k==="30"){const d=new Date();d.setDate(d.getDate()-29);
+    xFrom=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());xTo=t;}
+  else if(k==="all"){const r=exAllRange();xFrom=r[0];xTo=r[1];}
+  renderExport();
+}
+function setXRange(w,v){if(w==="a")xFrom=v;else xTo=v;renderExport();}
+function renderExport(){
+  const ea=document.getElementById("xFrom"); if(!ea)return;
+  if(!xFrom||!xTo){const m=monthNow();xFrom=m+"-01";xTo=monthEnd(m);}
+  const[a,b]=exRange();
+  ea.value=xFrom;document.getElementById("xTo").value=xTo;
+  const now=new Date();
+  const cs=classes.filter(c=>c.date>=a&&c.date<=b);
+  const done=cs.filter(c=>statusOf(c,now)==="Selesai");
+  const gaji=done.reduce((s,c)=>s+feeOf(c,now),0);
+  const js=jualSum(a,b), ts=topupSum(a,b);
+  document.getElementById("xInfo").innerHTML=cs.length||js.n||ts.n
+    ? `<p class="note" style="margin:0"><b>${fmtD_(a)} – ${fmtD_(b)}</b> ·
+        ${cs.length.toLocaleString("id-ID")} baris log (${done.length.toLocaleString("id-ID")} selesai) ·
+        ${new Set(cs.map(c=>c.tutor)).size} tutor ·
+        ${new Set(cs.map(c=>normName(c.cls||"").toLowerCase()).filter(Boolean)).size} murid ·
+        gaji ${rp(gaji)} · ${js.n} transaksi penjualan · ${ts.n} transaksi top up.</p>`
+    : `<p class="note" style="margin:0;color:#8A5309">Tidak ada data sama sekali di rentang ini — filenya akan berisi header saja.</p>`;
+}
+/* --- penulis CSV --- */
+const csvEsc=v=>'"'+String(v===null||v===undefined?"":v).replace(/"/g,'""')+'"';
+function unduhCSV(rows,nama){
+  const csv=rows.map(r=>r.map(csvEsc).join(",")).join("\n");
+  const el=document.createElement("a");
+  const url=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));
+  el.href=url;el.download=nama;el.click();
+  setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},5000);
+}
+function exNama(dasar,a,b){return dasar+"_"+a+"_sd_"+b+".csv";}
+function tipeKelas(c){return isReg(c)?"Reguler":(isPriv(c)?"Private":"-");}
+/* --- 1. log kelas --- */
+function exLogRows(a,b){
+  const now=new Date();
+  const cs=classes.filter(c=>c.date>=a&&c.date<=b)
+    .sort((x,y)=>x.date===y.date?String(x.start).localeCompare(String(y.start)):x.date.localeCompare(y.date));
+  const rows=[["Tanggal","Hari","Mulai","Selesai","Durasi (jam)","Bahasa","Tutor","Murid/Kelas","Tipe",
+    "Status","Rate per Jam","Fee","Status Bayar","Status Murid","Tanda","Diubah Oleh","Waktu Ubah"]];
+  cs.forEach(c=>{
+    const st=statusOf(c,now), nm=normName(c.cls||""), ms=nm?mstatNow(nm,c.date):null;
+    rows.push([c.date,HARI7[new Date(c.date+"T00:00:00").getDay()],c.start,c.end,
+      durasi(c.start,c.end),c.lang||"",c.tutor,c.cls||"",tipeKelas(c),st,
+      ratePerJam(c.tutor,c.cls),feeOf(c,now),
+      st==="Selesai"?(paidCover(c.tutor,c.date)?"Sudah dibayar":"Belum dibayar"):"-",
+      ms?(MSTAT[ms.st]||MSTAT.lain).l:"Aktif",
+      c.flag?(FLAGS[c.flag]||c.flag):"",c.by||"",c.at||""]);
+  });
+  return rows;
+}
+function exLog(){
+  const[a,b]=exRange();
+  unduhCSV(exLogRows(a,b),exNama("log_kelas",a,b));
+  toast("Log kelas "+fmtD_(a)+" – "+fmtD_(b)+" diunduh");
+}
+/* --- 2. tutor card --- */
+function exTutorAgg(a,b){
+  const now=new Date(), A={}, IX=tuIndex(a,b);
+  const get=t=>A[t]=A[t]||{t,n:0,jam:0,gaji:0,sudah:0,due:0,done:0,batal:0,akan:0,
+    murid:new Set(),kelar:new Set(),tu:new Set()};
+  const stKelar=nm=>{const m=mstatNow(nm);return !!(m&&m.st==="selesai");};
+  classes.filter(c=>c.date>=a&&c.date<=b).forEach(c=>{
+    const o=get(c.tutor), nmAsli=normName(c.cls||""), nm=nmAsli.toLowerCase();
+    if(nm){o.murid.add(nm);if(stKelar(nmAsli))o.kelar.add(nm);if(IX[nm])o.tu.add(nm);}
+    if(c.ov==="Postponed"){o.due++;o.batal++;}
+    else if(statusOf(c,now)==="Selesai"){
+      o.due++;o.done++;o.n++;o.jam+=durasi(c.start,c.end);
+      const f=feeOf(c,now);o.gaji+=f;if(paidCover(c.tutor,c.date))o.sudah+=f;}
+    else o.akan++;
+  });
+  return Object.values(A).map(o=>Object.assign(o,{
+    sisa:Math.max(0,o.gaji-o.sudah),
+    comp:o.due?o.done/o.due:null,
+    tuTrx:[...o.tu].reduce((s,m)=>s+(IX[m]?IX[m].inR:0),0)
+  })).sort((x,y)=>y.gaji-x.gaji);
+}
+function exTutorRows(a,b){
+  const rows=[["Tutor","Bahasa","Sesi Selesai","Postponed","Belum Jalan","Total Jadwal","Completion (%)",
+    "Jam Mengajar","Rata Rate per Jam","Gaji","Sudah Dibayar","Sisa Dibayar","Status Bayar",
+    "Murid Unik","Murid Paket Selesai","Murid Top Up","Transaksi Top Up"]];
+  exTutorAgg(a,b).forEach(o=>{
+    const lunas=o.gaji>0&&o.sisa<1;
+    rows.push([o.t,tutorLang(o.t)||"",o.done,o.batal,o.akan,o.due+o.akan,
+      o.comp==null?"":Math.round(o.comp*1000)/10,
+      Math.round(o.jam*100)/100, o.jam?Math.round(o.gaji/o.jam):"",
+      o.gaji,o.sudah,o.sisa,
+      o.gaji<=0?"-":(lunas?"Lunas":(o.sudah>0?"Sebagian":"Belum dibayar")),
+      o.murid.size,o.kelar.size,o.tu.size,o.tuTrx]);
+  });
+  return rows;
+}
+function exTutor(){
+  const[a,b]=exRange();
+  unduhCSV(exTutorRows(a,b),exNama("tutor_card",a,b));
+  toast("Tutor card "+fmtD_(a)+" – "+fmtD_(b)+" diunduh");
+}
+/* --- 3. statistik (satu file, beberapa bagian) --- */
+function exStatRows(a,b){
+  const now=new Date();
+  const cs=classes.filter(c=>c.date>=a&&c.date<=b);
+  const done=cs.filter(c=>statusOf(c,now)==="Selesai");
+  const post=cs.filter(c=>c.ov==="Postponed");
+  const jam=done.reduce((s,c)=>s+durasi(c.start,c.end),0);
+  const gaji=done.reduce((s,c)=>s+feeOf(c,now),0);
+  const js=jualSum(a,b), ts=topupSum(a,b), tpd=topupPerDay(a,b);
+  const hariAktif=new Set(done.map(c=>c.date)).size||1;
+  const R=[];
+  const sec=t=>{R.push([]);R.push(["=== "+t+" ==="]);};
+  R.push(["LAPORAN STATISTIK · Ngobrol Yuk!"]);
+  R.push(["Periode",a,"s/d",b]);
+  R.push(["Dibuat",new Date().toLocaleString("id-ID"),"oleh",meName()||"-"]);
+
+  sec("RINGKASAN");
+  R.push(["Keterangan","Nilai"]);
+  [["Total baris log",cs.length],["Kelas selesai",done.length],["Postponed",post.length],
+   ["Belum jalan",cs.length-done.length-post.length],
+   ["Completion rate (%)",done.length+post.length?Math.round(done.length/(done.length+post.length)*1000)/10:""],
+   ["Jam mengajar",Math.round(jam*100)/100],["Total gaji (Rp)",gaji],
+   ["Tutor aktif",new Set(done.map(c=>c.tutor)).size],
+   ["Murid aktif",new Set(done.map(c=>normName(c.cls||"").toLowerCase()).filter(Boolean)).size],
+   ["Hari ada kelas",hariAktif],["Rata kelas per hari",Math.round(done.length/hariAktif*100)/100],
+   ["Transaksi penjualan",js.n],["Hari penjualan terisi",js.hari],
+   ["Transaksi top up",ts.n],["Murid top up",ts.murid],
+   ["Rasio top up terhadap penjualan (%)",js.n?Math.round(ts.n/js.n*1000)/10:""]
+  ].forEach(r=>R.push(r));
+
+  sec("PER HARI");
+  R.push(["Tanggal","Hari","Kelas Selesai","Postponed","Jam","Gaji (Rp)","Transaksi Penjualan","Transaksi Top Up","Rasio Top Up (%)"]);
+  const D={};
+  cs.forEach(c=>{const o=D[c.date]=D[c.date]||{d:0,p:0,j:0,g:0};
+    if(c.ov==="Postponed")o.p++;
+    else if(statusOf(c,now)==="Selesai"){o.d++;o.j+=durasi(c.start,c.end);o.g+=feeOf(c,now);}});
+  const hari=[];let dd=new Date(a+"T00:00:00");const ee=new Date(b+"T00:00:00");
+  while(dd<=ee&&hari.length<800){hari.push(dd.getFullYear()+"-"+pad(dd.getMonth()+1)+"-"+pad(dd.getDate()));dd.setDate(dd.getDate()+1);}
+  hari.forEach(x=>{
+    const o=D[x]||{d:0,p:0,j:0,g:0}, jn=jualN(x), tn=tpd[x]||0;
+    R.push([x,HARI7[new Date(x+"T00:00:00").getDay()],o.d,o.p,Math.round(o.j*100)/100,o.g,
+      jn==null?"":jn,tn,jn?Math.round(tn/jn*1000)/10:""]);
+  });
+
+  sec("PER BAHASA");
+  R.push(["Bahasa","Kelas Selesai","Postponed","Jam","Gaji (Rp)","Murid Unik","Tutor"]);
+  const L={};
+  cs.forEach(c=>{const k=c.lang||"(kosong)";
+    const o=L[k]=L[k]||{d:0,p:0,j:0,g:0,m:new Set(),t:new Set()};
+    const nm=normName(c.cls||"").toLowerCase();if(nm)o.m.add(nm);o.t.add(c.tutor);
+    if(c.ov==="Postponed")o.p++;
+    else if(statusOf(c,now)==="Selesai"){o.d++;o.j+=durasi(c.start,c.end);o.g+=feeOf(c,now);}});
+  Object.entries(L).sort((x,y)=>y[1].g-x[1].g)
+    .forEach(([k,o])=>R.push([k,o.d,o.p,Math.round(o.j*100)/100,o.g,o.m.size,o.t.size]));
+
+  sec("PER TUTOR");
+  exTutorRows(a,b).forEach(r=>R.push(r));
+
+  sec("PER MURID");
+  R.push(["Murid/Kelas","Tipe","Bahasa","Tutor","Sesi Selesai","Postponed","Jam","Nilai Kelas (Rp)",
+    "Top Up di Periode","Total Top Up (seumur)","Status Murid","Sesi Pertama","Sesi Terakhir"]);
+  const M={}, IX=tuIndex(a,b);
+  cs.forEach(c=>{
+    const nmAsli=normName(c.cls||"");if(!nmAsli)return;
+    const k=nmAsli.toLowerCase();
+    const o=M[k]=M[k]||{nm:nmAsli,tipe:tipeKelas(c),lang:new Set(),tut:new Set(),d:0,p:0,j:0,g:0,a:"",z:""};
+    if(c.lang)o.lang.add(c.lang);o.tut.add(c.tutor);
+    if(!o.a||c.date<o.a)o.a=c.date; if(!o.z||c.date>o.z)o.z=c.date;
+    if(c.ov==="Postponed")o.p++;
+    else if(statusOf(c,now)==="Selesai"){o.d++;o.j+=durasi(c.start,c.end);o.g+=feeOf(c,now);}});
+  Object.entries(M).sort((x,y)=>y[1].d-x[1].d).forEach(([k,o])=>{
+    const ms=mstatNow(o.nm);
+    R.push([o.nm,o.tipe,[...o.lang].join(" / "),[...o.tut].join(" / "),o.d,o.p,
+      Math.round(o.j*100)/100,o.g,
+      IX[k]?IX[k].inR:0, IX[k]?IX[k].n:0,
+      ms?(MSTAT[ms.st]||MSTAT.lain).l:"Aktif",o.a,o.z]);
+  });
+
+  sec("JAM TERSIBUK");
+  R.push(["Jam Mulai","Kelas Selesai"]);
+  const H={};done.forEach(c=>{const h=+String(c.start).slice(0,2);H[h]=(H[h]||0)+1;});
+  Object.keys(H).map(Number).sort((x,y)=>x-y).forEach(h=>R.push([pad(h)+":00",H[h]]));
+
+  sec("HARI TERSIBUK");
+  R.push(["Hari","Kelas Selesai"]);
+  const W=[0,0,0,0,0,0,0];
+  done.forEach(c=>{W[new Date(c.date+"T00:00:00").getDay()]++;});
+  [1,2,3,4,5,6,0].forEach(i=>R.push([HARI7[i],W[i]]));
+
+  sec("RASIO TOP UP PER BULAN (seluruh data)");
+  R.push(["Bulan","Transaksi Penjualan","Transaksi Top Up","Rasio (%)"]);
+  const MO={};
+  Object.entries(U.jual||{}).forEach(([d,r])=>{const k=d.slice(0,7);(MO[k]=MO[k]||{j:0,t:0}).j+=(+r.n||0);});
+  Object.values(U.topup||{}).forEach(arr=>(arr||[]).forEach(t=>{
+    const k=String(t.tgl||"").slice(0,7);if(MO[k])MO[k].t++;}));
+  Object.keys(MO).sort().forEach(k=>R.push([k,MO[k].j,MO[k].t,MO[k].j?Math.round(MO[k].t/MO[k].j*1000)/10:""]));
+  return R;
+}
+function exStat(){
+  const[a,b]=exRange();
+  unduhCSV(exStatRows(a,b),exNama("statistik",a,b));
+  toast("Statistik "+fmtD_(a)+" – "+fmtD_(b)+" diunduh");
+}
+/* --- semua sekaligus (dijeda supaya tidak diblokir browser) --- */
+function exSemua(){
+  const[a,b]=exRange();
+  unduhCSV(exLogRows(a,b),exNama("log_kelas",a,b));
+  setTimeout(()=>unduhCSV(exTutorRows(a,b),exNama("tutor_card",a,b)),700);
+  setTimeout(()=>{
+    unduhCSV(exStatRows(a,b),exNama("statistik",a,b));
+    toast("3 file diunduh · "+fmtD_(a)+" – "+fmtD_(b));
+  },1400);
+}
+/* ---------- penjualan harian & rasio top up ----------
+   Jumlah TRANSAKSI penjualan per hari (bukan nominal), diisi manual.
+   Disimpan sebagai baris "J:<YYYY-MM-DD>" di sheet Rates -> rate = jumlah transaksi.
+   Rasio = transaksi top up / transaksi penjualan pada periode terpilih (bawaan: bulan berjalan). */
+const BLN3=["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+let jPeriod="", jFrom="", jTo="";
+function monthNow(){const d=new Date();return d.getFullYear()+"-"+pad(d.getMonth()+1);}
+function monthLabel(k){return BLN3[+k.slice(5)-1]+" "+k.slice(0,4);}
+function monthEnd(k){const[y,m]=k.split("-").map(Number);return k+"-"+pad(new Date(y,m,0).getDate());}
+function jualRange(){
+  if(jPeriod==="custom")return jFrom&&jTo?[jFrom,jTo].sort():[monthNow()+"-01",monthEnd(monthNow())];
+  const k=jPeriod||monthNow();
+  return [k+"-01",monthEnd(k)];
+}
+function jualLabel(){
+  const[a,b]=jualRange();
+  return jPeriod==="custom"?fmtD_(a)+" – "+fmtD_(b):monthLabel(jPeriod||monthNow());
+}
+function listJMonths(){
+  const s=new Set();
+  classes.forEach(c=>{if(c.date)s.add(c.date.slice(0,7));});
+  Object.keys(U.jual||{}).forEach(d=>s.add(d.slice(0,7)));
+  Object.values(U.topup||{}).forEach(a=>a.forEach(t=>{if(t.tgl)s.add(t.tgl.slice(0,7));}));
+  s.add(monthNow());
+  return [...s].filter(k=>/^\d{4}-\d{2}$/.test(k)).sort().reverse();
+}
+function setJPeriod(v){
+  jPeriod=v||monthNow();
+  if(jPeriod==="custom"){
+    const[a,b]=jualRange();
+    if(!jFrom)jFrom=a; if(!jTo)jTo=b;
+    const ea=document.getElementById("jFrom"),eb=document.getElementById("jTo");
+    if(ea)ea.value=jFrom; if(eb)eb.value=jTo;
+  }
+  renderJual();
+}
+function setJRange(w,v){if(w==="a")jFrom=v;else jTo=v;renderJual();}
+/* --- akses data --- */
+function jualN(d){const r=(U.jual||{})[d];return r?(+r.n||0):null;}
+function jualSum(a,b){
+  let n=0,hari=0;
+  Object.entries(U.jual||{}).forEach(([d,r])=>{if(d>=a&&d<=b){n+=(+r.n||0);hari++;}});
+  return{n,hari};
+}
+function topupSum(a,b){
+  let n=0;const m=new Set();
+  Object.entries(U.topup||{}).forEach(([nm,arr])=>(arr||[]).forEach(t=>{
+    if(t.tgl&&t.tgl>=a&&t.tgl<=b){n++;m.add(normName(nm).toLowerCase());}}));
+  return{n,murid:m.size};
+}
+function topupPerDay(a,b){
+  const o={};
+  Object.values(U.topup||{}).forEach(arr=>(arr||[]).forEach(t=>{
+    if(t.tgl&&t.tgl>=a&&t.tgl<=b)o[t.tgl]=(o[t.tgl]||0)+1;}));
+  return o;
+}
+/* --- tulis data --- */
+function pushJUAL(tgl,rec){
+  cacheAll();
+  if(!CFG.url)return;
+  if(!rec){push({action:"delrate",ids:["J:"+tgl]});return;}
+  push({action:"setrate",rows:[{id:"J:"+tgl,tutor:tgl,cls:"",rate:+rec.n||0,
+    lang:["v1",rec.by||"",rec.at||""].join("~")}]});
+}
+function setJual(tgl,n,diam){
+  if(!guard())return false;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(tgl||""))){toast("Tanggalnya belum benar");return false;}
+  U.jual=U.jual||{};
+  if(n===null||n===""||n===undefined||isNaN(+n)){
+    if(U.jual[tgl]===undefined&&n!==null)return false;
+    delete U.jual[tgl];pushJUAL(tgl,null);
+    if(!diam)toast("Catatan penjualan "+dShort(tgl)+" dihapus");
+  }else{
+    const v=Math.max(0,Math.round(+n));
+    U.jual[tgl]={n:v,by:meName(),at:new Date().toISOString()};
+    pushJUAL(tgl,U.jual[tgl]);
+    if(!diam)toast(dShort(tgl)+": "+v+" transaksi penjualan tersimpan");
+  }
+  cacheAll();renderJual();
+  return true;
+}
+function simpanJual(){
+  const d=document.getElementById("jDate").value, v=document.getElementById("jN").value;
+  if(!d)return toast("Isi tanggalnya dulu");
+  if(String(v).trim()===""){
+    if(jualN(d)===null)return toast("Isi jumlah transaksinya");
+    if(!confirm("Hapus catatan penjualan "+dShort(d)+"?"))return;
+    setJual(d,null);
+  }else setJual(d,v);
+  document.getElementById("jN").value="";
+}
+function editJual(d){
+  if(!canEdit())return guard();
+  const cur=jualN(d);
+  const v=prompt("Jumlah transaksi penjualan "+fmtD_(d)+
+    "\n(isi angka; kosongkan lalu OK untuk menghapus catatan)",cur==null?"":cur);
+  if(v===null)return;
+  setJual(d,String(v).trim()===""?null:String(v).trim());
+}
+function exportJual(){
+  const[a,b]=jualRange(), tpd=topupPerDay(a,b);
+  const esc=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
+  const rows=[["Tanggal","Transaksi Penjualan","Transaksi Top Up","Rasio Top Up (%)","Diisi oleh"]];
+  const days=[];let d=new Date(a+"T00:00:00");const e=new Date(b+"T00:00:00");
+  while(d<=e&&days.length<400){days.push(d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()));d.setDate(d.getDate()+1);}
+  days.forEach(x=>{
+    const n=jualN(x), t=tpd[x]||0;
+    rows.push([x,n==null?"":n,t,n?Math.round(t/n*1000)/10:"",(U.jual[x]&&U.jual[x].by)||""]);
+  });
+  const js=jualSum(a,b), ts=topupSum(a,b);
+  rows.push(["TOTAL "+jualLabel(),js.n,ts.n,js.n?Math.round(ts.n/js.n*1000)/10:""]);
+  const csv=rows.map(r=>r.map(esc).join(",")).join("\n");
+  const el=document.createElement("a");
+  el.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));
+  el.download="rasio_topup_"+a+"_"+b+".csv";el.click();
+}
+/* --- grafik dua batang --- */
+function svgBars2(items,c1,c2,l1,l2){
+  if(!items.length)return `<div class="empty">Belum ada data.</div>`;
+  const W=620,H=200,P=26;
+  const max=Math.max(1,...items.map(i=>Math.max(i.a||0,i.b||0)));
+  const bw=(W-P*2)/items.length;
+  let s=`<svg viewBox="0 0 ${W} ${H+46}" xmlns="http://www.w3.org/2000/svg">`;
+  items.forEach((it,i)=>{
+    const x=P+i*bw;
+    [[+it.a||0,c1,0],[+it.b||0,c2,1]].forEach(([v,c,k])=>{
+      if(!v)return;
+      const h=(v/max)*(H-30), y=H-h;
+      s+=`<rect x="${x+bw*(0.13+k*0.4)}" y="${y}" width="${bw*0.34}" height="${h}" rx="2" fill="${c}"/>`;
+    });
+    if(items.length<=16||i%Math.ceil(items.length/12)===0)
+      s+=`<text x="${x+bw/2}" y="${H+14}" font-size="10" text-anchor="middle" fill="#5D5680">${it.l}</text>`;
+  });
+  s+=`<rect x="${P}" y="${H+27}" width="9" height="9" rx="2" fill="${c1}"/>`+
+     `<text x="${P+13}" y="${H+35}" font-size="10" fill="#5D5680">${l1}</text>`+
+     `<rect x="${P+130}" y="${H+27}" width="9" height="9" rx="2" fill="${c2}"/>`+
+     `<text x="${P+143}" y="${H+35}" font-size="10" fill="#5D5680">${l2}</text></svg>`;
+  return s;
+}
+/* --- render --- */
+function renderJual(){
+  const sel=document.getElementById("jPeriod"); if(!sel)return;
+  if(!jPeriod)jPeriod=monthNow();
+  const ms=listJMonths();
+  if(jPeriod!=="custom"&&!ms.includes(jPeriod))jPeriod=monthNow();
+  sel.innerHTML=ms.map(k=>`<option value="${k}">${monthLabel(k)}${k===monthNow()?" · berjalan":""}</option>`).join("")
+    +`<option value="custom">Rentang tanggal sendiri…</option>`;
+  sel.value=jPeriod;
+  document.getElementById("jRangeBox").style.display=jPeriod==="custom"?"":"none";
+  const dEl=document.getElementById("jDate"); if(dEl&&!dEl.value)dEl.value=todayStr();
+
+  const[a,b]=jualRange();
+  const js=jualSum(a,b), ts=topupSum(a,b);
+  const rasio=js.n?ts.n/js.n:null;
+  const baru=js.n-ts.n;
+  const warna=rasio==null?"var(--ink-soft)":rasio>=.4?"#1B6B47":rasio>=.2?"#A9761B":"var(--red)";
+
+  // berapa hari dalam periode yang sudah lewat (data mestinya sudah ada)
+  const hariLewat=(()=>{const t=todayStr();let n=0,d=new Date(a+"T00:00:00"),e=new Date((b<t?b:t)+"T00:00:00");
+    while(d<=e){n++;d.setDate(d.getDate()+1);}return Math.max(0,n);})();
+
+  document.getElementById("jKpis").innerHTML=`
+    <div class="kpi hi"><div class="v" style="color:${warna}">${rasio==null?"—":Math.round(rasio*1000)/10+"%"}</div><div class="l">Rasio Top Up</div></div>
+    <div class="kpi"><div class="v">${js.n.toLocaleString("id-ID")}</div><div class="l">Transaksi Penjualan</div></div>
+    <div class="kpi"><div class="v" style="color:#0E5F8A">${ts.n.toLocaleString("id-ID")}</div><div class="l">Transaksi Top Up</div></div>
+    <div class="kpi"><div class="v" style="color:${baru<0?"var(--red)":"#132A2E"}">${baru.toLocaleString("id-ID")}</div><div class="l">Sisa (non top up)</div></div>
+    <div class="kpi"><div class="v">${ts.murid}</div><div class="l">Murid Top Up</div></div>
+    <div class="kpi"><div class="v" style="color:${js.hari>=hariLewat?"#1B6B47":"#A9761B"}">${js.hari}/${hariLewat}</div><div class="l">Hari Terisi</div></div>`;
+
+  const kurang=hariLewat-js.hari;
+  document.getElementById("jRingkas").innerHTML=`
+    <p class="note" style="margin:0 0 4px"><b>${jualLabel()}</b> (${fmtD_(a)} – ${fmtD_(b)}):
+      ${ts.n} transaksi top up dari ${js.n} transaksi penjualan
+      → rasio <b style="color:${warna}">${rasio==null?"—":Math.round(rasio*1000)/10+"%"}</b>.
+      Artinya ${rasio==null?"belum bisa dihitung — jumlah penjualannya belum diisi":
+        "sekitar "+Math.round(rasio*100)+" dari tiap 100 transaksi berasal dari murid yang top up"}.</p>
+    ${baru<0?`<p class="note" style="margin:0 0 4px;color:var(--red)"><b>Cek lagi:</b> transaksi top up lebih banyak daripada transaksi penjualan.
+        Kemungkinan angka penjualan harian belum lengkap, atau tanggal top up dicatat di luar tanggal transaksinya.</p>`:""}
+    ${kurang>0?`<p class="note" style="margin:0 0 4px;color:#8A5309"><b>${kurang} hari</b> yang sudah lewat belum diisi angka penjualannya —
+        selama masih kosong, rasionya kelihatan lebih tinggi dari yang sebenarnya.</p>`:""}`;
+
+  // grid isian harian
+  const days=[];let d=new Date(a+"T00:00:00");const e=new Date(b+"T00:00:00");
+  while(d<=e&&days.length<95){days.push(d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()));d.setDate(d.getDate()+1);}
+  const tpd=topupPerDay(a,b), hariIni=todayStr();
+  document.getElementById("jGrid").innerHTML=days.map(x=>{
+    const n=jualN(x), t=tpd[x]||0;
+    return `<div class="jcell${n==null?" kosong":""}${x===hariIni?" hariini":""}" onclick="editJual('${x}')"
+      title="${fmtD_(x)} · ${n==null?"belum diisi":n+" transaksi penjualan"} · ${t}× top up">
+      <b>${+x.slice(8)}/${+x.slice(5,7)}</b><span>${n==null?"–":n}</span>${t?`<i>${t}</i>`:""}</div>`;
+  }).join("")||`<div class="empty">Rentangnya kosong.</div>`;
+
+  // grafik harian
+  document.getElementById("chJualDay").innerHTML=
+    (js.n||ts.n)?svgBars2(days.map(x=>({l:+x.slice(8),a:jualN(x)||0,b:tpd[x]||0})),
+      "#5B3FD9","#0E5F8A","Transaksi penjualan","Transaksi top up")
+    :`<div class="empty">Belum ada angka penjualan di periode ini.</div>`;
+
+  // rasio per bulan (semua bulan yang penjualannya sudah diisi)
+  const mo={};
+  Object.entries(U.jual||{}).forEach(([dt,r])=>{const k=dt.slice(0,7);(mo[k]=mo[k]||{j:0,t:0}).j+=(+r.n||0);});
+  Object.values(U.topup||{}).forEach(arr=>(arr||[]).forEach(t=>{
+    const k=(t.tgl||"").slice(0,7);if(mo[k])mo[k].t++;}));
+  const mItems=Object.keys(mo).filter(k=>mo[k].j>0).sort().slice(-18)
+    .map(k=>({l:BLN3[+k.slice(5)-1]+" "+k.slice(2,4),v:Math.round(mo[k].t/mo[k].j*1000)/10}));
+  document.getElementById("chJualRasio").innerHTML=mItems.length?svgBars(mItems,"#1B6B47",v=>v+"%")
+    :`<div class="empty">Isi dulu jumlah transaksi penjualan hariannya.</div>`;
+}
 function renderStats(){
   const now=new Date(), key=document.getElementById("fPeriod").value;
   if(!key)return;
@@ -2883,6 +3398,8 @@ function renderStats(){
   document.getElementById("chTop").innerHTML=hbars(
     Object.entries(by).sort((x,y)=>y[1]-x[1]).slice(0,10)
     .map(([t,v])=>({l:`<span class="link" onclick="openTutor(du('${eu(t)}'))">${t}</span>`,v})),rp);
+
+  renderJual();renderExport();
 }
 function renderMaster(){
   renderSisaJual();
@@ -3674,7 +4191,7 @@ function boot(){
   if(!ME)setTimeout(pickUser,300);
   undoStack=lget(UKEY,[]);
   classes=lget(CKEY,[]).map(normClass);U=lget(RKEY,{rates:{},tutors:{}});paid=lget(PKEY,{});queue=lget(QKEY,[]);
-  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};
+  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};
   // tidak ada injeksi data bawaan — kalau cache kosong, tunggu sinkron dari Sheet
   document.getElementById("cfgUrl").value=CFG.url;
   document.getElementById("cfgToken").value=CFG.token;
