@@ -2741,65 +2741,327 @@ function slipJudul(){
     (slipCtx.stamp?" (SUDAH DIBAYAR)":" (DRAF KONFIRMASI)");
 }
 /* --- aksi berbagi --- */
-/* mode "app"  -> protokol whatsapp:// (aplikasi WhatsApp Desktop di Windows/macOS, atau app di HP)
-   mode "web"  -> web.whatsapp.com (tab browser, tidak butuh aplikasi terpasang)
-   tanpa mode  -> wa.me, biar perangkatnya sendiri yang memutuskan */
-function shareWA(mode){
-  if(!slipCtx)return;
-  const t=slipCtx.tutor, k=kontakOf(t);
-  if(!k.wa)return editKontak(t,()=>{if(kontakOf(t).wa)shareWA(mode);});
-  const no=waNorm(k.wa), txt=encodeURIComponent(slipTeks());
-  if(mode==="app"){
-    // protokol kustom harus lewat location, window.open sering diblokir browser
-    location.href="whatsapp://send?phone="+no+"&text="+txt;
-    toast("Membuka aplikasi WhatsApp ke "+waTampil(k.wa)+" — kalau tidak terbuka, pakai tombol WhatsApp Web");
-    return;
+/* ---------- pembuat PDF slip gaji (tanpa library, tanpa internet) ----------
+   Menghasilkan PDF A4 asli dengan teks yang bisa diseleksi, memakai font standar
+   Helvetica sehingga tidak perlu menyematkan file font. */
+const PDF_W=595.28, PDF_H=841.89, PDF_M=42;
+function pdfEsc(v){
+  let s=String(v==null?"":v)
+    .replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"')
+    .replace(/[\u2013\u2014]/g,"-").replace(/[\u2022\u00b7]/g,"-")
+    .replace(/\u2026/g,"...").replace(/\u00a0/g," ")
+    .replace(/[^\x20-\x7E\u00A1-\u00FF]/g,"");     // buang emoji & simbol di luar WinAnsi
+  let o="";
+  for(let i=0;i<s.length;i++){
+    const ch=s[i], c=s.charCodeAt(i);
+    if(ch==="\\"||ch==="("||ch===")")o+="\\"+ch;
+    else if(c<128)o+=ch;
+    else o+="\\"+c.toString(8).padStart(3,"0");
   }
-  const url=mode==="web"
-    ? "https://web.whatsapp.com/send?phone="+no+"&text="+txt
-    : "https://wa.me/"+no+"?text="+txt;
-  const w=window.open(url,"_blank");
-  if(!w)location.href=url;                    // kalau pop-up diblokir
-  toast("Membuka WhatsApp "+(mode==="web"?"Web":"")+" ke "+waTampil(k.wa));
+  return o;
 }
-function shareEmail(){
+/* perkiraan lebar teks Helvetica (per 1000 unit em) — cukup akurat untuk rata kanan angka */
+function pdfW(s,size,bold){
+  s=String(s==null?"":s);let t=0;
+  for(const ch of s){
+    let w;
+    if(" iljItf.,'`;:|!()[]{}/\\-".includes(ch))w=278;
+    else if("0123456789".includes(ch))w=556;
+    else if("mwMW@%".includes(ch))w=833;
+    else if(ch>="A"&&ch<="Z")w=683;
+    else w=545;
+    t+=w;
+  }
+  return t/1000*size*(bold?1.05:1);
+}
+function pdfDoc(){
+  const pages=[]; let buf=[];
+  const P={
+    y:PDF_H-PDF_M,
+    baru(){if(buf.length)pages.push(buf.join("\n"));buf=[];P.y=PDF_H-PDF_M;},
+    ruang(butuh){if(P.y-butuh<PDF_M+70){P.baru();return true;}return false;},
+    txt(x,y,s,o){
+      o=o||{};const size=o.size||9.5,bold=!!o.bold;
+      let xx=x;
+      if(o.align==="right")xx=x-pdfW(s,size,bold);
+      else if(o.align==="center")xx=x-pdfW(s,size,bold)/2;
+      const c=o.color||[0,0,0];
+      buf.push("BT /"+(bold?"F2":"F1")+" "+size+" Tf "+c[0]+" "+c[1]+" "+c[2]+" rg "+
+        xx.toFixed(2)+" "+y.toFixed(2)+" Td ("+pdfEsc(s)+") Tj ET");
+    },
+    garis(x1,y1,x2,y2,tebal,c){
+      c=c||[0,0,0];
+      buf.push((tebal||.7)+" w "+c[0]+" "+c[1]+" "+c[2]+" RG "+
+        x1.toFixed(2)+" "+y1.toFixed(2)+" m "+x2.toFixed(2)+" "+y2.toFixed(2)+" l S");
+    },
+    kotak(x,y,w,h,isi,garis,tebal){
+      if(isi)buf.push(isi[0]+" "+isi[1]+" "+isi[2]+" rg "+x.toFixed(2)+" "+y.toFixed(2)+" "+w.toFixed(2)+" "+h.toFixed(2)+" re f");
+      if(garis)buf.push((tebal||.7)+" w "+garis[0]+" "+garis[1]+" "+garis[2]+" RG "+x.toFixed(2)+" "+y.toFixed(2)+" "+w.toFixed(2)+" "+h.toFixed(2)+" re S");
+    },
+    selesai(){P.baru();return pages;}
+  };
+  return P;
+}
+function pdfRakit(pages){
+  const objs=[];
+  const N=pages.length;
+  objs[1]="<</Type/Catalog/Pages 2 0 R>>";
+  objs[2]="<</Type/Pages/Kids["+pages.map((_,i)=>(5+i*2)+" 0 R").join(" ")+"]/Count "+N+">>";
+  objs[3]="<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>";
+  objs[4]="<</Type/Font/Subtype/Type1/BaseFont/Helvetica-Bold/Encoding/WinAnsiEncoding>>";
+  pages.forEach((isi,i)=>{
+    objs[5+i*2]="<</Type/Page/Parent 2 0 R/MediaBox[0 0 "+PDF_W+" "+PDF_H+
+      "]/Resources<</Font<</F1 3 0 R/F2 4 0 R>>>>/Contents "+(6+i*2)+" 0 R>>";
+    objs[6+i*2]="<</Length "+isi.length+">>\nstream\n"+isi+"\nendstream";
+  });
+  let out="%PDF-1.4\n";
+  const off=[];
+  for(let i=1;i<objs.length;i++){
+    off[i]=out.length;
+    out+=i+" 0 obj\n"+objs[i]+"\nendobj\n";
+  }
+  const xref=out.length;
+  out+="xref\n0 "+objs.length+"\n0000000000 65535 f \n";
+  for(let i=1;i<objs.length;i++)out+=String(off[i]).padStart(10,"0")+" 00000 n \n";
+  out+="trailer\n<</Size "+objs.length+"/Root 1 0 R>>\nstartxref\n"+xref+"\n%%EOF";
+  const b=new Uint8Array(out.length);
+  for(let i=0;i<out.length;i++)b[i]=out.charCodeAt(i)&255;
+  return new Blob([b],{type:"application/pdf"});
+}
+/* ---------- isi slip ---------- */
+function slipPDFBlob(){
+  const{rows,jam,gaji}=slipData();
+  const t=slipCtx.tutor, sudah=slipCtx.stamp, lengkap=slipCtx.mode!=="ringkas";
+  const _pc=paidList(t); const paidAt=_pc.length?fmtD_(String(_pc[_pc.length-1].at).slice(0,10)):"";
+  const now=new Date(), p2=n=>String(n).padStart(2,"0");
+  const cetak=p2(now.getDate())+"/"+p2(now.getMonth()+1)+"/"+now.getFullYear();
+  const UNGU=[.357,.247,.851], ABU=[.35,.35,.35], MERAH=[.68,.18,.31];
+  const L=PDF_M, R=PDF_W-PDF_M;
+  const P=pdfDoc();
+
+  function kop(){
+    P.txt(L,P.y,"PT JELAJAH BAHASA DUNIA",{size:13,bold:true});
+    P.txt(L,P.y-13,"Ngobrol Yuk! - Kursus Bahasa Asing Online",{size:9.5,bold:true,color:UNGU});
+    const adr=["Komp. Perkantoran Plaza Bintaro Jaya Blok C34",
+      "Jl. Bintaro Utama 3A, Tangerang Selatan",
+      "Phone: 021-27840420  ·  WA: 0815-9633-119",
+      "info@ngobrolyuk.id  ·  https://ngobrolyuk.com"];
+    adr.forEach((x,i)=>P.txt(R,P.y-(i*9.5),x,{size:7.5,align:"right",color:ABU}));
+    P.y-=42;
+    P.garis(L,P.y,R,P.y,1.6,UNGU);
+    P.y-=20;
+  }
+  kop();
+
+  const JUD=sudah?"SLIP GAJI TUTOR":"SLIP GAJI TUTOR - DRAF KONFIRMASI", judW=pdfW(JUD,12.5,true);
+  P.txt((L+R)/2,P.y,JUD,{size:12.5,bold:true,align:"center"});
+  P.garis((L+R)/2-judW/2,P.y-2.5,(L+R)/2+judW/2,P.y-2.5,.8);
+  P.y-=14;
+  P.txt((L+R)/2,P.y,"Periode: "+slipPeriodLabel()+(slipRange()?" (rentang pembayaran)":"")+"   ·   Dicetak: "+cetak,
+    {size:9,align:"center"});
+  P.y-=18;
+
+  if(!sudah){
+    P.kotak(L,P.y-26,R-L,32,[.984,.894,.922],MERAH,1.2);
+    P.txt((L+R)/2,P.y-2,"BELUM DIBAYAR  ·  UNTUK DIKONFIRMASI TUTOR",{size:10,bold:true,align:"center",color:MERAH});
+    P.txt((L+R)/2,P.y-13,"Mohon dicek: tanggal, jam, nama murid, dan jumlah sesi. Kalau ada yang tidak sesuai,",{size:7.8,align:"center",color:MERAH});
+    P.txt((L+R)/2,P.y-21,"balas ke admin sebelum pembayaran diproses.",{size:7.8,align:"center",color:MERAH});
+    P.y-=40;
+  }
+
+  P.txt(L,P.y,"Nama Tutor: ",{size:10,bold:true});
+  P.txt(L+pdfW("Nama Tutor: ",10,true),P.y,t,{size:10});
+  P.y-=22;
+
+  const bw=(R-L-12)/2;
+  [["TOTAL JAM MENGAJAR",(Math.round(jam*100)/100).toLocaleString("id-ID")+" jam  ·  "+rows.length+" sesi"],
+   ["JUMLAH DITERIMA","Rp "+gaji.toLocaleString("id-ID")]].forEach(([lbl,val],i)=>{
+    const x=L+i*(bw+12);
+    P.kotak(x,P.y-26,bw,32,null,UNGU,1.2);
+    P.txt(x+9,P.y-3,lbl,{size:7.5,color:ABU});
+    P.txt(x+9,P.y-19,val,{size:12,bold:true});
+  });
+  P.y-=42;
+
+  /* ---- tabel ---- */
+  const kolom=lengkap
+    ? [["No",22,"l"],["Tanggal",52,"l"],["Jam",62,"l"],["Murid / Kelas",105,"l"],["Program",92,"l"],
+       ["Durasi",36,"r"],["Rate/Jam",60,"r"],["Fee (Rp)",R-L-429,"r"]]
+    : [["No",22,"l"],["Murid / Kelas",140,"l"],["Program",105,"l"],["Sesi",34,"r"],
+       ["Total Jam",50,"r"],["Rate Dasar",68,"r"],["Nominal (Rp)",R-L-419,"r"]];
+  function baris(sel,y,bold,isi){
+    let x=L;
+    kolom.forEach(([,w,al],i)=>{
+      P.txt(al==="r"?x+w-5:x+5,y,sel[i],{size:8,bold:!!bold,align:al==="r"?"right":"left"});
+      x+=w;
+    });
+  }
+  function kepala(){
+    P.kotak(L,P.y-11,R-L,15,[.918,.898,.984],null);
+    baris(kolom.map(k=>k[0]),P.y-6.5,true);
+    P.y-=15;
+    P.garis(L,P.y,R,P.y,.6,[.6,.6,.6]);
+  }
+  P.txt(L,P.y,lengkap?"Rincian per Sesi:":"Rincian per Murid / Kelas:",{size:9.5,bold:true});
+  P.y-=16;
+  kepala();
+
+  let isiBaris=[];
+  if(lengkap){
+    rows.forEach((c,i)=>{const d=durasi(c.start,c.end),rt=ratePerJam(c.tutor,c.cls);
+      isiBaris.push([String(i+1),fmtD_(c.date),c.start+"-"+c.end,c.cls||"-",c.lang||"-",
+        String(d),rt.toLocaleString("id-ID"),Math.round(rt*d).toLocaleString("id-ID")]);});
+  }else{
+    const by={};
+    rows.forEach(c=>{const k=c.cls||"-";
+      by[k]=by[k]||{n:0,jam:0,g:0,langs:new Set(),rate:ratePerJam(c.tutor,c.cls)};
+      by[k].n++;by[k].jam+=durasi(c.start,c.end);by[k].g+=feeOf(c,now);by[k].langs.add(c.lang);});
+    Object.entries(by).sort((a,b)=>b[1].g-a[1].g).forEach(([nm,o],i)=>
+      isiBaris.push([String(i+1),nm,[...o.langs].join(", "),String(o.n),
+        String(Math.round(o.jam*100)/100),o.rate.toLocaleString("id-ID"),o.g.toLocaleString("id-ID")]));
+  }
+  isiBaris.forEach((r,i)=>{
+    if(P.ruang(30)){kop();P.txt(L,P.y,"(lanjutan) "+t+" - "+slipPeriodLabel(),{size:9,bold:true});P.y-=16;kepala();}
+    if(i%2)P.kotak(L,P.y-11,R-L,14,[.972,.968,.99],null);
+    baris(r,P.y-6.5);
+    P.y-=14;
+  });
+  P.garis(L,P.y,R,P.y,.6,[.6,.6,.6]);
+  P.kotak(L,P.y-13,R-L,16,[.957,.945,.988],null);
+  const totBaris=lengkap
+    ? ["","TOTAL - "+rows.length+" sesi","","","",(Math.round(jam*100)/100).toLocaleString("id-ID"),"","Rp "+gaji.toLocaleString("id-ID")]
+    : ["","TOTAL - "+isiBaris.length+" murid/kelas","",String(rows.length),(Math.round(jam*100)/100).toLocaleString("id-ID"),"","Rp "+gaji.toLocaleString("id-ID")];
+  baris(totBaris,P.y-8,true);
+  P.y-=24;
+
+  P.ruang(120);
+  P.txt(L,P.y,"Gaji dihitung dari kelas berstatus Selesai pada "+(slipRange()?"rentang "+slipPeriodLabel():"periode "+periodLabel(slipCtx.key)+" (cut-off tanggal 25)")+".",{size:7.8,color:ABU});
+  P.txt(L,P.y-9,"Jadwal harian yang menjadi dasar perhitungan ini telah di-ACC oleh Supervisor Operasional dan Manager Operasional.",{size:7.8,color:ABU});
+  P.y-=34;
+
+  const ttd=sudah
+    ? [["Supervisor Operasional","Agnes Arnez"],["Manager Operasional","Desy Triyana"],["Finance Manager","Ilham Al Ayyubbi"]]
+    : [["Supervisor Operasional","Agnes Arnez"],["Manager Operasional","Desy Triyana"],
+       ["Finance Manager","Ilham Al Ayyubbi"],["Diperiksa & disetujui Tutor",t]];
+  const cw=(R-L)/ttd.length;
+  ttd.forEach(([role,nm],i)=>{
+    const cx=L+i*cw+cw/2;
+    P.txt(cx,P.y,role,{size:8,align:"center"});
+    P.garis(cx-cw/2+14,P.y-52,cx+cw/2-14,P.y-52,.7);
+    P.txt(cx,P.y-62,nm,{size:8.5,bold:true,align:"center"});
+  });
+  P.y-=104;
+
+  if(sudah){
+    const bx=R-150;
+    P.kotak(bx,P.y-30,150,44,null,[.106,.42,.278],2);
+    P.txt(bx+75,P.y-4,"PAID",{size:22,bold:true,align:"center",color:[.106,.42,.278]});
+    P.txt(bx+75,P.y-15,(paidAt||cetak)+"  ·  PT JELAJAH BAHASA DUNIA",{size:6.8,align:"center",color:[.106,.42,.278]});
+  }
+  return pdfRakit(P.selesai());
+}
+function slipNamaFile(){
+  const bersih=x=>String(x).replace(/[\\/:*?"<>|]/g,"-").trim();
+  return "Slip Gaji - "+bersih(slipCtx.tutor)+" - "+bersih(slipPeriodLabel())+
+    (slipCtx.stamp?" (PAID)":" (DRAF)")+".pdf";
+}
+let _pdfURL=null;
+function unduhSlipPDF(diam){
+  try{
+    const blob=slipPDFBlob();
+    if(_pdfURL)try{URL.revokeObjectURL(_pdfURL);}catch(e){}
+    _pdfURL=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=_pdfURL;a.download=slipNamaFile();a.click();
+    if(!diam)toast("PDF tersimpan: "+slipNamaFile());
+    return true;
+  }catch(e){toast("Gagal membuat PDF: "+e.message);return false;}
+}
+/* Kirim PDF + teks. WhatsApp tidak punya cara melampirkan file lewat tautan,
+   jadi alurnya: PDF diunduh dulu, teks disalin, lalu WhatsApp dibuka -> tinggal lampirkan. */
+async function kirimSlip(kanal){
   if(!slipCtx)return;
   const t=slipCtx.tutor, k=kontakOf(t);
-  if(!k.email)return editKontak(t,()=>{if(kontakOf(t).email)shareEmail();});
-  const url="mailto:"+encodeURIComponent(k.email)+
-    "?subject="+encodeURIComponent(slipJudul())+
-    "&body="+encodeURIComponent(slipTeks().replace(/\*/g,""));
-  location.href=url;
-  toast("Membuka aplikasi email ke "+k.email);
+  const perluWA=kanal==="wa-app"||kanal==="wa-biz"||kanal==="wa-web";
+  if(perluWA&&!k.wa)return editKontak(t,()=>{if(kontakOf(t).wa)kirimSlip(kanal);});
+  if(kanal==="email"&&!k.email)return editKontak(t,()=>{if(kontakOf(t).email)kirimSlip(kanal);});
+
+  const teks=slipTeks();
+  // 1. coba share sheet perangkat: ini SATU-SATUNYA cara PDF terlampir otomatis
+  if(kanal==="native"){
+    try{
+      const file=new File([slipPDFBlob()],slipNamaFile(),{type:"application/pdf"});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({files:[file],title:slipJudul(),text:teks});
+        return;
+      }
+    }catch(e){ if(e&&e.name==="AbortError")return; }
+    unduhSlipPDF(true);
+    salinTeks(teks);
+    return toast("Perangkat ini belum mendukung lampiran otomatis — PDF sudah diunduh & teks disalin");
+  }
+  // 2. kanal WhatsApp / email: unduh PDF + salin teks, lalu buka aplikasinya
+  unduhSlipPDF(true);
+  salinTeks(teks);
+  if(kanal==="email"){
+    location.href="mailto:"+encodeURIComponent(k.email)+
+      "?subject="+encodeURIComponent(slipJudul())+
+      "&body="+encodeURIComponent(teks.replace(/\*/g,""));
+    return toast("PDF terunduh · email dibuka — lampirkan file " + slipNamaFile());
+  }
+  const no=waNorm(k.wa), txt=encodeURIComponent(teks);
+  // aplikasi terpasang: WhatsApp biasa dan WhatsApp Business punya protokol sendiri-sendiri
+  if(kanal==="wa-app"||kanal==="wa-biz"){
+    const skema=kanal==="wa-biz"?"whatsapp-business":"whatsapp";
+    location.href=skema+"://send?phone="+no+"&text="+txt;
+    return toast("PDF terunduh · "+(kanal==="wa-biz"?"WhatsApp Business":"WhatsApp")+
+      " dibuka — lampirkan filenya lewat ikon klip 📎");
+  }
+  // web.whatsapp.com dipakai bersama: mengikuti akun (biasa / Business) yang sedang login di browser ini
+  const url="https://web.whatsapp.com/send?phone="+no+"&text="+txt;
+  const w=window.open(url,"_blank"); if(!w)location.href=url;
+  toast("PDF terunduh · WhatsApp Web dibuka — lampirkan filenya lewat ikon klip 📎");
 }
-function shareNative(){
+function salinTeks(teks){
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(teks).catch(()=>{});
+  }catch(e){}
+}
+function salinSlipTeks(){
   if(!slipCtx)return;
-  const data={title:slipJudul(),text:slipTeks()};
-  if(navigator.share){
-    navigator.share(data).catch(()=>{});
-  }else if(navigator.clipboard){
-    navigator.clipboard.writeText(slipTeks())
-      .then(()=>toast("Isi slip disalin — tinggal tempel di WhatsApp / email"))
-      .catch(()=>toast("Browser ini tidak mendukung berbagi langsung"));
-  }else toast("Browser ini tidak mendukung berbagi langsung");
+  salinTeks(slipTeks());
+  toast("Isi slip disalin — tinggal tempel sebagai caption");
 }
 function renderShareRow(){
   const e=document.getElementById("shareRow"); if(!slipCtx||!e)return;
   const t=slipCtx.tutor, k=kontakOf(t);
   const adaWA=!!k.wa, adaEm=!!k.email;
+  const bisaFile=!!(window.navigator&&navigator.canShare&&window.File);
+  const nWA=adaWA?waTampil(k.wa):"belum diisi";
   e.innerHTML=`
-    <span style="font-weight:800;font-size:12px">Kirim ke tutor:</span>
-    <button class="btn small" onclick="shareWA('app')" title="Buka aplikasi WhatsApp yang terpasang (WhatsApp Desktop di Windows/macOS, atau app di HP)">📲 WA Aplikasi${adaWA?" · "+waTampil(k.wa):" (isi nomor)"}</button>
-    <button class="btn small" onclick="shareWA('web')" title="Buka web.whatsapp.com di tab browser — tidak perlu aplikasi terpasang">🌐 WA Web</button>
-    <button class="btn small ghost" onclick="shareEmail()">✉️ Email${adaEm?" · "+k.email:" (isi email)"}</button>
-    <button class="btn small ghost" onclick="shareNative()">📤 Bagikan / Salin</button>
-    <button class="btn small ghost editonly" onclick="editKontak(du('${eu(t)}'))">✏️ Ubah kontak</button>
-    <div class="hint" style="margin-top:4px">Pesan berisi periode, total sesi, total jam, jumlah diterima, dan rinciannya —
-      isinya mengikuti versi slip yang sedang dipilih (${slipCtx.mode==="lengkap"?"per sesi":"per murid"})
-      dan status ${slipCtx.stamp?"<b>sudah dibayar</b>":"<b>belum dibayar / minta konfirmasi</b>"}.
-      <b>WA Aplikasi</b> membuka WhatsApp Desktop/HP yang terpasang · <b>WA Web</b> membuka web.whatsapp.com di tab browser
-      (perlu sudah scan QR sekali). Kalau WA Aplikasi tidak bereaksi, berarti aplikasinya belum terpasang — pakai WA Web.
-      File PDF-nya tidak ikut terkirim otomatis — kalau perlu, cetak dulu jadi PDF lalu lampirkan sendiri.</div>`;
+    <div style="width:100%;display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:5px">
+      <span style="font-weight:800;font-size:12px">Kirim slip (PDF) ke ${slipCtx.tutor}</span>
+      <span style="font-size:11px;color:${adaWA?"#5D5680":"var(--red)"}">WA: <b>${nWA}</b></span>
+      <span style="font-size:11px;color:${adaEm?"#5D5680":"var(--red)"}">Email: <b>${adaEm?k.email:"belum diisi"}</b></span>
+      <button class="btn small ghost editonly" onclick="editKontak(du('${eu(t)}'))">✏️ Ubah kontak</button>
+    </div>
+    <button class="btn small" onclick="kirimSlip('wa-app')" title="Buka aplikasi WhatsApp biasa yang terpasang (WhatsApp Desktop di Windows/macOS, atau app di HP)">📲 WhatsApp${adaWA?"":" (isi nomor)"}</button>
+    <button class="btn small" onclick="kirimSlip('wa-biz')" title="Buka aplikasi WhatsApp Business yang terpasang">💼 WA Business${adaWA?"":" (isi nomor)"}</button>
+    <button class="btn small" onclick="kirimSlip('wa-web')" title="Buka web.whatsapp.com di tab browser — mengikuti akun (biasa atau Business) yang sedang login di browser ini">🌐 WA Web${adaWA?"":" (isi nomor)"}</button>
+    <button class="btn small ghost" onclick="kirimSlip('email')">✉️ Email${adaEm?"":" (isi email)"}</button>
+    <button class="btn small ghost" onclick="kirimSlip('native')" title="${bisaFile?"Share sheet perangkat — PDF bisa terlampir langsung, lalu pilih WhatsApp, WhatsApp Business, atau browser dari daftarnya":"Perangkat ini belum mendukung lampiran otomatis"}">📤 Bagikan PDF…</button>
+    <button class="btn small ghost" onclick="unduhSlipPDF()">⬇️ Unduh PDF</button>
+    <button class="btn small ghost" onclick="salinSlipTeks()">📋 Salin teks</button>
+    <div class="hint" style="margin-top:4px">Ketiga tombol WhatsApp memakai nomor yang sama — kalau belum diisi, tombol mana pun akan menanyakannya dulu.
+      <b>📲 WhatsApp</b> dan <b>💼 WA Business</b> membuka aplikasi terpasang (dua aplikasi terpisah, protokolnya beda);
+      <b>🌐 WA Web</b> membuka web.whatsapp.com dan mengikuti akun mana pun yang sedang login di browser ini — biasa atau Business.
+      Tiap tombol kirim akan <b>mengunduh PDF slip</b> dan menyalin teks ringkasannya lebih dulu, baru membuka aplikasinya —
+      <b>lampirkan PDF-nya lewat ikon klip 📎</b>, teksnya tinggal ditempel sebagai caption.
+      WhatsApp tidak menyediakan cara melampirkan file lewat tautan, jadi satu langkah manual ini tidak bisa dihindari.
+      <b>📤 Bagikan PDF…</b> memakai share sheet bawaan perangkat — di HP, PDF bisa langsung terlampir dan kamu tetap bisa
+      memilih WhatsApp atau WhatsApp Business dari daftarnya.
+      Isi slip mengikuti versi yang sedang dipilih (${slipCtx.mode==="ringkas"?"per murid":"per sesi"})
+      dan status ${slipCtx.stamp?"<b>sudah dibayar</b>":"<b>belum dibayar / minta konfirmasi</b>"}.</div>`;
 }
 let slipCtx=null;
 function slipPDF(tutorEnc,from,to){
