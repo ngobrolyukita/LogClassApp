@@ -189,6 +189,31 @@
   .sheet-head .ttl{font-weight:800;font-size:15.5px}
   .sheet-head .sub{font-size:11.5px;color:var(--ink-soft);font-weight:600}
   .sheet-body{padding:13px 14px 30px}
+  .mrow{display:grid;grid-template-columns:74px 1fr 150px 92px 92px 108px 96px;gap:9px;align-items:center;
+        padding:9px 10px;border-bottom:1px solid var(--line);font-size:12px}
+  .mrow:hover{background:var(--iris-tint)}
+  .mrow.head{font-weight:800;font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;
+        letter-spacing:.4px;background:#FAF9FE;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+  .mrow .mid{font-family:ui-monospace,monospace;font-size:11px;color:var(--iris-dark);font-weight:700}
+  .mrow .nm{font-weight:700;cursor:pointer}
+  .mrow .nm:hover{color:var(--iris);text-decoration:underline}
+  .mrow .sub{font-weight:600;font-size:10.5px;color:var(--ink-soft)}
+  .mrow .r{text-align:right}
+  .mtag{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:800}
+  .mtag.aktif{background:#E6F4EC;color:#1B6B47}
+  .mtag.kelar{background:#EFEDF9;color:#5D5680}
+  .mtag.cuti{background:#FFF3CD;color:#8A5309}
+  .mtag.vakum{background:#FDECEC;color:#9B2C2C}
+  @media(max-width:820px){
+    .mrow{grid-template-columns:1fr 92px 96px;gap:6px}
+    .mrow .kol3,.mrow .kol4{display:none}
+  }
+  .beliрow{}
+  .belirow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:7px 0;
+        border-top:1px solid var(--line);font-size:12px}
+  .belirow .tg{font-weight:700;min-width:82px}
+  .belirow .pr{flex:1;min-width:160px}
+  .belirow .rp{font-weight:800;font-family:'Space Grotesk',sans-serif}
   .langbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0 2px}
   .langbar .lb-lbl{font-size:11px;font-weight:800;color:var(--ink-soft);margin-right:2px}
   .lchip{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid var(--line);
@@ -361,6 +386,7 @@
   <div class="tabs">
     <button class="tab on" data-p="log">Log Kelas</button>
     <button class="tab" data-p="tutor">Tutor Card</button>
+    <button class="tab" data-p="murid">Data Murid</button>
     <button class="tab" data-p="stat">Statistik</button>
     <button class="tab" data-p="master">Master Rate</button>
   </div>
@@ -457,6 +483,56 @@
   </div>
 
   <!-- ============ STATISTIK ============ -->
+  <div class="panel" id="p-murid">
+    <div class="card">
+      <h2>🎓 Data Murid</h2>
+      <div id="mWarn"></div>
+      <div class="mini-kpis" id="mKpis"></div>
+      <div class="langbar" id="mLangBar"></div>
+      <div class="langbar" id="mStatBar"></div>
+      <div class="searchrow" style="margin-top:8px">
+        <input type="text" id="mCari" placeholder="Cari nama, ID, email, nomor HP, atau tutor..." oninput="renderMurid()" style="flex:1;min-width:150px">
+        <select id="mSort" onchange="renderMurid()">
+          <option value="aktif">Urut: Terakhir aktif</option>
+          <option value="nama">Urut: Nama A–Z</option>
+          <option value="sesi">Urut: Sesi terbanyak</option>
+          <option value="jam">Urut: Jam terbanyak</option>
+          <option value="belanja">Urut: Belanja terbesar</option>
+          <option value="beli1">Urut: Beli pertama (lama → baru)</option>
+          <option value="topup">Urut: Top up terbanyak</option>
+          <option value="id">Urut: ID</option>
+        </select>
+        <button class="btn ghost small" onclick="exportMurid()">📦 Export CSV</button>
+        <button class="btn ghost small editonly" onclick="bukaImporBeli()">📥 Import Pembelian</button>
+      </div>
+      <div id="mChip"></div>
+      <div id="mList"></div>
+    </div>
+  </div>
+
+  <div class="sheetov" id="imporOv">
+    <div class="sheet">
+      <div class="sheet-head">
+        <div><div class="ttl">📥 Import Pembelian dari WooCommerce</div>
+          <div class="sub">Tempel isi file CSV export order</div></div>
+        <button class="btn ghost small" onclick="tutupImpor()">✕ Tutup</button>
+      </div>
+      <div class="sheet-body">
+        <p class="note" style="margin-top:0">Buka file CSV export dari WooCommerce (Analytics → Orders → Download),
+          pilih semua isinya (Ctrl+A), salin, lalu tempel di kotak bawah ini.
+          Kolom yang dibaca: <b>Order Number</b>, <b>Order Date</b>, nama pembeli, Email, Phone, Item Name, Order Total, Payment Method.
+          Order yang sudah pernah masuk akan dilewati, jadi aman kalau tidak sengaja diimpor dua kali.</p>
+        <textarea id="imporTeks" rows="7" placeholder='"Order Number","Order Status","Order Date",...'
+          style="width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;font-size:11px;font-family:ui-monospace,monospace"></textarea>
+        <div class="row-actions" style="margin-top:7px">
+          <button class="btn" onclick="prosesImpor(false)">🔍 Periksa dulu</button>
+          <button class="btn ghost" onclick="tutupImpor()">Batal</button>
+        </div>
+        <div id="imporHasil"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="panel" id="p-stat">
     <div class="card" id="cardExport">
       <h2>📦 Export Data · periode bebas</h2>
@@ -1475,7 +1551,7 @@ async function fullSync(){
     // Sheet = satu-satunya sumber data. Tidak pernah ada pengisian otomatis.
     classes=raw.map(normClass).filter(c=>c.tutor&&/^\d{4}-\d{2}-\d{2}$/.test(c.date));
     if(raw.length&&!classes.length)toast("Data terbaca "+raw.length+" baris tapi format tanggalnya tidak dikenali — hubungi admin");
-    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{}};sisaJual=[];
+    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{}};sisaJual=[];
     (all.rates||[]).forEach(r=>{
       const id=String(r.id||""), val=+r.rate;
       if(id.slice(0,2)==="N:"){U.newTag[id.slice(2)]=r.lang||"nama";return;}   // penanda nama baru
@@ -1494,6 +1570,22 @@ async function fullSync(){
         if(p[0]==="v1"){
           (U.topup[nm]=U.topup[nm]||[]).push({ke:+p[1]||seq,tgl:p[2]||"",jam:val||0,
             note:p[3]||"",by:p[4]||"",at:p[5]||"",seq});
+        }
+        return;}
+      if(id.slice(0,2)==="S:"){                                                 // master murid (registry + ID)
+        const mid=id.slice(2), raw=String(r.lang||"");
+        const i=raw.indexOf("~");
+        if(i>0&&raw.slice(0,i)==="v1"){
+          try{const o=JSON.parse(raw.slice(i+1));if(mid&&o&&o.nm)U.murid[mid]=o;}catch(e){}
+        }
+        return;}
+      if(id.slice(0,2)==="B:"){                                                 // riwayat pembelian
+        const oid=id.slice(2), raw=String(r.lang||"");
+        const i=raw.indexOf("~");
+        if(i>0&&raw.slice(0,i)==="v1"){
+          try{const o=JSON.parse(raw.slice(i+1));
+            if(oid){o.mid=String(r.tutor||"");o.nominal=val||0;U.beli[oid]=o;}
+          }catch(e){}
         }
         return;}
       if(id.slice(0,2)==="K:"){                                                 // kontak tutor (WA & email)
@@ -1816,7 +1908,7 @@ function togglePostpone(id){
 }
 
 /* ---------- render ---------- */
-function renderAll(){renderWho();buildMeet();renderMeetBar();renderKPI();renderLog();renderPeriods();renderTutorCards();renderStats();renderMaster();renderFlagBtn();renderUndoBtn();}
+function renderAll(){renderWho();buildMeet();renderMeetBar();renderKPI();renderLog();renderPeriods();renderTutorCards();renderMurid();renderStats();renderMaster();renderFlagBtn();renderUndoBtn();}
 function renderFlagBtn(){
   const b=document.getElementById("btnFlag");if(!b)return;
   const n=classes.filter(c=>c.flag).length;
@@ -2681,6 +2773,518 @@ function drillG(kind){
   document.getElementById("drSub").textContent=sub;
   document.getElementById("drBody").innerHTML=html;
   document.getElementById("drillOv").classList.add("on");
+}
+/* ================= REGISTRY MURID ==================================
+   Tiap murid punya kode tetap M-0001 dst. Nama boleh salah ketik atau berganti;
+   kodenya tidak. Log kelas dihubungkan lewat daftar alias (nama yang dinormalkan).
+   Disimpan sebagai baris "S:<id>" di sheet Rates, isinya JSON di kolom lang.
+   Riwayat pembelian disimpan sebagai baris "B:<order_id>". */
+const GELAR=/\b(ibu|bu|bapak|pak|mr|mrs|ms|miss|kak|kk|mba|mbak|mas|dr|drs|ir)\b/g;
+const ANOT=/(semi\s*privat|semi\s*private|private|privat|group|reguler|regular|online|offline|trial|couple|duo|pair|\d+\s*(orang|student|pax))/i;
+/* nama -> bentuk baku untuk dicocokkan */
+function nkey(v){
+  return String(v||"").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/\([^)]*\)/g," ")
+    .replace(/[^a-z0-9\s]/g," ")
+    .replace(GELAR," ")
+    .replace(/\s+/g," ").trim();
+}
+/* "Moudy (Ibu Inten)" -> {utama:"Moudy", extra:["Ibu Inten"]} */
+function pecahNama(v){
+  const nm=String(v||"").trim();
+  const kurung=(nm.match(/\(([^)]*)\)/g)||[]).map(x=>x.slice(1,-1).trim());
+  return {utama:nm.replace(/\([^)]*\)/g," ").replace(/\s+/g," ").trim(),
+          extra:kurung.filter(x=>x&&!ANOT.test(x))};
+}
+function muridBaru(nm){
+  const p=pecahNama(nm), al=new Set([nkey(nm),nkey(p.utama)]);
+  p.extra.forEach(x=>al.add(nkey(x)));
+  return {nm:String(nm||"").trim(),al:[...al].filter(Boolean),
+          email:"",wa:"",catatan:"",daftar:"",beli1:"",by:meName(),at:new Date().toISOString()};
+}
+/* indeks alias -> id, dibangun ulang tiap kali data berubah */
+let MIDX=null;
+function muridIndex(){
+  if(MIDX)return MIDX;
+  MIDX={};
+  Object.entries(U.murid||{}).forEach(([id,m])=>
+    (m.al||[]).forEach(a=>{if(a&&!MIDX[a])MIDX[a]=id;}));
+  return MIDX;
+}
+function lupakanIndex(){MIDX=null;}
+function midOf(nm){const i=muridIndex();return i[nkey(nm)]||i[nkey(pecahNama(nm).utama)]||"";}
+function muridOf(nm){const id=midOf(nm);return id?Object.assign({id},U.murid[id]):null;}
+function namaMid(id){const m=(U.murid||{})[id];return m?m.nm:id;}
+function idBerikut(){
+  let mx=0;
+  Object.keys(U.murid||{}).forEach(k=>{const n=parseInt(String(k).replace(/\D/g,""),10);if(n>mx)mx=n;});
+  return "M-"+String(mx+1).padStart(4,"0");
+}
+/* semua nama murid privat yang muncul di log kelas */
+function namaMuridLog(){
+  const set=new Map();
+  classes.forEach(c=>{
+    if(!c.cls||isReg(c))return;
+    const nm=normName(c.cls);
+    if(nm)set.set(nm,(set.get(nm)||0)+1);
+  });
+  return [...set.keys()].sort((a,b)=>a.localeCompare(b,"id"));
+}
+/* beberapa ejaan bisa merujuk orang yang sama — pilih yang paling layak jadi nama resmi:
+   paling sering dipakai, lalu yang pakai huruf kapital, lalu yang paling lengkap */
+function namaTerbaik(varian){
+  const hit={};
+  classes.forEach(c=>{if(c.cls){const n=normName(c.cls);hit[n]=(hit[n]||0)+1;}});
+  const skor=v=>{
+    let n=0;
+    if(/\([^)]*\)/.test(v)&&ANOT.test(v))n-=6;      // "(Semi Private)" bukan bagian nama
+    if(/[A-Z]/.test(v))n+=4;                          // ada huruf kapital = ditulis rapi
+    if(/^[a-z]/.test(v))n-=2;                         // huruf kecil semua di awal
+    n+=Math.min(3,(hit[v]||0)*0.5);                   // makin sering dipakai makin dipercaya
+    return n;
+  };
+  return varian.slice().sort((a,b)=>{
+    const d=skor(b)-skor(a); if(d)return d;
+    return b.length-a.length;
+  })[0];
+}
+/* cari kunci di objek yang di-key nama (U.topup, U.mstat) lewat alias */
+function kunciAlias(obj,al){
+  const set=new Set(al||[]);
+  for(const k of Object.keys(obj||{}))if(set.has(nkey(k)))return k;
+  return "";
+}
+function muridBelumPunyaId(){return namaMuridLog().filter(nm=>!midOf(nm));}
+
+function pushMURID(id,m){
+  cacheAll();lupakanIndex();
+  if(!CFG.url)return;
+  if(!m){push({action:"delrate",ids:["S:"+id]});return;}
+  push({action:"setrate",rows:[{id:"S:"+id,tutor:id,cls:m.nm,rate:0,lang:"v1~"+JSON.stringify(m)}]});
+}
+function simpanMurid(id,m){
+  U.murid=U.murid||{};
+  m.at=new Date().toISOString();m.by=meName();
+  U.murid[id]=m;pushMURID(id,m);
+}
+/* buat ID untuk semua nama di log yang belum terdaftar */
+function bikinIdMurid(diam){
+  if(!guard())return 0;
+  const baru=muridBelumPunyaId();
+  if(!baru.length){if(!diam)toast("Semua murid di log kelas sudah punya ID");return 0;}
+  if(!diam&&!confirm(baru.length+" murid belum punya ID. Buatkan sekarang?\n\n"+
+    baru.slice(0,10).join("\n")+(baru.length>10?"\n… dan "+(baru.length-10)+" lagi":"")))return 0;
+  U.murid=U.murid||{};
+  // varian ejaan yang merujuk orang sama digabung jadi satu ID
+  const grup={};
+  baru.forEach(nm=>{const k=nkey(pecahNama(nm).utama)||nkey(nm);(grup[k]=grup[k]||[]).push(nm);});
+  let n=0;
+  Object.values(grup).forEach(varian=>{
+    if(varian.some(midOf))return;              // sudah keburu terdaftar
+    const utama=namaTerbaik(varian);
+    const id=idBerikut(), m=muridBaru(utama);
+    varian.forEach(v=>{const p=pecahNama(v);
+      m.al.push(nkey(v),nkey(p.utama));p.extra.forEach(x=>m.al.push(nkey(x)));});
+    m.al=[...new Set(m.al.filter(Boolean))];
+    const cs=classes.filter(c=>m.al.includes(nkey(c.cls||""))).map(c=>c.date).sort();
+    m.daftar=cs[0]||"";
+    U.murid[id]=m;pushMURID(id,m);lupakanIndex();n++;
+  });
+  cacheAll();lupakanIndex();
+  if(!diam)toast(n+" ID murid dibuat");
+  renderMurid();
+  return n;
+}
+/* gabungkan dua murid: `dari` dilebur ke `ke` */
+function gabungMurid(ke,dari){
+  if(!guard())return;
+  if(ke===dari)return;
+  const a=U.murid[ke], b=U.murid[dari];
+  if(!a||!b)return toast("ID tidak ditemukan");
+  if(!confirm("Gabungkan \""+b.nm+"\" ("+dari+") ke dalam \""+a.nm+"\" ("+ke+")?\n\n"+
+    "Semua alias dan riwayat pembelian ikut pindah. "+dari+" dihapus dan tidak dipakai lagi."))return;
+  a.al=[...new Set([...(a.al||[]),...(b.al||[])])];
+  a.email=a.email||b.email;a.wa=a.wa||b.wa;
+  if(b.beli1&&(!a.beli1||b.beli1<a.beli1))a.beli1=b.beli1;
+  if(b.daftar&&(!a.daftar||b.daftar<a.daftar))a.daftar=b.daftar;
+  if(b.catatan)a.catatan=(a.catatan?a.catatan+" · ":"")+b.catatan;
+  simpanMurid(ke,a);
+  Object.entries(U.beli||{}).forEach(([oid,o])=>{if(o.mid===dari){o.mid=ke;pushBELI(oid,o);}});
+  delete U.murid[dari];pushMURID(dari,null);
+  cacheAll();lupakanIndex();renderMurid();
+  toast(b.nm+" digabung ke "+a.nm);
+}
+/* ---------------- riwayat pembelian ---------------- */
+function pushBELI(oid,o){
+  cacheAll();
+  if(!CFG.url)return;
+  if(!o){push({action:"delrate",ids:["B:"+oid]});return;}
+  const {mid,nominal,...sisa}=o;
+  push({action:"setrate",rows:[{id:"B:"+oid,tutor:mid||"",cls:String(o.produk||"").slice(0,80),
+    rate:+nominal||0,lang:"v1~"+JSON.stringify(Object.assign({},sisa,{produk:o.produk||""}))}]});
+}
+function beliMurid(id){
+  return Object.entries(U.beli||{}).filter(([,o])=>o.mid===id)
+    .map(([oid,o])=>Object.assign({oid},o))
+    .sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl)));
+}
+function beliRingkas(id){
+  const L=beliMurid(id);
+  return {n:L.length, total:L.reduce((s,o)=>s+(+o.nominal||0),0),
+          pertama:L.length?L[0].tgl:"", terakhir:L.length?L[L.length-1].tgl:""};
+}
+function simpanBeli(oid,o){
+  U.beli=U.beli||{};
+  o.by=meName();o.at=new Date().toISOString();
+  U.beli[oid]=o;pushBELI(oid,o);
+  const m=U.murid[o.mid];
+  if(m&&o.tgl&&(!m.beli1||o.tgl<m.beli1)){m.beli1=o.tgl;simpanMurid(o.mid,m);}
+  cacheAll();
+}
+function hapusBeli(oid){
+  if(!guard())return;
+  const o=(U.beli||{})[oid];if(!o)return;
+  if(!confirm("Hapus catatan pembelian "+oid+" ("+(o.produk||"-")+")?"))return;
+  delete U.beli[oid];pushBELI(oid,null);cacheAll();
+  renderMurid();if(detailCtx)renderDetail();
+  toast("Catatan pembelian dihapus");
+}
+/* ================= TAB DATA MURID ================= */
+let mLang=new Set(), mStat=new Set();
+const MSTATUS={aktif:{l:"Aktif",c:"aktif"},kelar:{l:"Paket selesai",c:"kelar"},
+               cuti:{l:"Cuti",c:"cuti"},vakum:{l:"Vakum >30 hari",c:"vakum"},
+               belumbeli:{l:"Belum ada pembelian",c:"vakum"}};
+function toggleMLang(l){const v=du(l);mLang.has(v)?mLang.delete(v):mLang.add(v);renderMurid();}
+function toggleMStat(k){mStat.has(k)?mStat.delete(k):mStat.add(k);renderMurid();}
+function resetMFilter(){mLang.clear();mStat.clear();renderMurid();}
+
+/* rangkuman satu murid dari SEMUA sumber data yang ada */
+function rekapMurid(id){
+  const m=U.murid[id]||{}, now=new Date(), hariIni=todayStr();
+  const al=new Set(m.al||[]);
+  const cs=classes.filter(c=>c.cls&&al.has(nkey(c.cls)));
+  const done=cs.filter(c=>statusOf(c,now)==="Selesai");
+  const post=cs.filter(c=>c.ov==="Postponed");
+  const akan=cs.filter(c=>c.date>=hariIni&&statusOf(c,now)!=="Selesai"&&c.ov!=="Postponed");
+  const jam=done.reduce((a,c)=>a+durasi(c.start,c.end),0);
+  const fee=done.reduce((a,c)=>a+feeOf(c,now),0);
+  const tgl=done.map(c=>c.date).sort();
+  const tut={},bhs=new Set();
+  cs.forEach(c=>{if(c.tutor)tut[c.tutor]=(tut[c.tutor]||0)+1;if(c.lang)bhs.add(c.lang);});
+  const tutorUtama=Object.entries(tut).sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
+  const kTU=kunciAlias(U.topup,m.al)||m.nm||"";
+  const kMS=kunciAlias(U.mstat,m.al)||m.nm||"";
+  const tu=tuList(kTU), b=beliRingkas(id);
+  const ms=mstatNow(kMS);
+  const akhir=tgl.length?tgl[tgl.length-1]:"";
+  const selisih=akhir?Math.round((new Date(hariIni)-new Date(akhir))/86400000):null;
+  let status="aktif";
+  if(ms&&ms.st==="selesai")status="kelar";
+  else if(ms&&ms.st==="cuti")status="cuti";
+  else if(!cs.length)status="belumbeli";
+  else if(selisih!=null&&selisih>30&&!akan.length)status="vakum";
+  return {id,nm:m.nm||id,m,cs,done,post,akan,jam:Math.round(jam*100)/100,fee,
+    bahasa:[...bhs],tutor:tutorUtama,sesi:done.length,
+    mulai:tgl[0]||m.daftar||"",akhir,selisih,
+    topup:tu.length,topupJam:tu.reduce((a,t)=>a+(+t.jam||0),0),
+    beli:b.n,belanja:b.total,beli1:m.beli1||b.pertama||"",beliAkhir:b.terakhir||"",
+    status,statusL:MSTATUS[status].l};
+}
+function semuaRekap(){
+  return Object.keys(U.murid||{}).map(rekapMurid);
+}
+function renderMurid(){
+  const box=document.getElementById("mList"); if(!box)return;
+  const belum=muridBelumPunyaId();
+  const w=document.getElementById("mWarn");
+  w.innerHTML=belum.length
+    ? `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+        <b>${belum.length} murid di log kelas belum punya ID.</b>
+        <span style="font-weight:600">Selama belum, riwayat mereka tidak bisa dilacak.</span>
+        <button class="btn small editonly" onclick="bikinIdMurid()">🆔 Buatkan ID sekarang</button></div>`
+    : (Object.keys(U.murid||{}).length?"":`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+        <b>Registry masih kosong.</b> <button class="btn small editonly" onclick="bikinIdMurid()">🆔 Buat ID murid dari log kelas</button></div>`);
+
+  let R=semuaRekap();
+  // chip bahasa
+  const bhsSet=new Set();R.forEach(r=>r.bahasa.forEach(b=>bhsSet.add(b)));
+  const bhs=[...bhsSet].sort((a,b)=>a.localeCompare(b,"id"));
+  [...mLang].forEach(l=>{if(!bhs.includes(l))mLang.delete(l);});
+  document.getElementById("mLangBar").innerHTML=`<span class="lb-lbl">Bahasa:</span>`+
+    `<span class="lchip${mLang.size?"":" on"}" onclick="mLang.clear();renderMurid()"><span class="bx">${mLang.size?"":"\u2713"}</span>🌐 Semua</span>`+
+    bhs.map(l=>`<span class="lchip${mLang.has(l)?" on":""}" onclick="toggleMLang('${eu(l)}')">`+
+      `<span class="bx">${mLang.has(l)?"\u2713":""}</span>${l} <span class="n">${R.filter(r=>r.bahasa.includes(l)).length}</span></span>`).join("");
+  document.getElementById("mStatBar").innerHTML=`<span class="lb-lbl">Status:</span>`+
+    `<span class="lchip${mStat.size?"":" on"}" onclick="mStat.clear();renderMurid()"><span class="bx">${mStat.size?"":"\u2713"}</span>Semua</span>`+
+    Object.entries(MSTATUS).map(([k,v])=>`<span class="lchip${mStat.has(k)?" on":""}" onclick="toggleMStat('${k}')">`+
+      `<span class="bx">${mStat.has(k)?"\u2713":""}</span>${v.l} <span class="n">${R.filter(r=>r.status===k).length}</span></span>`).join("");
+
+  // KPI atas dihitung dari SELURUH murid, bukan hasil saringan
+  const tot=R.length, aktif=R.filter(r=>r.status==="aktif").length;
+  const belanja=R.reduce((a,r)=>a+r.belanja,0);
+  const punyaBeli=R.filter(r=>r.beli>0).length;
+  const per=periodRange(periodKeyOf(todayStr()));
+  const baru=R.filter(r=>r.mulai&&r.mulai>=per[0]&&r.mulai<=per[1]).length;
+  document.getElementById("mKpis").innerHTML=`
+    <div class="kpi hi"><div class="v">${tot}</div><div class="l">Total Murid</div></div>
+    <div class="kpi"><div class="v" style="color:#1B6B47">${aktif}</div><div class="l">Aktif</div></div>
+    <div class="kpi"><div class="v">${baru}</div><div class="l">Baru Periode Ini</div></div>
+    <div class="kpi"><div class="v">${R.reduce((a,r)=>a+r.topup,0)}</div><div class="l">Total Top Up</div></div>
+    <div class="kpi"><div class="v" style="font-size:13px">${rp(belanja)}</div><div class="l">Total Belanja</div></div>
+    <div class="kpi"><div class="v" style="color:${punyaBeli<tot?"#A9761B":"#1B6B47"}">${punyaBeli}/${tot}</div><div class="l">Ada Data Beli</div></div>`;
+
+  // saring
+  const q=(document.getElementById("mCari").value||"").toLowerCase().trim();
+  if(mLang.size)R=R.filter(r=>r.bahasa.some(b=>mLang.has(b)));
+  if(mStat.size)R=R.filter(r=>mStat.has(r.status));
+  if(q)R=R.filter(r=>(r.nm+" "+r.id+" "+(r.m.email||"")+" "+(r.m.wa||"")+" "+r.tutor.join(" ")+" "+(r.m.al||[]).join(" ")).toLowerCase().includes(q));
+
+  const sort=document.getElementById("mSort").value;
+  const cmp={
+    nama:(a,b)=>a.nm.localeCompare(b.nm,"id"),
+    id:(a,b)=>a.id.localeCompare(b.id),
+    sesi:(a,b)=>b.sesi-a.sesi, jam:(a,b)=>b.jam-a.jam,
+    belanja:(a,b)=>b.belanja-a.belanja, topup:(a,b)=>b.topup-a.topup,
+    beli1:(a,b)=>String(a.beli1||"9999").localeCompare(String(b.beli1||"9999")),
+    aktif:(a,b)=>String(b.akhir||"").localeCompare(String(a.akhir||"")),
+  }[sort]||((a,b)=>a.nm.localeCompare(b.nm,"id"));
+  R.sort(cmp);
+
+  const chip=document.getElementById("mChip");
+  const saring=[...mLang,...[...mStat].map(k=>MSTATUS[k].l)];
+  chip.innerHTML=(saring.length||q)
+    ? `<div class="filterchip">${R.length} murid ${saring.length?"· "+saring.join(" + "):""}${q?' · cari "'+q+'"':""}
+        <button class="btn ghost small" onclick="resetMFilter()">✕ Hapus saringan</button></div>` : "";
+
+  if(!R.length){box.innerHTML=`<div class="empty">${Object.keys(U.murid||{}).length?"Tidak ada murid yang cocok dengan saringan ini.":"Belum ada murid terdaftar."}</div>`;return;}
+  box.innerHTML=`<div class="scroll" style="max-height:none">
+    <div class="mrow head"><span>ID</span><span>Nama</span><span class="kol3">Bahasa · Tutor</span>
+      <span class="r">Sesi · Jam</span><span class="r kol4">Top Up</span><span class="r">Belanja</span><span>Status</span></div>`+
+    R.map(r=>`<div class="mrow">
+      <span class="mid">${r.id}</span>
+      <span><span class="nm" onclick="openStudent(du('${eu(r.nm)}'))">${r.nm}</span>
+        ${r.akhir?`<div class="sub">terakhir ${fmtD_(r.akhir)}${r.selisih>30?" · "+r.selisih+" hari lalu":""}</div>`:`<div class="sub">belum ada kelas</div>`}</span>
+      <span class="kol3 sub">${r.bahasa.join(", ")||"—"}${r.tutor.length?"<br>"+r.tutor.slice(0,2).map(t=>
+        `<span class="link" onclick="event.stopPropagation();openTutor(du('${eu(t)}'))">${t}</span>`).join(", "):""}</span>
+      <span class="r">${r.sesi} · ${r.jam}j</span>
+      <span class="r kol4">${r.topup?r.topup+"×":"—"}</span>
+      <span class="r">${r.belanja?rp(r.belanja):"—"}${r.beli?`<div class="sub">${r.beli}× beli</div>`:""}</span>
+      <span><span class="mtag ${MSTATUS[r.status].c}">${r.statusL}</span></span>
+    </div>`).join("")+`</div>`;
+}
+function exportMurid(){
+  const R=semuaRekap();
+  const rows=[["ID","Nama","Alias","Bahasa","Tutor","Status","Sesi Selesai","Jam","Postponed",
+    "Akan Datang","Kelas Pertama","Kelas Terakhir","Hari Sejak Kelas Terakhir",
+    "Top Up","Jam Top Up","Jumlah Pembelian","Total Belanja","Beli Pertama","Beli Terakhir",
+    "Email","WA","Catatan"]];
+  R.sort((a,b)=>a.id.localeCompare(b.id)).forEach(r=>rows.push([r.id,r.nm,(r.m.al||[]).join(" | "),
+    r.bahasa.join(", "),r.tutor.join(", "),r.statusL,r.sesi,r.jam,r.post.length,r.akan.length,
+    r.mulai,r.akhir,r.selisih==null?"":r.selisih,r.topup,r.topupJam,r.beli,r.belanja,
+    r.beli1,r.beliAkhir,r.m.email||"",r.m.wa||"",r.m.catatan||""]));
+  unduhCSV(rows,"data_murid_"+todayStr()+".csv");
+  toast(R.length+" murid diekspor");
+}
+/* ---------- blok profil + riwayat pembelian di halaman detail murid ---------- */
+function blokMurid(nama){
+  const id=midOf(nama);
+  if(!id)return `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+      <b>Murid ini belum punya ID.</b>
+      <button class="btn small editonly" onclick="bikinIdMurid()">🆔 Buatkan ID</button></div>`;
+  const r=rekapMurid(id), m=r.m, L=beliMurid(id);
+  const jarak=(()=>{
+    if(L.length<2)return null;
+    let t=0;for(let i=1;i<L.length;i++)t+=(new Date(L[i].tgl)-new Date(L[i-1].tgl))/86400000;
+    return Math.round(t/(L.length-1));
+  })();
+  return `<div class="jdet" style="margin:10px 0">
+    <div class="jdet-h">
+      <span class="mid" style="font-family:ui-monospace,monospace;font-weight:800;color:var(--iris-dark)">${id}</span>
+      <span class="mtag ${MSTATUS[r.status].c}">${r.statusL}</span>
+      ${m.email?`<span class="chip">${m.email}</span>`:""}
+      ${m.wa?`<span class="chip">${waTampil(m.wa)}</span>`:""}
+      <span style="flex:1"></span>
+      <button class="btn ghost small editonly" onclick="editKontakMurid('${id}')">✏️ Kontak</button>
+      <button class="btn ghost small editonly" onclick="mintaGabung('${id}')">🔗 Gabungkan</button>
+      <button class="btn ghost small" onclick="lihatDiTabMurid(du('${eu(r.nm)}'))">🎓 Buka di Data Murid</button>
+    </div>
+    ${r.tutor.length?`<div class="hint" style="margin:0 0 6px">Tutor: ${r.tutor.map(t=>
+        `<span class="link" onclick="closeDetail();openTutor(du('${eu(t)}'))">${t}</span>`).join(" · ")}</div>`:""}
+    ${(m.al||[]).length>1?`<div class="hint" style="margin:0 0 7px">Nama lain yang dikenali: ${(m.al||[]).join(" · ")}</div>`:""}
+    ${m.catatan?`<div class="note" style="margin:0 0 7px">${m.catatan}</div>`:""}
+    <div class="mini-kpis" style="margin:0 0 8px">
+      <div class="kpi"><div class="v">${r.beli}</div><div class="l">Pembelian</div></div>
+      <div class="kpi"><div class="v" style="font-size:13px">${r.belanja?rp(r.belanja):"—"}</div><div class="l">Total Belanja</div></div>
+      <div class="kpi"><div class="v" style="font-size:12px">${r.beli1?fmtD_(r.beli1):"—"}</div><div class="l">Beli Pertama</div></div>
+      <div class="kpi"><div class="v">${r.topup}${r.topupJam?`<span style="font-size:11px"> · ${r.topupJam}j</span>`:""}</div><div class="l">Top Up</div></div>
+      <div class="kpi"><div class="v">${jarak==null?"—":jarak+" hr"}</div><div class="l">Jarak Antar Beli</div></div>
+      <div class="kpi"><div class="v">${r.selisih==null?"—":r.selisih+" hr"}</div><div class="l">Sejak Kelas Terakhir</div></div>
+    </div>
+    <div class="row-actions" style="margin:0 0 4px">
+      <b style="font-size:12px">Riwayat Pembelian</b>
+      <button class="btn ghost small editonly" onclick="tambahBeli('${id}')">+ Catat pembelian</button>
+    </div>
+    ${L.length?L.slice().reverse().map(o=>`<div class="belirow">
+        <span class="tg">${fmtD_(o.tgl)}</span>
+        <span class="pr">${o.produk||"—"}
+          ${o.tipe?`<span class="mtag ${o.tipe==="pertama"?"aktif":"kelar"}">${o.tipe}</span>`:""}
+          ${o.jam?`<span class="chip">${o.jam} jam</span>`:""}
+          <span class="sub" style="color:var(--ink-soft);font-size:10.5px">${o.sumber||""}${o.metode?" · "+o.metode:""} · ${o.oid}</span></span>
+        <span class="rp">${rp(+o.nominal||0)}</span>
+        <button class="btn ghost small editonly" onclick="hapusBeli(du('${eu(o.oid)}'))" title="Hapus">✕</button>
+      </div>`).join("")
+      :`<div class="empty" style="padding:10px">Belum ada data pembelian.
+        ${canEdit()?"Catat manual, atau impor dari WooCommerce lewat tab Data Murid.":""}</div>`}
+  </div>`;
+}
+function editKontakMurid(id){
+  if(!guard())return;
+  const m=U.murid[id];if(!m)return;
+  const nm=prompt("Nama murid (dipakai di seluruh app)",m.nm);if(nm===null)return;
+  const em=prompt("Email",m.email||"");if(em===null)return;
+  const wa=prompt("Nomor WhatsApp (0815... / +62815...)",m.wa?waTampil(m.wa):"");if(wa===null)return;
+  const ct=prompt("Catatan",m.catatan||"");if(ct===null)return;
+  const nmBaru=String(nm).trim();
+  if(nmBaru&&nmBaru!==m.nm){m.al=[...new Set([...(m.al||[]),nkey(nmBaru),nkey(m.nm)])];m.nm=nmBaru;}
+  m.email=String(em).trim();m.wa=waNorm(wa);m.catatan=String(ct).trim();
+  simpanMurid(id,m);cacheAll();lupakanIndex();
+  renderMurid();if(detailCtx)renderDetail();
+  toast("Data "+m.nm+" tersimpan");
+}
+function mintaGabung(id){
+  if(!guard())return;
+  const lain=Object.entries(U.murid||{}).filter(([k])=>k!==id)
+    .map(([k,v])=>k+" — "+v.nm);
+  const v=prompt("Gabungkan murid LAIN ke dalam "+namaMid(id)+" ("+id+").\n\n"+
+    "Ketik ID murid yang mau dilebur (mis. M-0123).\nSemua alias & pembeliannya pindah ke sini, ID itu dihapus.\n\n"+
+    "Contoh yang ada:\n"+lain.slice(0,8).join("\n"));
+  if(!v)return;
+  const dari=String(v).trim().toUpperCase();
+  if(!U.murid[dari])return toast("ID "+dari+" tidak ditemukan");
+  gabungMurid(id,dari);
+  if(detailCtx)renderDetail();
+}
+function tambahBeli(id){
+  if(!guard())return;
+  const tgl=prompt("Tanggal pembelian (YYYY-MM-DD)",todayStr());if(tgl===null)return;
+  const t=jParseTgl(tgl)||normDate(tgl);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(t))return toast("Tanggalnya belum benar");
+  const produk=prompt("Produk / paket yang dibeli","");if(produk===null)return;
+  const nominal=prompt("Nominal (angka saja, tanpa titik)","");if(nominal===null)return;
+  const jam=prompt("Jumlah jam paket (kosongkan kalau tidak tahu)","");if(jam===null)return;
+  const metode=prompt("Metode bayar (Transfer Bank / Duitku / Tunai / ...)","Transfer Bank");if(metode===null)return;
+  const n=+String(nominal).replace(/\D/g,"");
+  const sudah=beliMurid(id);
+  const tipe=(!sudah.length||t<(sudah[0].tgl||"9999"))?"pertama":"ulang";
+  const oid="MAN-"+id+"-"+t.replace(/-/g,"")+"-"+Math.random().toString(36).slice(2,6);
+  simpanBeli(oid,{mid:id,tgl:t,produk:String(produk).trim(),nominal:n,
+    jam:+String(jam).replace(/[^\d.]/g,"")||0,metode:String(metode).trim(),
+    sumber:"manual",tipe});
+  // kalau ini jadi yang paling awal, yang lain disesuaikan
+  segarkanTipeBeli(id);
+  renderMurid();if(detailCtx)renderDetail();
+  toast("Pembelian tercatat");
+}
+function segarkanTipeBeli(id){
+  const L=beliMurid(id);
+  L.forEach((o,i)=>{
+    const t=i===0?"pertama":"ulang";
+    if(o.tipe!==t){const x=U.beli[o.oid];x.tipe=t;pushBELI(o.oid,x);}
+  });
+  const m=U.murid[id];
+  if(m&&L.length&&m.beli1!==L[0].tgl){m.beli1=L[0].tgl;simpanMurid(id,m);}
+  cacheAll();
+}
+/* ---------- impor CSV WooCommerce ---------- */
+function bukaImporBeli(){
+  if(!guard())return;
+  const ov=document.getElementById("imporOv");
+  ov.classList.add("on");
+  document.getElementById("imporHasil").innerHTML="";
+  document.getElementById("imporTeks").value="";
+}
+function tutupImpor(){document.getElementById("imporOv").classList.remove("on");}
+function bacaCSV(teks){
+  const rows=[];let f="",r=[],q=false;
+  for(let i=0;i<teks.length;i++){
+    const c=teks[i];
+    if(q){ if(c==='"'){ if(teks[i+1]==='"'){f+='"';i++;} else q=false; } else f+=c; }
+    else if(c==='"')q=true;
+    else if(c===","){r.push(f);f="";}
+    else if(c==="\n"){r.push(f);f="";rows.push(r);r=[];}
+    else if(c!=="\r")f+=c;
+  }
+  if(f||r.length){r.push(f);rows.push(r);}
+  return rows.filter(x=>x.some(y=>String(y).trim()!==""));
+}
+function kolIdx(head,kandidat){
+  const h=head.map(x=>String(x).toLowerCase().replace(/^\ufeff/,"").trim());
+  for(const k of kandidat){const i=h.indexOf(k);if(i>=0)return i;}
+  for(const k of kandidat){const i=h.findIndex(x=>x.includes(k));if(i>=0)return i;}
+  return -1;
+}
+function prosesImpor(simpan){
+  const teks=document.getElementById("imporTeks").value.trim();
+  if(!teks)return toast("Tempel dulu isi CSV-nya");
+  const rows=bacaCSV(teks);
+  if(rows.length<2)return toast("Isinya kurang dari 2 baris");
+  const H=rows[0];
+  const iOid=kolIdx(H,["order number","order id","order_id","id"]);
+  const iTgl=kolIdx(H,["order date","tanggal","date"]);
+  const iDep=kolIdx(H,["first name (billing)","first name","nama depan"]);
+  const iBel=kolIdx(H,["last name (billing)","last name","nama belakang"]);
+  const iNm =kolIdx(H,["customer","nama pembeli","nama","billing name"]);
+  const iEm =kolIdx(H,["email (billing)","email"]);
+  const iHp =kolIdx(H,["phone (billing)","phone","telepon","hp"]);
+  const iPr =kolIdx(H,["item name","produk","product","nama produk"]);
+  const iTot=kolIdx(H,["order total amount","order total","total","nominal"]);
+  const iMet=kolIdx(H,["payment method title","payment method","metode"]);
+  if(iOid<0||iTgl<0)return toast("Kolom Order Number / Order Date tidak ketemu di CSV-nya");
+  const ambil=(r,i)=>i>=0?String(r[i]||"").trim():"";
+  const seen=new Set(), hasil=[];
+  rows.slice(1).forEach(r=>{
+    const oid=ambil(r,iOid); if(!oid||seen.has(oid))return; seen.add(oid);
+    const nama=(iNm>=0?ambil(r,iNm):(ambil(r,iDep)+" "+ambil(r,iBel))).trim();
+    const tgl=(jParseTgl(ambil(r,iTgl).slice(0,10))||ambil(r,iTgl).slice(0,10));
+    const total=+ambil(r,iTot).replace(/[^\d]/g,"")||0;
+    const id=midOf(nama);
+    hasil.push({oid,tgl,nama,email:ambil(r,iEm),hp:ambil(r,iHp),produk:ambil(r,iPr),
+      nominal:total,metode:ambil(r,iMet),mid:id,
+      status:U.beli[oid]?"sudah ada":(id?"cocok":"belum ketemu murid")});
+  });
+  const cocok=hasil.filter(x=>x.status==="cocok");
+  const ada=hasil.filter(x=>x.status==="sudah ada");
+  const gagal=hasil.filter(x=>x.status==="belum ketemu murid");
+  if(simpan){
+    if(!cocok.length)return toast("Tidak ada baris baru yang cocok");
+    cocok.forEach(x=>{
+      const sudah=beliMurid(x.mid);
+      simpanBeli(x.oid,{mid:x.mid,tgl:x.tgl,produk:x.produk,nominal:x.nominal,jam:0,
+        metode:x.metode,sumber:"woocommerce",tipe:(!sudah.length||x.tgl<(sudah[0].tgl||"9999"))?"pertama":"ulang"});
+      const m=U.murid[x.mid];
+      if(m){if(!m.email&&x.email)m.email=x.email;if(!m.wa&&x.hp)m.wa=waNorm(x.hp);simpanMurid(x.mid,m);}
+    });
+    [...new Set(cocok.map(x=>x.mid))].forEach(segarkanTipeBeli);
+    cacheAll();renderMurid();if(detailCtx)renderDetail();
+    toast(cocok.length+" pembelian tersimpan");
+    return tutupImpor();
+  }
+  document.getElementById("imporHasil").innerHTML=`
+    <div class="mini-kpis" style="margin:10px 0">
+      <div class="kpi hi"><div class="v">${cocok.length}</div><div class="l">Siap Disimpan</div></div>
+      <div class="kpi"><div class="v">${ada.length}</div><div class="l">Sudah Ada (dilewati)</div></div>
+      <div class="kpi"><div class="v" style="color:${gagal.length?"#A9761B":"#1B6B47"}">${gagal.length}</div><div class="l">Belum Ketemu Murid</div></div>
+    </div>
+    ${cocok.length?`<button class="btn" onclick="prosesImpor(true)">💾 Simpan ${cocok.length} pembelian</button>`:""}
+    <div class="hint" style="margin-top:8px">Yang "belum ketemu murid" tidak disimpan — biasanya pembeli kelas reguler,
+      murid baru yang belum ada di log kelas, atau yang membeli atas nama orang lain.
+      Kalau ada yang seharusnya cocok, buka murid itu lalu tambahkan namanya sebagai alias lewat ✏️ Kontak.</div>
+    ${gagal.length?`<div class="scroll" style="max-height:220px;margin-top:8px">
+      ${gagal.slice(0,80).map(x=>`<div class="belirow"><span class="tg">${x.tgl}</span>
+        <span class="pr">${x.nama} <span style="color:var(--ink-soft);font-size:10.5px">${x.email||""} · ${x.produk||""}</span></span>
+        <span class="rp">${rp(x.nominal)}</span></div>`).join("")}
+      ${gagal.length>80?`<div class="hint">… dan ${gagal.length-80} lagi</div>`:""}</div>`:""}`;
 }
 /* ---------- kontak tutor & berbagi slip ke WhatsApp / Email ----------
    Kontak disimpan sebagai baris "K:<nama tutor>" di sheet Rates (lang = v1~wa~email~oleh~waktu). */
@@ -4194,6 +4798,26 @@ let showKelar=false;
 function toggleKelar(){showKelar=!showKelar;if(detailCtx)renderDetail();}
 let detailCtx=null, dSort={key:"date",dir:-1}, dPeriod="all", dFrom="", dTo="";
 function openTutor(name){dSort={key:"date",dir:-1};dPeriod="all";dStat="all";dStudAll=false;detailCtx={type:"tutor",name};renderDetail();}
+/* pindah tab dari kode (dipakai untuk lompat antar halaman) */
+function bukaTab(p){
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.p===p));
+  document.querySelectorAll(".panel").forEach(x=>x.classList.toggle("on",x.id==="p-"+p));
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+/* dari halaman detail murid -> tab Data Murid, tersaring ke murid itu saja */
+function lihatDiTabMurid(nm){
+  closeDetail();
+  const q=document.getElementById("mCari");
+  if(q){q.value=String(nm||"");}
+  mLang.clear();mStat.clear();
+  renderMurid();bukaTab("murid");
+}
+/* dari mana saja -> halaman detail murid berdasarkan ID */
+function openMuridId(id){
+  const m=(U.murid||{})[id];
+  if(!m)return toast("ID "+id+" tidak ditemukan");
+  openStudent(m.nm);
+}
 function openStudent(name){dSort={key:"date",dir:-1};dPeriod="all";dStat="all";detailCtx={type:"student",name};renderDetail();}
 function closeDetail(){detailCtx=null;document.getElementById("detailOv").classList.remove("on");}
 function sortDetail(key){
@@ -4329,7 +4953,8 @@ function renderDetail(){
     <div class="kpi"><div class="v" style="font-size:13px">${rp(gaji)}</div><div class="l">${type==="tutor"?"Gaji Tutor":"Fee Tutor"}</div></div>
     <div class="kpi"><div class="v">${rows.filter(c=>c.ov==="Postponed").length}</div><div class="l">Postponed</div></div>
   </div>
-  <div class="chips">${langs.map(l=>`<span class="chip">${l}</span>`).join("")}</div>`;
+  <div class="chips">${langs.map(l=>`<span class="chip">${l}</span>`).join("")}</div>
+  ${type==="student"&&!isReg({cls:name})?blokMurid(name):""}`;
 
   if(type==="tutor"){
     // murid-murid tutor ini — SEMUA murid terjadwal, aktif maupun tidak
@@ -4856,7 +5481,7 @@ function boot(){
   if(!ME)setTimeout(pickUser,300);
   undoStack=lget(UKEY,[]);
   classes=lget(CKEY,[]).map(normClass);U=lget(RKEY,{rates:{},tutors:{}});paid=lget(PKEY,{});queue=lget(QKEY,[]);
-  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};
+  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};
   // tidak ada injeksi data bawaan — kalau cache kosong, tunggu sinkron dari Sheet
   document.getElementById("cfgUrl").value=CFG.url;
   document.getElementById("cfgToken").value=CFG.token;
