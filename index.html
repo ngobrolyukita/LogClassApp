@@ -1152,7 +1152,21 @@ function inPay(c,key){const[a,b]=periodRange(key);return c.date>=a&&c.date<=b;}
 /* ---------- storage lokal (cache + antrian) ---------- */
 function lset(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 function lget(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}}
-function cacheAll(){lset(CKEY,classes);lset(RKEY,U);lset(PKEY,paid);lset(QKEY,queue);}
+/* Menyimpan cache = JSON.stringify seluruh data. Kalau dipanggil di dalam
+   perulangan 500 murid, itu 500 kali stringify — inilah yang bikin app membeku.
+   Saat operasi massal, penyimpanan ditunda sampai selesai. */
+let _tunda=0, _kotor=false;
+function cacheAll(){
+  if(typeof REKAP!=="undefined")REKAP=null;      // data berubah -> rekap dihitung ulang
+  if(_tunda){_kotor=true;return;}
+  lset(CKEY,classes);lset(RKEY,U);lset(PKEY,paid);lset(QKEY,queue);
+}
+function mulaiMassal(){_tunda++;}
+function selesaiMassal(){
+  if(--_tunda>0)return;
+  _tunda=0;
+  if(_kotor){_kotor=false;lset(CKEY,classes);lset(RKEY,U);lset(PKEY,paid);lset(QKEY,queue);}
+}
 
 /* ---------- penghitung pertemuan ---------- */
 const MKEY="ny_meet_v1";
@@ -1502,7 +1516,37 @@ async function tesKoneksi(){
   }
   alert("HASIL TES KONEKSI\n\n"+log.map((s,i)=>(i+1)+". "+s).join("\n"));
 }
-function push(op){queue.push(op);lset(QKEY,queue);flush();}
+/* Antrean dikirim berkelompok. Dulu tiap perubahan = 1 permintaan ke Apps Script
+   (±1 detik masing-masing), jadi 500 perubahan = ±10 menit. Sekarang perubahan
+   sejenis yang berurutan digabung jadi satu permintaan berisi banyak baris. */
+const BATCH_ROWS=250;
+let _flushT=null;
+function push(op){queue.push(op);lset(QKEY,queue);jadwalFlush();}
+function jadwalFlush(){clearTimeout(_flushT);_flushT=setTimeout(()=>flush(),350);}
+function ambilBatch(){
+  const a=queue[0];
+  if(a.action==="setrate"&&Array.isArray(a.rows)){
+    let rows=a.rows.slice(), n=1;
+    while(n<queue.length){
+      const b=queue[n];
+      if(b.action!=="setrate"||!Array.isArray(b.rows))break;
+      if(rows.length+b.rows.length>BATCH_ROWS)break;
+      rows=rows.concat(b.rows);n++;
+    }
+    return {op:{action:"setrate",rows},n};
+  }
+  if(a.action==="delrate"&&Array.isArray(a.ids)){
+    let ids=a.ids.slice(), n=1;
+    while(n<queue.length){
+      const b=queue[n];
+      if(b.action!=="delrate"||!Array.isArray(b.ids))break;
+      if(ids.length+b.ids.length>BATCH_ROWS)break;
+      ids=ids.concat(b.ids);n++;
+    }
+    return {op:{action:"delrate",ids},n};
+  }
+  return {op:a,n:1};
+}
 
 /* Kalau satu operasi ditolak terus (data rusak / terlalu besar), dulu antrean
    macet selamanya di operasi itu. Sekarang operasi bermasalah disingkirkan
@@ -1513,11 +1557,13 @@ async function flush(){
   flushing=true;
   try{
     while(queue.length){
-      setSync("busy","Mengirim… ("+queue.length+" tersisa)");
-      const op=queue[0];
+      const B=ambilBatch();
+      const jml=B.op.rows?B.op.rows.length:(B.op.ids?B.op.ids.length:1);
+      setSync("busy","Mengirim… ("+queue.length+" tersisa"+(jml>1?", "+jml+" baris sekaligus":"")+")");
+      const op=B.op;
       try{
-        await api(op,60000);
-        queue.shift();lset(QKEY,queue);
+        await api(op,120000);
+        queue.splice(0,B.n);lset(QKEY,queue);
       }catch(e){
         // Masalah jaringan/server = tunggu, jangan buang datanya.
         if(["offline","jaringan","timeout","http","url","token","akses"].includes(e.sebab)){
@@ -1525,8 +1571,13 @@ async function flush(){
           flushing=false;return;
         }
         // Ditolak isinya. Coba beberapa kali, lalu lewati agar tidak memblokir.
-        op._gagal=(op._gagal||0)+1;
-        if(op._gagal>=BATAS_GAGAL){
+        const asli=queue[0];
+        asli._gagal=(asli._gagal||0)+1;
+        if(B.n>1&&asli._gagal<BATAS_GAGAL){          // batch ditolak -> coba satu-satu
+          lset(QKEY,queue);setSync("err","Kiriman gabungan ditolak — dicoba satu per satu");
+          flushing=false;setTimeout(()=>flush(),600);return;
+        }
+        if(asli._gagal>=BATAS_GAGAL){
           queue.shift();lset(QKEY,queue);
           const parkir=lget("nyc-queue-gagal",[]);parkir.push({op,pesan:e.message,at:new Date().toISOString()});
           lset("nyc-queue-gagal",parkir);
@@ -1908,7 +1959,27 @@ function togglePostpone(id){
 }
 
 /* ---------- render ---------- */
-function renderAll(){renderWho();buildMeet();renderMeetBar();renderKPI();renderLog();renderPeriods();renderTutorCards();renderMurid();renderStats();renderMaster();renderFlagBtn();renderUndoBtn();}
+/* Hanya panel yang sedang dibuka yang digambar. Sebelumnya kelima panel digambar
+   ulang tiap 30 detik dan tiap kali ada perubahan, padahal empat di antaranya
+   tidak terlihat — itu pemborosan terbesar di layar. */
+function panelAktif(){
+  const e=document.querySelector(".panel.on");
+  return e?e.id.replace(/^p-/,""):"log";
+}
+function renderAll(){
+  renderWho();buildMeet();renderMeetBar();renderKPI();renderPeriods();
+  renderFlagBtn();renderUndoBtn();
+  gambarPanel(panelAktif());
+}
+function gambarPanel(p){
+  if(p==="log")renderLog();
+  else if(p==="tutor")renderTutorCards();
+  else if(p==="murid")renderMurid();
+  else if(p==="stat")renderStats();
+  else if(p==="master")renderMaster();
+}
+/* semua panel digambar sekali — dipakai saat sinkronisasi penuh selesai */
+function gambarSemua(){["log","tutor","murid","stat","master"].forEach(gambarPanel);}
 function renderFlagBtn(){
   const b=document.getElementById("btnFlag");if(!b)return;
   const n=classes.filter(c=>c.flag).length;
@@ -2812,7 +2883,7 @@ function muridIndex(){
     (m.al||[]).forEach(a=>{if(a&&!MIDX[a])MIDX[a]=id;}));
   return MIDX;
 }
-function lupakanIndex(){MIDX=null;}
+function lupakanIndex(){MIDX=null;REKAP=null;_hitNama=null;}
 function midOf(nm){const i=muridIndex();return i[nkey(nm)]||i[nkey(pecahNama(nm).utama)]||"";}
 function muridOf(nm){const id=midOf(nm);return id?Object.assign({id},U.murid[id]):null;}
 function namaMid(id){const m=(U.murid||{})[id];return m?m.nm:id;}
@@ -2833,9 +2904,15 @@ function namaMuridLog(){
 }
 /* beberapa ejaan bisa merujuk orang yang sama — pilih yang paling layak jadi nama resmi:
    paling sering dipakai, lalu yang pakai huruf kapital, lalu yang paling lengkap */
+let _hitNama=null;
+function hitungNama(){
+  if(_hitNama)return _hitNama;
+  _hitNama={};
+  classes.forEach(c=>{if(c.cls){const n=normName(c.cls);_hitNama[n]=(_hitNama[n]||0)+1;}});
+  return _hitNama;
+}
 function namaTerbaik(varian){
-  const hit={};
-  classes.forEach(c=>{if(c.cls){const n=normName(c.cls);hit[n]=(hit[n]||0)+1;}});
+  const hit=hitungNama();
   const skor=v=>{
     let n=0;
     if(/\([^)]*\)/.test(v)&&ANOT.test(v))n-=6;      // "(Semi Private)" bukan bagian nama
@@ -2876,23 +2953,29 @@ function bikinIdMurid(diam){
   if(!diam&&!confirm(baru.length+" murid belum punya ID. Buatkan sekarang?\n\n"+
     baru.slice(0,10).join("\n")+(baru.length>10?"\n… dan "+(baru.length-10)+" lagi":"")))return 0;
   U.murid=U.murid||{};
+  mulaiMassal();
   // varian ejaan yang merujuk orang sama digabung jadi satu ID
   const grup={};
   baru.forEach(nm=>{const k=nkey(pecahNama(nm).utama)||nkey(nm);(grup[k]=grup[k]||[]).push(nm);});
-  let n=0;
+  // tanggal kelas paling awal per nama — dihitung sekali untuk seluruh log
+  const awal={};
+  classes.forEach(c=>{if(!c.cls||!c.date)return;const k=nkey(c.cls);
+    if(!awal[k]||c.date<awal[k])awal[k]=c.date;});
+  let n=0, nomor=parseInt(String(idBerikut()).replace(/\D/g,""),10);
   Object.values(grup).forEach(varian=>{
     if(varian.some(midOf))return;              // sudah keburu terdaftar
     const utama=namaTerbaik(varian);
-    const id=idBerikut(), m=muridBaru(utama);
+    const id="M-"+String(nomor++).padStart(4,"0"), m=muridBaru(utama);
     varian.forEach(v=>{const p=pecahNama(v);
       m.al.push(nkey(v),nkey(p.utama));p.extra.forEach(x=>m.al.push(nkey(x)));});
     m.al=[...new Set(m.al.filter(Boolean))];
-    const cs=classes.filter(c=>m.al.includes(nkey(c.cls||""))).map(c=>c.date).sort();
-    m.daftar=cs[0]||"";
-    U.murid[id]=m;pushMURID(id,m);lupakanIndex();n++;
+    let d="";m.al.forEach(a=>{if(awal[a]&&(!d||awal[a]<d))d=awal[a];});
+    m.daftar=d;
+    U.murid[id]=m;pushMURID(id,m);n++;
+    if(MIDX)m.al.forEach(a=>{if(a&&!MIDX[a])MIDX[a]=id;});   // indeks diperbarui, bukan dibuang
   });
-  cacheAll();lupakanIndex();
-  if(!diam)toast(n+" ID murid dibuat");
+  selesaiMassal();cacheAll();lupakanIndex();
+  if(!diam)toast(n+" ID murid dibuat · dikirim ke Sheet sekaligus, tidak satu per satu");
   renderMurid();
   return n;
 }
@@ -2951,16 +3034,77 @@ function hapusBeli(oid){
   toast("Catatan pembelian dihapus");
 }
 /* ================= TAB DATA MURID ================= */
-let mLang=new Set(), mStat=new Set();
+let mLang=new Set(), mStat=new Set(), mBatas=100;
+function tambahBatas(){mBatas+=200;renderMurid();}
 const MSTATUS={aktif:{l:"Aktif",c:"aktif"},kelar:{l:"Paket selesai",c:"kelar"},
                cuti:{l:"Cuti",c:"cuti"},vakum:{l:"Vakum >30 hari",c:"vakum"},
                belumbeli:{l:"Belum ada pembelian",c:"vakum"}};
-function toggleMLang(l){const v=du(l);mLang.has(v)?mLang.delete(v):mLang.add(v);renderMurid();}
-function toggleMStat(k){mStat.has(k)?mStat.delete(k):mStat.add(k);renderMurid();}
-function resetMFilter(){mLang.clear();mStat.clear();renderMurid();}
+function toggleMLang(l){const v=du(l);mLang.has(v)?mLang.delete(v):mLang.add(v);mBatas=100;renderMurid();}
+function toggleMStat(k){mStat.has(k)?mStat.delete(k):mStat.add(k);mBatas=100;renderMurid();}
+function resetMFilter(){mLang.clear();mStat.clear();mBatas=100;
+  const q=document.getElementById("mCari");if(q)q.value="";renderMurid();}
 
-/* rangkuman satu murid dari SEMUA sumber data yang ada */
+/* Semua murid direkap dalam SATU kali jalan atas log kelas.
+   Sebelumnya tiap murid menyaring seluruh log sendiri-sendiri: 558 murid x 4.000 baris
+   = 2,2 juta pemeriksaan tiap kali layar digambar ulang. Sekarang satu lintasan saja. */
+let REKAP=null;
+function lupakanRekap(){REKAP=null;}
+function bangunRekap(){
+  if(REKAP)return REKAP;
+  const idx=muridIndex(), now=new Date(), hariIni=todayStr();
+  const box={};
+  Object.keys(U.murid||{}).forEach(id=>box[id]={cs:[],done:[],post:[],akan:[],jam:0,fee:0,
+    tgl:[],tut:{},bhs:new Set()});
+  const cacheKey={};
+  classes.forEach(c=>{
+    if(!c.cls)return;
+    const k=c.cls;
+    let id=cacheKey[k];
+    if(id===undefined){id=idx[nkey(k)]||"";cacheKey[k]=id;}
+    if(!id||!box[id])return;
+    const o=box[id];
+    o.cs.push(c);
+    if(c.tutor)o.tut[c.tutor]=(o.tut[c.tutor]||0)+1;
+    if(c.lang)o.bhs.add(c.lang);
+    if(c.ov==="Postponed"){o.post.push(c);return;}
+    if(statusOf(c,now)==="Selesai"){
+      o.done.push(c);o.jam+=durasi(c.start,c.end);o.fee+=feeOf(c,now);o.tgl.push(c.date);
+    }else if(c.date>=hariIni)o.akan.push(c);
+  });
+  const beli={};
+  Object.entries(U.beli||{}).forEach(([oid,o])=>{
+    if(!o.mid)return;(beli[o.mid]=beli[o.mid]||[]).push(Object.assign({oid},o));});
+  Object.values(beli).forEach(L=>L.sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl))));
+  const tu={},ms={};
+  Object.keys(U.topup||{}).forEach(nm=>{const id=idx[nkey(nm)];if(id)tu[id]=tuList(nm);});
+  Object.keys(U.mstat||{}).forEach(nm=>{const id=idx[nkey(nm)];if(id)ms[id]=mstatNow(nm);});
+  REKAP={};
+  Object.keys(box).forEach(id=>{
+    const m=U.murid[id]||{}, o=box[id];
+    o.tgl.sort();
+    const akhir=o.tgl.length?o.tgl[o.tgl.length-1]:"";
+    const selisih=akhir?Math.round((new Date(hariIni)-new Date(akhir))/86400000):null;
+    const L=beli[id]||[], st=ms[id], tul=tu[id]||[];
+    let status="aktif";
+    if(st&&st.st==="selesai")status="kelar";
+    else if(st&&st.st==="cuti")status="cuti";
+    else if(!o.cs.length)status="belumbeli";
+    else if(selisih!=null&&selisih>30&&!o.akan.length)status="vakum";
+    REKAP[id]={id,nm:m.nm||id,m,cs:o.cs,done:o.done,post:o.post,akan:o.akan,
+      jam:Math.round(o.jam*100)/100,fee:o.fee,
+      bahasa:[...o.bhs],tutor:Object.entries(o.tut).sort((a,b)=>b[1]-a[1]).map(x=>x[0]),
+      sesi:o.done.length,mulai:o.tgl[0]||m.daftar||"",akhir,selisih,
+      topup:tul.length,topupJam:tul.reduce((a,t)=>a+(+t.jam||0),0),
+      beliList:L,beli:L.length,belanja:L.reduce((a,x)=>a+(+x.nominal||0),0),
+      beli1:m.beli1||(L.length?L[0].tgl:""),beliAkhir:L.length?L[L.length-1].tgl:"",
+      status,statusL:MSTATUS[status].l};
+  });
+  return REKAP;
+}
 function rekapMurid(id){
+  return bangunRekap()[id]||rekapMuridLambat(id);
+}
+function rekapMuridLambat(id){
   const m=U.murid[id]||{}, now=new Date(), hariIni=todayStr();
   const al=new Set(m.al||[]);
   const cs=classes.filter(c=>c.cls&&al.has(nkey(c.cls)));
@@ -2988,12 +3132,11 @@ function rekapMurid(id){
     bahasa:[...bhs],tutor:tutorUtama,sesi:done.length,
     mulai:tgl[0]||m.daftar||"",akhir,selisih,
     topup:tu.length,topupJam:tu.reduce((a,t)=>a+(+t.jam||0),0),
-    beli:b.n,belanja:b.total,beli1:m.beli1||b.pertama||"",beliAkhir:b.terakhir||"",
+    beliList:beliMurid(id),beli:b.n,belanja:b.total,
+    beli1:m.beli1||b.pertama||"",beliAkhir:b.terakhir||"",
     status,statusL:MSTATUS[status].l};
 }
-function semuaRekap(){
-  return Object.keys(U.murid||{}).map(rekapMurid);
-}
+function semuaRekap(){return Object.values(bangunRekap());}
 function renderMurid(){
   const box=document.getElementById("mList"); if(!box)return;
   const belum=muridBelumPunyaId();
@@ -3058,6 +3201,8 @@ function renderMurid(){
         <button class="btn ghost small" onclick="resetMFilter()">✕ Hapus saringan</button></div>` : "";
 
   if(!R.length){box.innerHTML=`<div class="empty">${Object.keys(U.murid||{}).length?"Tidak ada murid yang cocok dengan saringan ini.":"Belum ada murid terdaftar."}</div>`;return;}
+  const total=R.length, potong=R.length>mBatas;
+  if(potong)R=R.slice(0,mBatas);
   box.innerHTML=`<div class="scroll" style="max-height:none">
     <div class="mrow head"><span>ID</span><span>Nama</span><span class="kol3">Bahasa · Tutor</span>
       <span class="r">Sesi · Jam</span><span class="r kol4">Top Up</span><span class="r">Belanja</span><span>Status</span></div>`+
@@ -3071,7 +3216,11 @@ function renderMurid(){
       <span class="r kol4">${r.topup?r.topup+"×":"—"}</span>
       <span class="r">${r.belanja?rp(r.belanja):"—"}${r.beli?`<div class="sub">${r.beli}× beli</div>`:""}</span>
       <span><span class="mtag ${MSTATUS[r.status].c}">${r.statusL}</span></span>
-    </div>`).join("")+`</div>`;
+    </div>`).join("")+`</div>`+
+    (potong?`<div class="row-actions" style="justify-content:center;margin-top:9px">
+      <span class="hint">Menampilkan ${R.length} dari ${total} murid — dibatasi supaya tetap ringan.</span>
+      <button class="btn ghost small" onclick="tambahBatas()">Tampilkan 200 lagi</button>
+      <button class="btn ghost small" onclick="mBatas=99999;renderMurid()">Tampilkan semua</button></div>`:"");
 }
 function exportMurid(){
   const R=semuaRekap();
@@ -3092,7 +3241,7 @@ function blokMurid(nama){
   if(!id)return `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
       <b>Murid ini belum punya ID.</b>
       <button class="btn small editonly" onclick="bikinIdMurid()">🆔 Buatkan ID</button></div>`;
-  const r=rekapMurid(id), m=r.m, L=beliMurid(id);
+  const r=rekapMurid(id), m=r.m, L=r.beliList||beliMurid(id);
   const jarak=(()=>{
     if(L.length<2)return null;
     let t=0;for(let i=1;i<L.length;i++)t+=(new Date(L[i].tgl)-new Date(L[i-1].tgl))/86400000;
@@ -3258,6 +3407,7 @@ function prosesImpor(simpan){
   const gagal=hasil.filter(x=>x.status==="belum ketemu murid");
   if(simpan){
     if(!cocok.length)return toast("Tidak ada baris baru yang cocok");
+    mulaiMassal();
     cocok.forEach(x=>{
       const sudah=beliMurid(x.mid);
       simpanBeli(x.oid,{mid:x.mid,tgl:x.tgl,produk:x.produk,nominal:x.nominal,jam:0,
@@ -3266,7 +3416,7 @@ function prosesImpor(simpan){
       if(m){if(!m.email&&x.email)m.email=x.email;if(!m.wa&&x.hp)m.wa=waNorm(x.hp);simpanMurid(x.mid,m);}
     });
     [...new Set(cocok.map(x=>x.mid))].forEach(segarkanTipeBeli);
-    cacheAll();renderMurid();if(detailCtx)renderDetail();
+    selesaiMassal();cacheAll();lupakanIndex();renderMurid();if(detailCtx)renderDetail();
     toast(cocok.length+" pembelian tersimpan");
     return tutupImpor();
   }
@@ -4332,11 +4482,12 @@ function simpanJBulk(){
   if(!confirm(ok.length+" hari akan disimpan / ditimpa"+(gagal.length?"\n"+gagal.length+" baris dilewati karena tidak terbaca":"")+
     "\n\n"+ok.slice(0,5).map(x=>x[0]+" → "+x[1]).join("\n")+(ok.length>5?"\n…":"")))return;
   U.jual=U.jual||{};
+  mulaiMassal();
   ok.forEach(([tgl,n])=>{
     U.jual[tgl]={n,by:meName(),at:new Date().toISOString()};
     pushJUAL(tgl,U.jual[tgl]);
   });
-  cacheAll();renderJual();
+  selesaiMassal();cacheAll();renderJual();
   document.getElementById("jBulk").value="";
   toast(ok.length+" hari tersimpan"+(gagal.length?" · "+gagal.length+" baris dilewati":""));
 }
@@ -4802,6 +4953,7 @@ function openTutor(name){dSort={key:"date",dir:-1};dPeriod="all";dStat="all";dSt
 function bukaTab(p){
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.p===p));
   document.querySelectorAll(".panel").forEach(x=>x.classList.toggle("on",x.id==="p-"+p));
+  gambarPanel(p);
   window.scrollTo({top:0,behavior:"smooth"});
 }
 /* dari halaman detail murid -> tab Data Murid, tersaring ke murid itu saja */
@@ -5458,7 +5610,8 @@ function init(){
   document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
     document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));
     document.querySelectorAll(".panel").forEach(x=>x.classList.remove("on"));
-    b.classList.add("on");document.getElementById("p-"+b.dataset.p).classList.add("on");});
+    b.classList.add("on");document.getElementById("p-"+b.dataset.p).classList.add("on");
+    gambarPanel(b.dataset.p);});
   document.getElementById("iTutor").addEventListener("change",()=>{
     const t=document.getElementById("iTutor").value;
     const mine=tutorClasses(t),rest=allStudentNames().filter(x=>!mine.includes(x));
