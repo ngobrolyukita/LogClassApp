@@ -184,11 +184,16 @@
   .link:active{opacity:.6}
   .sheetov{position:fixed;inset:0;background:rgba(19,42,46,.5);display:none;z-index:60}
   .sheetov.on{display:flex;align-items:flex-end;justify-content:center}
-  .sheet{background:var(--paper);width:100%;max-width:760px;max-height:88vh;border-radius:18px 18px 0 0;overflow-y:auto;padding:0}
-  .sheet-head{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);padding:13px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;border-radius:18px 18px 0 0;z-index:2}
+  .sheet{background:var(--paper);width:100%;max-width:760px;border-radius:18px 18px 0 0;padding:0;
+        max-height:88vh;max-height:88dvh;display:flex;flex-direction:column;overflow:hidden}
+  .sheet-head{flex:0 0 auto;background:var(--card);border-bottom:1px solid var(--line);padding:13px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;border-radius:18px 18px 0 0;z-index:2}
   .sheet-head .ttl{font-weight:800;font-size:15.5px}
   .sheet-head .sub{font-size:11.5px;color:var(--ink-soft);font-weight:600}
-  .sheet-body{padding:13px 14px 30px}
+  .sheet-body{padding:13px 14px 22px;flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  /* tombol aksi selalu kelihatan, tidak ikut terpotong saat isi panjang */
+  .sheet-foot{flex:0 0 auto;background:var(--card);border-top:1px solid var(--line);
+        padding:11px 14px calc(11px + env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;gap:8px;z-index:2}
+  body.terkunci{overflow:hidden}
   .mrow{display:grid;grid-template-columns:74px 1fr 150px 92px 92px 108px 96px;gap:9px;align-items:center;
         padding:9px 10px;border-bottom:1px solid var(--line);font-size:12px}
   .mrow:hover{background:var(--iris-tint)}
@@ -280,7 +285,8 @@
   .msnow.lewat{background:#FDF1F1;color:#8E1F1F}
   .msnow.done{background:#EDF7F1;color:#14603E}
   .followbox{background:#FDF1F1;border:1px solid #F1CFCF;border-radius:9px;padding:9px 11px;margin-bottom:9px;font-size:12px;color:#8E1F1F;font-weight:600}
-  .sheet.mini{max-width:480px;border-radius:16px;max-height:92vh;margin-bottom:auto;margin-top:auto}
+  .sheet.mini{max-width:480px;border-radius:16px;max-height:92vh;max-height:92dvh;margin-bottom:auto;margin-top:auto}
+  .sheet.mini .sheet-head{border-radius:16px 16px 0 0}
   .sheetov.center{align-items:center;padding:14px}
   #printArea{display:none;background:#fff;font-family:Arial,sans-serif;color:#000;font-size:12px;padding:18px;max-width:800px;margin:0 auto}
   #printArea .ph{display:flex;justify-content:space-between;border-bottom:2.5px solid #5B3FD9;padding-bottom:8px;margin-bottom:12px}
@@ -510,6 +516,27 @@
     </div>
   </div>
 
+  <div class="sheetov" id="gtOv">
+    <div class="sheet">
+      <div class="sheet-head">
+        <div><div class="ttl">🔄 Ganti Tutor</div><div class="sub" id="gtSub">Pilih dari daftar tutor terdaftar</div></div>
+        <button class="btn ghost small" onclick="tutupGT()">✕ Tutup</button>
+      </div>
+      <div class="sheet-body">
+        <div id="gtInfo"></div>
+        <div class="field"><label>Tutor baru</label>
+          <select id="gtTutor" style="width:100%;padding:9px;font-size:13px"></select></div>
+        <div class="field" style="margin-top:8px"><label>Keterangan / alasan pindah</label>
+          <input type="text" id="gtNote" placeholder="mis. jadwal bentrok, murid minta ganti, tutor resign"></div>
+      </div>
+      <div class="sheet-foot">
+        <button class="btn" onclick="lanjutGantiTutor()">Pindahkan jadwal</button>
+        <button class="btn ghost" onclick="keMasterTutor()">+ Tutor belum terdaftar</button>
+        <button class="btn ghost" onclick="tutupGT()">Batal</button>
+      </div>
+    </div>
+  </div>
+
   <div class="sheetov" id="imporOv">
     <div class="sheet">
       <div class="sheet-head">
@@ -524,11 +551,11 @@
           Order yang sudah pernah masuk akan dilewati, jadi aman kalau tidak sengaja diimpor dua kali.</p>
         <textarea id="imporTeks" rows="7" placeholder='"Order Number","Order Status","Order Date",...'
           style="width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;font-size:11px;font-family:ui-monospace,monospace"></textarea>
-        <div class="row-actions" style="margin-top:7px">
-          <button class="btn" onclick="prosesImpor(false)">🔍 Periksa dulu</button>
-          <button class="btn ghost" onclick="tutupImpor()">Batal</button>
-        </div>
         <div id="imporHasil"></div>
+      </div>
+      <div class="sheet-foot">
+        <button class="btn" onclick="prosesImpor(false)">🔍 Periksa dulu</button>
+        <button class="btn ghost" onclick="tutupImpor()">Batal</button>
       </div>
     </div>
   </div>
@@ -900,6 +927,10 @@ function pushGtut(id,v){
     lang:["v1",v.dari||"",v.ke||"",v.alasan||"",v.by||"",v.at||""]
       .map(x=>String(x).replace(/~/g,"-")).join("~")}]});
 }
+/* Ganti tutor lewat daftar pilihan — nama tidak diketik bebas lagi supaya tidak
+   muncul tutor "hantu" gara-gara salah ketik. Tutor yang benar-benar baru harus
+   didaftarkan dulu di Master Rate. */
+let gtCtx=null;
 function gantiTutorMurid(nmEnc){
   if(!guard())return;
   const nm=du(nmEnc), now=new Date();
@@ -908,18 +939,48 @@ function gantiTutorMurid(nmEnc){
   const lama=[...new Set(punya.map(c=>c.tutor))];
   const pindah=punya.filter(c=>statusOf(c,now)!=="Selesai"&&c.ov!=="Postponed");
   const tetap=punya.length-pindah.length;
-  const daftar=[...new Set(classes.map(c=>c.tutor))].sort((a,b)=>a.localeCompare(b,"id"));
-  const baru=normName(prompt(
-    "GANTI TUTOR — "+nm+"\n\n"+
-    "Tutor sekarang : "+lama.join(", ")+"\n"+
-    "Akan dipindah  : "+pindah.length+" jadwal yang belum jalan\n"+
-    "Tetap di tutor lama : "+tetap+" kelas yang sudah Selesai/Postponed\n\n"+
-    "Ketik nama tutor baru:", lama[0]||"")||"");
-  if(!baru)return;
-  if(lama.length===1&&baru.toLowerCase()===lama[0].toLowerCase())return toast("Tutor barunya sama dengan yang sekarang");
-  if(!daftar.some(t=>t.toLowerCase()===baru.toLowerCase())&&
-     !confirm("\""+baru+"\" belum pernah ada di log kelas.\n\nTetap pakai nama ini?"))return;
-  const alasan=(prompt("Keterangan / alasan pindah (boleh dikosongkan):\n\nmis. jadwal bentrok, murid minta ganti, tutor resign","")||"").trim();
+  const bhs=[...new Set(punya.map(c=>c.lang).filter(Boolean))];
+  gtCtx={nm,lama,pindah,tetap,bhs};
+  const semua=allTutorNames().filter(t=>!lama.some(l=>l.toLowerCase()===t.toLowerCase()));
+  const sama=semua.filter(t=>bhs.length&&bhs.includes(tutorLang(t)));
+  const lain=semua.filter(t=>!sama.includes(t));
+  const opt=t=>`<option value="${t}">${t}${tutorLang(t)?" — "+tutorLang(t):""}</option>`;
+  document.getElementById("gtInfo").innerHTML=`
+    <div class="mini-kpis" style="margin:0 0 9px">
+      <div class="kpi hi"><div class="v">${pindah.length}</div><div class="l">Jadwal Dipindah</div></div>
+      <div class="kpi"><div class="v">${tetap}</div><div class="l">Tetap di Tutor Lama</div></div>
+      <div class="kpi"><div class="v" style="font-size:12px">${lama.join(", ")}</div><div class="l">Tutor Sekarang</div></div>
+    </div>
+    <p class="note" style="margin:0 0 9px">Yang dipindah hanya jadwal yang <b>belum jalan</b>.
+      ${tetap} kelas yang sudah Selesai atau Postponed tetap tercatat atas nama tutor lama —
+      supaya perhitungan gaji periode lalu tidak berubah.</p>`;
+  document.getElementById("gtTutor").innerHTML=
+    `<option value="">— pilih tutor —</option>`+
+    (sama.length?`<optgroup label="Mengajar ${bhs.join(", ")}">${sama.map(opt).join("")}</optgroup>`:"")+
+    (lain.length?`<optgroup label="Tutor lain">${lain.map(opt).join("")}</optgroup>`:"");
+  document.getElementById("gtNote").value="";
+  bukaOv("gtOv");
+}
+/* Selama panel terbuka, halaman di belakangnya dikunci. Tanpa ini, di layar pendek
+   gulirannya "nyangkut" ke halaman belakang dan tombol di panel jadi tak terjangkau. */
+function kunciLatar(){
+  document.body.classList.toggle("terkunci",
+    !!document.querySelector(".sheetov.on"));
+}
+function bukaOv(id){document.getElementById(id).classList.add("on");kunciLatar();}
+function tutupOv(id){document.getElementById(id).classList.remove("on");kunciLatar();}
+function tutupGT(){gtCtx=null;tutupOv("gtOv");}
+function keMasterTutor(){
+  tutupGT();closeDetail();bukaTab("master");
+  toast("Daftarkan tutor barunya di Master Rate dulu, lalu ulangi Ganti Tutor");
+}
+function lanjutGantiTutor(){
+  if(!gtCtx)return;
+  const {nm,lama,pindah,tetap}=gtCtx;
+  const baru=normName(document.getElementById("gtTutor").value||"");
+  if(!baru)return toast("Pilih dulu tutor barunya");
+  const alasan=(document.getElementById("gtNote").value||"").trim();
+  tutupGT();
   if(!pindah.length){
     if(!confirm("Tidak ada jadwal yang bisa dipindah — semua kelasnya sudah Selesai.\n\n"+
       "Tetap catat perpindahan ini sebagai keterangan saja?"))return;
@@ -929,7 +990,9 @@ function gantiTutorMurid(nmEnc){
       tetap+" kelas yang sudah Selesai tetap tercatat atas nama tutor lama.\n\nLanjutkan?"))return;
   const dari=lama.join(", "), by=meName(), at=new Date().toISOString(), d=todayStr();
   const rows=[];
+  mulaiMassal();
   pindah.forEach(c=>{c.tutor=baru;rows.push(sheetRow(c));});
+  selesaiMassal();
   cacheAll();
   if(CFG.url)for(let i=0;i<rows.length;i+=150)push({action:"upsert",rows:rows.slice(i,i+150)});
   const id="G"+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
@@ -1367,11 +1430,11 @@ function pickUser(){
        <button class="btn danger small" title="Hapus dari daftar" onclick="removeUser(du('${eu(u.n)}'))">✕</button>
      </div>`).join("")+
     `<button class="btn ghost" style="width:100%;margin-top:4px" onclick="addUser()">+ Tambah pengguna baru</button>`;
-  document.getElementById("whoOv").classList.add("on");
+  bukaOv("whoOv");
 }
 function setUser(i){
   ME=USERS[i];lset(WHOKEY,ME.n);
-  document.getElementById("whoOv").classList.remove("on");
+  tutupOv("whoOv");
   renderWho();renderAll();toast("Masuk sebagai "+ME.n);
 }
 function renderWho(){
@@ -1835,9 +1898,9 @@ function editClass(id){
   document.getElementById("eSaveBtn").textContent=c.flag?"✓ Konfirmasi & Hilangkan Tanda":"Simpan Perubahan";
   renderFlagBox(c);
   ePrev();
-  document.getElementById("editOv").classList.add("on");
+  bukaOv("editOv");
 }
-function closeEdit(){editId=null;document.getElementById("editOv").classList.remove("on");}
+function closeEdit(){editId=null;tutupOv("editOv");}
 function renderFlagBox(c){
   const box=document.getElementById("eFlagBox");
   if(!c.flag){box.style.display="none";return;}
@@ -2433,7 +2496,7 @@ function renderTutorCards(){
 /* ---------- rincian angka di Tutor Card ---------- */
 let drillCtx=null;
 function drill(kind,tEnc){drillCtx={kind,t:du(tEnc)};renderDrill();}
-function closeDrill(){drillCtx=null;document.getElementById("drillOv").classList.remove("on");}
+function closeDrill(){drillCtx=null;tutupOv("drillOv");}
 function renderDrill(){
   if(!drillCtx)return;
   const {kind,t}=drillCtx, now=new Date();
@@ -2635,7 +2698,7 @@ function renderDrill(){
   document.getElementById("drTitle").textContent=judul;
   document.getElementById("drSub").textContent=sub;
   document.getElementById("drBody").innerHTML=html;
-  document.getElementById("drillOv").classList.add("on");
+  bukaOv("drillOv");
 }
 function bayarSisa(tEnc){
   if(!guard())return;
@@ -2845,7 +2908,7 @@ function drillG(kind){
   document.getElementById("drTitle").textContent=judul;
   document.getElementById("drSub").textContent=sub;
   document.getElementById("drBody").innerHTML=html;
-  document.getElementById("drillOv").classList.add("on");
+  bukaOv("drillOv");
 }
 /* ================= REGISTRY MURID ==================================
    Tiap murid punya kode tetap M-0001 dst. Nama boleh salah ketik atau berganti;
@@ -2854,21 +2917,31 @@ function drillG(kind){
    Riwayat pembelian disimpan sebagai baris "B:<order_id>". */
 const GELAR=/\b(ibu|bu|bapak|pak|mr|mrs|ms|miss|kak|kk|mba|mbak|mas|dr|drs|ir)\b/g;
 const ANOT=/(semi\s*privat|semi\s*private|private|privat|group|reguler|regular|online|offline|trial|couple|duo|pair|\d+\s*(orang|student|pax))/i;
+/* Embel-embel bahasa/level yang kadang ditempel ke nama murid.
+   Dibuang saat mencocokkan supaya "Budi - German" dan "Budi (Spanyol)" tetap satu ID
+   walaupun muridnya mengambil dua paket bahasa sekaligus. */
+const EMBEL=/\b(german|jerman|deutsch|spanish|spanyol|espanol|mandarin|chinese|mandarin\s*business|english|inggris|business\s*english|professional\s*english|english\s*pro|conversation|convo|club|prep|indonesian|bahasa\s*indonesia|indonesia|hsk\s*\d*|chuji|[abc][12]\s*[.\-]?\s*\d?|level\s*\d+|batch\s*\d*|kelas)\b/g;
 /* nama -> bentuk baku untuk dicocokkan */
 function nkey(v){
-  return String(v||"").toLowerCase()
+  const dasar=String(v||"").toLowerCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
     .replace(/\([^)]*\)/g," ")
     .replace(/[^a-z0-9\s]/g," ")
     .replace(GELAR," ")
     .replace(/\s+/g," ").trim();
+  // buang embel-embel bahasa/level — tapi jangan sampai namanya habis
+  const tanpa=dasar.replace(EMBEL," ").replace(/\s+/g," ").trim();
+  return tanpa.length>=3?tanpa:dasar;
 }
 /* "Moudy (Ibu Inten)" -> {utama:"Moudy", extra:["Ibu Inten"]} */
 function pecahNama(v){
   const nm=String(v||"").trim();
   const kurung=(nm.match(/\(([^)]*)\)/g)||[]).map(x=>x.slice(1,-1).trim());
+  // "(Semi Private)" atau "(Mandarin)" bukan nama orang — jangan dijadikan alias
+  const cumaEmbel=x=>{const t=String(x).toLowerCase().replace(new RegExp(EMBEL.source,"g")," ")
+    .replace(/[^a-z0-9]/g," ").replace(/\s+/g," ").trim();return t.length<3;};
   return {utama:nm.replace(/\([^)]*\)/g," ").replace(/\s+/g," ").trim(),
-          extra:kurung.filter(x=>x&&!ANOT.test(x))};
+          extra:kurung.filter(x=>x&&!ANOT.test(x)&&!cumaEmbel(x))};
 }
 function muridBaru(nm){
   const p=pecahNama(nm), al=new Set([nkey(nm),nkey(p.utama)]);
@@ -2946,14 +3019,36 @@ function jadwalAutoId(){
   if(!AUTO_ID||!canEdit())return;
   clearTimeout(_autoT);
   _autoT=setTimeout(()=>{
+    const t=daftarkanTutorBaru();
     const baru=muridBelumPunyaId();
-    if(!baru.length)return;
-    const n=bikinIdMurid(true);
-    if(n){
+    const n=baru.length?bikinIdMurid(true):0;
+    if(n||t){
       const dup=cekDuplikat();
-      toast(n+" murid baru dapat ID otomatis"+(dup.length?" · "+dup.length+" perlu dicek, mungkin duplikat":""));
+      toast([n?n+" murid baru dapat ID":"",t?t+" tutor baru masuk Master":""].filter(Boolean).join(" · ")+
+        (dup.length?" · "+dup.length+" nama mirip perlu dicek":""));
     }
   },800);
+}
+/* Tutor yang muncul di log kelas tapi belum ada di Master Rate didaftarkan
+   otomatis dengan rate 0, supaya langsung bisa dipilih di daftar Ganti Tutor.
+   Rate-nya sengaja 0 agar ketahuan dan segera diisi — bukan diam-diam salah hitung. */
+function daftarkanTutorBaru(){
+  if(!canEdit())return 0;
+  const ada=new Set([...Object.keys(DATA.tutors||{}),...Object.keys(U.tutors||{})].map(x=>x.toLowerCase()));
+  const baru=[...new Set(classes.map(c=>c.tutor).filter(Boolean))]
+    .filter(t=>!ada.has(t.toLowerCase())&&!U.del["T:"+t]);
+  if(!baru.length)return 0;
+  mulaiMassal();
+  const rows=[];
+  baru.forEach(t=>{
+    const lg=[...new Set(classes.filter(c=>c.tutor===t&&c.lang).map(c=>c.lang))][0]||"";
+    delete U.del["T:"+t];
+    U.tutors[t]={lang:lg,rate:0};
+    rows.push({id:"T:"+t,tutor:t,cls:"",rate:0,lang:lg});
+  });
+  selesaiMassal();cacheAll();refreshTutorList();
+  if(CFG.url)for(let i=0;i<rows.length;i+=200)push({action:"setrate",rows:rows.slice(i,i+200)});
+  return baru.length;
 }
 /* ---- deteksi kemungkinan salah ketik: dua ID untuk orang yang sama ----
    Nama yang mirip TIDAK digabung otomatis — cuma ditandai untuk kamu putuskan,
@@ -3420,12 +3515,11 @@ function segarkanTipeBeli(id){
 /* ---------- impor CSV WooCommerce ---------- */
 function bukaImporBeli(){
   if(!guard())return;
-  const ov=document.getElementById("imporOv");
-  ov.classList.add("on");
+  bukaOv("imporOv");
   document.getElementById("imporHasil").innerHTML="";
   document.getElementById("imporTeks").value="";
 }
-function tutupImpor(){document.getElementById("imporOv").classList.remove("on");}
+function tutupImpor(){tutupOv("imporOv");}
 function bacaCSV(teks){
   const rows=[];let f="",r=[],q=false;
   for(let i=0;i<teks.length;i++){
@@ -5043,7 +5137,7 @@ function openMuridId(id){
   openStudent(m.nm);
 }
 function openStudent(name){dSort={key:"date",dir:-1};dPeriod="all";dStat="all";detailCtx={type:"student",name};renderDetail();}
-function closeDetail(){detailCtx=null;document.getElementById("detailOv").classList.remove("on");}
+function closeDetail(){detailCtx=null;tutupOv("detailOv");}
 function sortDetail(key){
   if(dSort.key===key)dSort.dir*=-1;else dSort={key,dir:key==="date"?-1:1};
   renderDetail();
@@ -5435,7 +5529,7 @@ function renderDetail(){
      <td class="num"><b>${rp(feeOf(c,now))}</b></td>
      <td style="font-size:11px;color:var(--ink-soft)">${le||"—"}</td></tr>`;}).join("")+`</table></div></div>`;
   document.getElementById("dBody").innerHTML=html;
-  document.getElementById("detailOv").classList.add("on");
+  bukaOv("detailOv");
 }
 
 /* ---------- import/export ---------- */
@@ -5710,7 +5804,7 @@ function boot(){
   // tidak ada injeksi data bawaan — kalau cache kosong, tunggu sinkron dari Sheet
   document.getElementById("cfgUrl").value=CFG.url;
   document.getElementById("cfgToken").value=CFG.token;
-  init();refreshTutorList();renderAll();
+  init();refreshTutorList();renderAll();jadwalAutoId();
   if(CFG.url){fullSync();}
   else{
     setSync("","Mode lokal (belum terhubung)");
