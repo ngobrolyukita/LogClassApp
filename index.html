@@ -1665,6 +1665,7 @@ async function fullSync(){
     cacheAll();refreshTutorList();renderAll();
     setSync("ok","Tersinkron · Google Sheets");
     toast("Sinkron selesai: "+classes.length+" kelas · "+Object.keys(U.rates).length+" rate dari Google Sheet");
+    jadwalAutoId();
   }catch(e){
     const label={url:"URL salah",akses:"Akses deployment",token:"Token salah",timeout:"Terlalu lama",
                  jaringan:"Tidak terjangkau",offline:"Tidak ada internet",http:"Deployment bermasalah",
@@ -1690,6 +1691,7 @@ function upsertClass(c){
   if(i>=0)classes[i]=c;else classes.push(c);
   cacheAll();
   if(CFG.url)push({action:"upsert",rows:[sheetRow(c)]});
+  jadwalAutoId();
 }
 function removeClass(id){
   classes=classes.filter(c=>String(c.id)!==String(id));
@@ -2883,7 +2885,7 @@ function muridIndex(){
     (m.al||[]).forEach(a=>{if(a&&!MIDX[a])MIDX[a]=id;}));
   return MIDX;
 }
-function lupakanIndex(){MIDX=null;REKAP=null;_hitNama=null;}
+function lupakanIndex(){MIDX=null;REKAP=null;_hitNama=null;DUP=null;}
 function midOf(nm){const i=muridIndex();return i[nkey(nm)]||i[nkey(pecahNama(nm).utama)]||"";}
 function muridOf(nm){const id=midOf(nm);return id?Object.assign({id},U.murid[id]):null;}
 function namaMid(id){const m=(U.murid||{})[id];return m?m.nm:id;}
@@ -2933,6 +2935,61 @@ function kunciAlias(obj,al){
   return "";
 }
 function muridBelumPunyaId(){return namaMuridLog().filter(nm=>!midOf(nm));}
+
+/* ---- ID otomatis untuk murid yang baru muncul di log kelas ----
+   Dipanggil setelah sinkron, setelah kelas ditambah/diubah, dan setelah impor jadwal.
+   Hanya untuk pengguna yang boleh mengubah data; yang view-only tidak menulis apa pun. */
+let _autoT=null, AUTO_ID=lget("ny_autoid_v1",true);
+function setAutoId(v){AUTO_ID=!!v;lset("ny_autoid_v1",AUTO_ID);renderMurid();
+  toast(AUTO_ID?"ID murid dibuat otomatis":"ID murid dibuat manual lewat tombol");}
+function jadwalAutoId(){
+  if(!AUTO_ID||!canEdit())return;
+  clearTimeout(_autoT);
+  _autoT=setTimeout(()=>{
+    const baru=muridBelumPunyaId();
+    if(!baru.length)return;
+    const n=bikinIdMurid(true);
+    if(n){
+      const dup=cekDuplikat();
+      toast(n+" murid baru dapat ID otomatis"+(dup.length?" · "+dup.length+" perlu dicek, mungkin duplikat":""));
+    }
+  },800);
+}
+/* ---- deteksi kemungkinan salah ketik: dua ID untuk orang yang sama ----
+   Nama yang mirip TIDAK digabung otomatis — cuma ditandai untuk kamu putuskan,
+   karena "Muhammad Hafid" dan "Muhammad Rafi" mirip tapi orang berbeda. */
+function jarakKata(a,b){
+  if(a===b)return 0;
+  const m=a.length,n=b.length;
+  if(!m||!n)return Math.max(m,n);
+  let prev=Array.from({length:n+1},(_,i)=>i),cur=new Array(n+1);
+  for(let i=1;i<=m;i++){
+    cur[0]=i;
+    for(let j=1;j<=n;j++)
+      cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    [prev,cur]=[cur,prev];
+  }
+  return prev[n];
+}
+function miripPersen(a,b){
+  const mx=Math.max(a.length,b.length);
+  return mx?Math.round((1-jarakKata(a,b)/mx)*100):0;
+}
+let DUP=null;
+function cekDuplikat(){
+  if(DUP)return DUP;
+  const L=Object.entries(U.murid||{}).map(([id,m])=>({id,nm:m.nm,k:nkey(m.nm)}))
+    .filter(x=>x.k.length>=4);
+  DUP=[];
+  for(let i=0;i<L.length;i++)for(let j=i+1;j<L.length;j++){
+    const a=L[i],b=L[j];
+    if(Math.abs(a.k.length-b.k.length)>4)continue;
+    const p=miripPersen(a.k,b.k);
+    if(p>=85)DUP.push({a,b,p});
+  }
+  DUP.sort((x,y)=>y.p-x.p);
+  return DUP;
+}
 
 function pushMURID(id,m){
   cacheAll();lupakanIndex();
@@ -3141,13 +3198,28 @@ function renderMurid(){
   const box=document.getElementById("mList"); if(!box)return;
   const belum=muridBelumPunyaId();
   const w=document.getElementById("mWarn");
-  w.innerHTML=belum.length
-    ? `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+  const dup=cekDuplikat();
+  w.innerHTML=
+    (belum.length?`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
         <b>${belum.length} murid di log kelas belum punya ID.</b>
-        <span style="font-weight:600">Selama belum, riwayat mereka tidak bisa dilacak.</span>
-        <button class="btn small editonly" onclick="bikinIdMurid()">🆔 Buatkan ID sekarang</button></div>`
-    : (Object.keys(U.murid||{}).length?"":`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
-        <b>Registry masih kosong.</b> <button class="btn small editonly" onclick="bikinIdMurid()">🆔 Buat ID murid dari log kelas</button></div>`);
+        <button class="btn small editonly" onclick="bikinIdMurid()">🆔 Buatkan ID sekarang</button></div>`:"")+
+    (dup.length?`<div class="filterchip" style="background:#FDECEC;border-color:#E5B4B4;display:block">
+        <b>${dup.length} pasang nama sangat mirip</b> — mungkin satu orang yang namanya salah ketik.
+        Periksa dulu; yang benar-benar sama tinggal digabung.
+        <div style="margin-top:6px">${dup.slice(0,8).map(d=>`<div class="belirow">
+          <span class="pr"><b>${d.a.nm}</b> <span style="color:var(--ink-soft)">${d.a.id}</span>
+            &nbsp;↔&nbsp; <b>${d.b.nm}</b> <span style="color:var(--ink-soft)">${d.b.id}</span>
+            <span class="chip">${d.p}% mirip</span></span>
+          <button class="btn ghost small" onclick="openMuridId('${d.a.id}')">Lihat</button>
+          <button class="btn small editonly" onclick="gabungMurid('${d.a.id}','${d.b.id}')">🔗 Gabungkan</button>
+        </div>`).join("")}
+        ${dup.length>8?`<div class="hint">… dan ${dup.length-8} pasang lagi</div>`:""}</div></div>`:"")+
+    (Object.keys(U.murid||{}).length?"":`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+        <b>Registry masih kosong.</b> <button class="btn small editonly" onclick="bikinIdMurid()">🆔 Buat ID murid dari log kelas</button></div>`)+
+    `<div class="hint" style="margin:4px 0 2px">
+      <label style="cursor:pointer"><input type="checkbox" ${AUTO_ID?"checked":""} onchange="setAutoId(this.checked)"
+        style="vertical-align:-2px"> Beri ID otomatis untuk murid baru</label>
+      · saat impor jadwal, tambah kelas manual, atau sinkron. Nama mirip tidak digabung sendiri — ditandai di sini dulu.</div>`;
 
   let R=semuaRekap();
   // chip bahasa
