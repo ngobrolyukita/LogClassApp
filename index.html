@@ -40,6 +40,16 @@
   .jcell span{display:block;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:#132A2E}
   .jcell.kosong span{color:#C3BEDA}
   .jcell.hariini{border-color:var(--iris);box-shadow:0 0 0 2px var(--iris-tint)}
+  .jcell.pilih{border-color:var(--iris);background:var(--iris);color:#fff}
+  .jcell.pilih b,.jcell.pilih span{color:#fff!important}
+  .jdet{border:1px solid var(--line);border-left:3px solid var(--iris);border-radius:10px;
+        padding:11px 13px;margin-top:10px;background:#fff}
+  .jdet-h{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-bottom:8px}
+  .jdet-h .t{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px}
+  .turow2{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line);font-size:12px}
+  .turow2 .no{width:19px;color:var(--ink-soft);font-weight:700;font-size:11px}
+  .turow2 .nm{font-weight:700}
+  .turow2 .mt{color:var(--ink-soft);font-size:11px}
   .jcell i{position:absolute;top:-5px;right:-4px;background:#0E5F8A;color:#fff;border-radius:9px;
         font-style:normal;font-size:9px;font-weight:700;padding:1px 4px;line-height:1.3}
   .acc-body{flex:1;padding:10px 13px;min-width:0}
@@ -518,8 +528,9 @@
         </div>
       </div>
       <h2 style="font-size:12px;margin:13px 0 5px">Isian Harian
-        <small style="font-weight:600;color:var(--ink-soft)">· klik kotak untuk isi / ubah · badge biru = jumlah top up hari itu</small></h2>
+        <small style="font-weight:600;color:var(--ink-soft)">· klik kotak untuk lihat rincian &amp; isi angkanya · badge biru = jumlah top up hari itu</small></h2>
       <div class="jgrid" id="jGrid"></div>
+      <div id="jDetail"></div>
       <h2 style="font-size:12px;margin:13px 0 5px">Penjualan vs Top Up per Hari</h2>
       <div class="chartbox" id="chJualDay"></div>
       <h2 style="font-size:12px;margin:13px 0 5px">Rasio Top Up per Periode
@@ -3725,6 +3736,76 @@ function simpanJBulk(){
   document.getElementById("jBulk").value="";
   toast(ok.length+" hari tersimpan"+(gagal.length?" · "+gagal.length+" baris dilewati":""));
 }
+/* ---- rincian satu hari: siapa saja yang top up + isi angka penjualan ---- */
+let jHariPilih="";
+function topupHari(tgl){
+  const out=[];
+  Object.entries(U.topup||{}).forEach(([nm,arr])=>(arr||[]).forEach(t=>{
+    if(t.tgl===tgl)out.push(Object.assign({nm:normName(nm)},t));}));
+  return out.sort((a,b)=>a.nm.localeCompare(b.nm,"id"));
+}
+/* bahasa & tutor terakhir murid ini, diambil dari log kelas sampai tanggal tsb */
+function muridKonteks(nm,tgl){
+  const k=normName(nm).toLowerCase();
+  const cs=classes.filter(c=>normName(c.cls||"").toLowerCase()===k&&c.date<=tgl)
+    .sort((a,b)=>a.date<b.date?1:-1);
+  if(!cs.length)return {bahasa:"",tutor:""};
+  return {bahasa:cs[0].lang||"",tutor:cs[0].tutor||""};
+}
+function pilihHariJual(d){
+  jHariPilih=(jHariPilih===d?"":d);
+  renderJual();
+  if(jHariPilih){
+    const el=document.getElementById("jDetN");
+    if(el){el.focus();el.select&&el.select();}
+  }
+}
+function tutupHariJual(){jHariPilih="";renderJual();}
+function simpanDetJual(){
+  const v=document.getElementById("jDetN").value;
+  if(String(v).trim()===""){
+    if(jualN(jHariPilih)===null)return toast("Isi angkanya dulu");
+    if(!confirm("Hapus catatan penjualan "+dShort(jHariPilih)+"?"))return;
+    return setJual(jHariPilih,null);
+  }
+  setJual(jHariPilih,v);
+}
+function renderJualDetail(){
+  const e=document.getElementById("jDetail"); if(!e)return;
+  const d=jHariPilih;
+  if(!d){e.innerHTML="";return;}
+  const list=topupHari(d), n=jualN(d);
+  const rasio=n?Math.round(list.length/n*1000)/10:null;
+  e.innerHTML=`<div class="jdet">
+    <div class="jdet-h">
+      <span class="t">${fmtD_(d)}</span>
+      <span class="chip">${list.length} top up</span>
+      <span class="chip" style="background:#E8F1F6;color:#0E5F8A">${n==null?"penjualan belum diisi":n+" transaksi penjualan"}</span>
+      ${rasio!=null?`<span class="chip" style="background:#E6F4EC;color:#1B6B47">rasio ${rasio}%</span>`:""}
+      <span style="flex:1"></span>
+      <button class="btn ghost small" onclick="tutupHariJual()">✕ Tutup</button>
+    </div>
+    <div class="tuform editonly" style="margin:0 0 8px">
+      <label>Jumlah transaksi penjualan
+        <input type="number" min="0" step="1" class="s" id="jDetN" value="${n==null?"":n}" placeholder="0"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();simpanDetJual();}"></label>
+      <button class="btn small" onclick="simpanDetJual()">Simpan</button>
+    </div>
+    ${list.length?list.map((t,i)=>{
+      const k=muridKonteks(t.nm,d);
+      return `<div class="turow2">
+        <span class="no">${i+1}.</span>
+        <span class="nm"><span class="link" onclick="openStudent(du('${eu(t.nm)}'))">${t.nm}</span></span>
+        <span class="tup">Top up ke-${t.ke||"?"}</span>
+        ${+t.jam>0?`<span class="chip">${t.jam} jam</span>`:""}
+        ${k.bahasa?`<span class="mt">${k.bahasa}</span>`:""}
+        ${k.tutor?`<span class="mt">· ${k.tutor}</span>`:""}
+        ${t.note?`<span class="mt">· ${t.note}</span>`:""}
+        ${t.by?`<span class="mt" style="margin-left:auto">dicatat ${t.by}</span>`:""}
+      </div>`;}).join("")
+    :`<div class="empty" style="padding:10px">Tidak ada top up yang dicatat di tanggal ini.</div>`}
+  </div>`;
+}
 function editJual(d){
   if(!canEdit())return guard();
   const cur=jualN(d);
@@ -3821,10 +3902,12 @@ function renderJual(){
   const tpd=topupPerDay(a,b), hariIni=todayStr();
   document.getElementById("jGrid").innerHTML=days.map(x=>{
     const n=jualN(x), t=tpd[x]||0;
-    return `<div class="jcell${n==null?" kosong":""}${x===hariIni?" hariini":""}" onclick="editJual('${x}')"
-      title="${fmtD_(x)} · ${n==null?"belum diisi":n+" transaksi penjualan"} · ${t}× top up">
+    return `<div class="jcell${n==null?" kosong":""}${x===hariIni?" hariini":""}${x===jHariPilih?" pilih":""}" onclick="pilihHariJual('${x}')"
+      title="${fmtD_(x)} · ${n==null?"belum diisi":n+" transaksi penjualan"} · ${t}× top up — klik untuk rincian">
       <b>${+x.slice(8)}/${+x.slice(5,7)}</b><span>${n==null?"–":n}</span>${t?`<i>${t}</i>`:""}</div>`;
   }).join("")||`<div class="empty">Rentangnya kosong.</div>`;
+  if(jHariPilih&&(jHariPilih<a||jHariPilih>b))jHariPilih="";
+  renderJualDetail();
 
   // grafik harian
   document.getElementById("chJualDay").innerHTML=
