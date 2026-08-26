@@ -205,6 +205,8 @@
   .mrow .sub{font-weight:600;font-size:10.5px;color:var(--ink-soft)}
   .mrow .r{text-align:right}
   .mtag{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:800}
+  .subtag{display:inline-block;background:#E8F1F6;color:#0E5F8A;border:1px solid #9CC4D8;
+        padding:1px 7px;border-radius:99px;font-size:10px;font-weight:800;white-space:nowrap}
   .mtag.aktif{background:#E6F4EC;color:#1B6B47}
   .mtag.kelar{background:#EFEDF9;color:#5D5680}
   .mtag.cuti{background:#FFF3CD;color:#8A5309}
@@ -513,6 +515,28 @@
       </div>
       <div id="mChip"></div>
       <div id="mList"></div>
+    </div>
+  </div>
+
+  <div class="sheetov" id="subOv">
+    <div class="sheet">
+      <div class="sheet-head">
+        <div><div class="ttl">⇄ Tutor Pengganti Sementara</div>
+          <div class="sub">Berlaku untuk sesi ini saja — fee ikut ke penggantinya</div></div>
+        <button class="btn ghost small" onclick="tutupOv('subOv');subCtx=null">✕ Tutup</button>
+      </div>
+      <div class="sheet-body">
+        <div id="subInfo"></div>
+        <div class="field"><label>Tutor pengganti</label>
+          <select id="subTutor" onchange="hitungFeeSub()" style="width:100%;padding:9px;font-size:13px"></select></div>
+        <div id="subFee" style="margin-top:8px"></div>
+        <div class="field" style="margin-top:8px"><label>Keterangan</label>
+          <input type="text" id="subNote" placeholder="mis. tutor sakit, izin, jadwal bentrok"></div>
+      </div>
+      <div class="sheet-foot">
+        <button class="btn" onclick="pasangSub()">Pasang pengganti</button>
+        <button class="btn ghost" onclick="tutupOv('subOv');subCtx=null">Batal</button>
+      </div>
     </div>
   </div>
 
@@ -936,7 +960,7 @@ function gantiTutorMurid(nmEnc){
   const nm=du(nmEnc), now=new Date();
   const punya=classes.filter(c=>normName(c.cls)===normName(nm));
   if(!punya.length)return toast("Murid ini belum punya jadwal");
-  const lama=[...new Set(punya.map(c=>c.tutor))];
+  const lama=[...new Set(punya.map(tutorAsli))];
   const pindah=punya.filter(c=>statusOf(c,now)!=="Selesai"&&c.ov!=="Postponed");
   const tetap=punya.length-pindah.length;
   const bhs=[...new Set(punya.map(c=>c.lang).filter(Boolean))];
@@ -991,7 +1015,10 @@ function lanjutGantiTutor(){
   const dari=lama.join(", "), by=meName(), at=new Date().toISOString(), d=todayStr();
   const rows=[];
   mulaiMassal();
-  pindah.forEach(c=>{c.tutor=baru;rows.push(sheetRow(c));});
+  pindah.forEach(c=>{
+    const sp=subOf(c);
+    if(sp){sp.as=baru;pushSUB(String(c.id),sp);return;}  // sesi yang dipegang pengganti: pemiliknya saja yang pindah
+    c.tutor=baru;rows.push(sheetRow(c));});
   selesaiMassal();
   cacheAll();
   if(CFG.url)for(let i=0;i<rows.length;i+=150)push({action:"upsert",rows:rows.slice(i,i+150)});
@@ -1665,7 +1692,7 @@ async function fullSync(){
     // Sheet = satu-satunya sumber data. Tidak pernah ada pengisian otomatis.
     classes=raw.map(normClass).filter(c=>c.tutor&&/^\d{4}-\d{2}-\d{2}$/.test(c.date));
     if(raw.length&&!classes.length)toast("Data terbaca "+raw.length+" baris tapi format tanggalnya tidak dikenali — hubungi admin");
-    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{}};sisaJual=[];
+    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{},sub:{}};sisaJual=[];
     (all.rates||[]).forEach(r=>{
       const id=String(r.id||""), val=+r.rate;
       if(id.slice(0,2)==="N:"){U.newTag[id.slice(2)]=r.lang||"nama";return;}   // penanda nama baru
@@ -1684,6 +1711,13 @@ async function fullSync(){
         if(p[0]==="v1"){
           (U.topup[nm]=U.topup[nm]||[]).push({ke:+p[1]||seq,tgl:p[2]||"",jam:val||0,
             note:p[3]||"",by:p[4]||"",at:p[5]||"",seq});
+        }
+        return;}
+      if(id.slice(0,2)==="X:"){                                                 // tutor pengganti sementara
+        const cid=id.slice(2), raw=String(r.lang||"");
+        const i=raw.indexOf("~");
+        if(i>0&&raw.slice(0,i)==="v1"){
+          try{const o=JSON.parse(raw.slice(i+1));if(cid&&o&&o.as)U.sub[cid]=o;}catch(e){}
         }
         return;}
       if(id.slice(0,2)==="S:"){                                                 // master murid (registry + ID)
@@ -2206,11 +2240,12 @@ function renderLog(){
       <div class="cls-time">${luas?`<small class="dchip" onclick="bukaTgl('${c.date}')">${c.date.slice(8)}/${c.date.slice(5,7)}</small>`:""}${c.start}<small>– ${c.end}</small></div>
       <div class="cls-main">
         <div class="t"><span class="link" onclick="openTutor(du('${eu(c.tutor)}'))">${c.tutor}</span>${U.newTag[c.tutor]?' <span class="st unpaid" style="font-size:9px">BARU</span>':''}</div>
-        <div class="c">${meetBadge(c)} ${c.cls?`<span class="link" onclick="openStudent(du('${eu(c.cls)}'))">${c.cls}</span>`:"—"} · ${c.lang}${noRate?' · <span style="color:var(--red)">rate?</span>':''}${c.flag?` · <span class="st postponed" style="cursor:pointer" title="Tap untuk perbaiki" onclick="editClass('${c.id}')">⚠ ${FLAGS[c.flag]||c.flag} — perbaiki</span>`:''}</div>
+        <div class="c">${subBadge(c)} ${meetBadge(c)} ${c.cls?`<span class="link" onclick="openStudent(du('${eu(c.cls)}'))">${c.cls}</span>`:"—"} · ${c.lang}${noRate?' · <span style="color:var(--red)">rate?</span>':''}${c.flag?` · <span class="st postponed" style="cursor:pointer" title="Tap untuk perbaiki" onclick="editClass('${c.id}')">⚠ ${FLAGS[c.flag]||c.flag} — perbaiki</span>`:''}</div>
         ${lastEdit(c)?`<div class="le">diubah oleh <b>${lastEdit(c)}</b></div>`:""}
         <div class="cls-act">
           <button class="btn warn small" onclick="togglePostpone('${c.id}')">${c.ov==="Postponed"?"Batal Postpone":"Postpone"}</button>
           <button class="btn ghost small" onclick="editClass('${c.id}')">Edit</button>
+          <button class="btn ghost small" onclick="bukaSub('${eu(String(c.id))}')" title="Tutor pengganti untuk sesi ini saja">⇄ Pengganti</button>
           <button class="btn danger small" onclick="delClass('${c.id}')">Hapus</button>
         </div>
       </div>
@@ -3185,6 +3220,114 @@ function hapusBeli(oid){
   renderMurid();if(detailCtx)renderDetail();
   toast("Catatan pembelian dihapus");
 }
+/* ================= TUTOR PENGGANTI SEMENTARA =================
+   Kasusnya: tutor tetap berhalangan untuk beberapa sesi saja, digantikan tutor lain,
+   dan sesi itu HARUS dibayar ke penggantinya.
+
+   Caranya: kolom tutor pada sesi tersebut benar-benar diganti ke nama pengganti,
+   lalu siapa pemilik kelas aslinya dicatat terpisah sebagai baris "X:<id kelas>".
+   Dengan begitu seluruh perhitungan gaji, slip, dan tanda dibayar otomatis ikut
+   ke pengganti tanpa perlu aturan khusus di mana-mana — sumber kesalahan paling besar
+   kalau gaji dihitung dari dua tempat berbeda. */
+function subOf(c){return (U.sub||{})[String(c&&c.id)]||null;}
+function adaSub(c){return !!subOf(c);}
+/* tutor tetap / pemilik kelas — dipakai untuk tampilan sisi murid, bukan untuk gaji */
+function tutorAsli(c){const s=subOf(c);return s?s.as:(c?c.tutor:"");}
+function pushSUB(cid,o){
+  cacheAll();
+  if(!CFG.url)return;
+  if(!o){push({action:"delrate",ids:["X:"+cid]});return;}
+  push({action:"setrate",rows:[{id:"X:"+cid,tutor:o.as,cls:"",rate:0,lang:"v1~"+JSON.stringify(o)}]});
+}
+let subCtx=null;
+function bukaSub(idEnc){
+  if(!guard())return;
+  const id=du(idEnc), c=classes.find(x=>String(x.id)===String(id));
+  if(!c)return toast("Kelas tidak ditemukan");
+  const s=subOf(c);
+  subCtx={id};
+  const asli=tutorAsli(c), jam=durasi(c.start,c.end);
+  const kandidat=allTutorNames().filter(t=>t!==asli);
+  const sama=kandidat.filter(t=>c.lang&&tutorLang(t)===c.lang);
+  const lain=kandidat.filter(t=>!sama.includes(t));
+  const opt=t=>{
+    const rt=ratePerJam(t,c.cls);
+    return `<option value="${t}">${t}${tutorLang(t)?" — "+tutorLang(t):""} · ${rt?rp(rt)+"/jam":"RATE BELUM DIISI"}</option>`;
+  };
+  document.getElementById("subInfo").innerHTML=`
+    <div class="mini-kpis" style="margin:0 0 9px">
+      <div class="kpi hi"><div class="v" style="font-size:12px">${fmtD_(c.date)}</div><div class="l">${c.start}–${c.end} · ${jam} jam</div></div>
+      <div class="kpi"><div class="v" style="font-size:12px">${c.cls||"—"}</div><div class="l">${c.lang||"—"}</div></div>
+      <div class="kpi"><div class="v" style="font-size:12px">${asli}</div><div class="l">Tutor Tetap</div></div>
+      <div class="kpi"><div class="v" style="font-size:12px">${rp(Math.round(ratePerJam(asli,c.cls)*jam))}</div><div class="l">Fee Kalau Tidak Diganti</div></div>
+    </div>
+    ${s?`<div class="filterchip" style="background:#E8F1F6;border-color:#9CC4D8">
+        Sesi ini sedang dipegang <b>${c.tutor}</b> sebagai pengganti ${s.as}${s.note?" · "+s.note:""}
+        <button class="btn ghost small" onclick="lepasSub('${eu(String(c.id))}')">↩ Kembalikan ke ${s.as}</button></div>`:""}
+    <p class="note" style="margin:0 0 9px">Fee sesi ini akan masuk ke <b>tutor pengganti</b>, memakai rate pengganti itu sendiri.
+      Sesi lain milik ${asli} tidak terpengaruh. Kelas ini tetap tercatat sebagai kelas ${asli} di halaman murid.</p>`;
+  document.getElementById("subTutor").innerHTML=`<option value="">— pilih tutor pengganti —</option>`+
+    (sama.length?`<optgroup label="Mengajar ${c.lang}">${sama.map(opt).join("")}</optgroup>`:"")+
+    (lain.length?`<optgroup label="Tutor lain">${lain.map(opt).join("")}</optgroup>`:"");
+  if(s)document.getElementById("subTutor").value=c.tutor;
+  document.getElementById("subNote").value=s?(s.note||""):"";
+  document.getElementById("subFee").innerHTML="";
+  bukaOv("subOv");
+  hitungFeeSub();
+}
+function hitungFeeSub(){
+  if(!subCtx)return;
+  const c=classes.find(x=>String(x.id)===String(subCtx.id));
+  const t=document.getElementById("subTutor").value;
+  const e=document.getElementById("subFee");
+  if(!c||!t){e.innerHTML="";return;}
+  const jam=durasi(c.start,c.end), rt=ratePerJam(t,c.cls), fee=Math.round(rt*jam);
+  e.innerHTML=rt>0
+    ? `<div class="filterchip" style="background:#E6F4EC;border-color:#9CCBB2">
+        Fee untuk <b>${t}</b>: ${rp(rt)}/jam × ${jam} jam = <b>${rp(fee)}</b></div>`
+    : `<div class="filterchip" style="background:#FDECEC;border-color:#E5B4B4">
+        <b>Rate ${t} belum diisi</b> — kalau diteruskan, sesi ini dihitung <b>Rp 0</b>.
+        Isi dulu di Master Rate supaya gajinya tidak hilang.</div>`;
+}
+function pasangSub(){
+  if(!subCtx||!guard())return;
+  const c=classes.find(x=>String(x.id)===String(subCtx.id));
+  if(!c)return;
+  const baru=normName(document.getElementById("subTutor").value||"");
+  if(!baru)return toast("Pilih dulu tutor penggantinya");
+  const asli=tutorAsli(c);
+  if(baru===asli)return lepasSub(eu(String(c.id)));
+  const note=(document.getElementById("subNote").value||"").trim();
+  const jam=durasi(c.start,c.end), rt=ratePerJam(baru,c.cls);
+  if(rt<=0&&!confirm("Rate "+baru+" belum diisi.\n\nKalau diteruskan, sesi ini dihitung Rp 0 dan gajinya hilang.\n\nTetap lanjut?"))return;
+  snapshot("Pengganti "+baru);
+  U.sub=U.sub||{};
+  U.sub[String(c.id)]={as:asli,note,by:meName(),at:new Date().toISOString()};
+  c.tutor=baru;stampBy(c,"pengganti");
+  upsertClass(c);pushSUB(String(c.id),U.sub[String(c.id)]);
+  cacheAll();tutupOv("subOv");subCtx=null;
+  renderAll();if(detailCtx)renderDetail();
+  toast(fmtD_(c.date)+" "+c.start+" dipegang "+baru+" · fee "+rp(Math.round(rt*jam))+" masuk ke "+baru);
+}
+function lepasSub(idEnc){
+  if(!guard())return;
+  const id=du(idEnc), c=classes.find(x=>String(x.id)===String(id));
+  const s=c?subOf(c):null;
+  if(!c||!s)return toast("Sesi ini tidak sedang dipegang pengganti");
+  if(!confirm("Kembalikan sesi "+fmtD_(c.date)+" "+c.start+" ke "+s.as+"?\n\nFee-nya kembali dihitung untuk "+s.as+"."))return;
+  snapshot("Batal pengganti");
+  c.tutor=s.as;stampBy(c,"pengganti");
+  delete U.sub[String(c.id)];
+  upsertClass(c);pushSUB(String(c.id),null);
+  cacheAll();tutupOv("subOv");subCtx=null;
+  renderAll();if(detailCtx)renderDetail();
+  toast("Dikembalikan ke "+s.as);
+}
+function subBadge(c){
+  const s=subOf(c);
+  if(!s)return "";
+  return `<span class="subtag" title="Pengganti ${s.as}${s.note?" · "+s.note:""} · fee masuk ke ${c.tutor}">⇄ pengganti ${s.as}</span>`;
+}
 /* ================= TAB DATA MURID ================= */
 let mLang=new Set(), mStat=new Set(), mBatas=100;
 function tambahBatas(){mBatas+=200;renderMurid();}
@@ -3216,7 +3359,7 @@ function bangunRekap(){
     if(!id||!box[id])return;
     const o=box[id];
     o.cs.push(c);
-    if(c.tutor)o.tut[c.tutor]=(o.tut[c.tutor]||0)+1;
+    const tt=tutorAsli(c); if(tt)o.tut[tt]=(o.tut[tt]||0)+1;   // pengganti sementara tidak dianggap tutor tetap murid
     if(c.lang)o.bhs.add(c.lang);
     if(c.ov==="Postponed"){o.post.push(c);return;}
     if(statusOf(c,now)==="Selesai"){
@@ -3666,7 +3809,9 @@ function slipTeks(){
     L.push("*Rincian per sesi:*");
     rows.slice(0,BATAS).forEach((c,i)=>{
       const d=durasi(c.start,c.end);
-      L.push((i+1)+". "+fmtD_(c.date)+" "+c.start+"–"+c.end+" · "+(c.cls||"—")+" · "+d+" jam · Rp "+Math.round(ratePerJam(c.tutor,c.cls)*d).toLocaleString("id-ID"));
+      const sp=subOf(c);
+      L.push((i+1)+". "+fmtD_(c.date)+" "+c.start+"–"+c.end+" · "+(c.cls||"—")+
+        (sp?" (menggantikan "+sp.as+")":"")+" · "+d+" jam · Rp "+Math.round(ratePerJam(c.tutor,c.cls)*d).toLocaleString("id-ID"));
     });
     if(rows.length>BATAS)L.push("… dan "+(rows.length-BATAS)+" sesi lainnya (lihat slip PDF).");
   }else{
@@ -3867,7 +4012,9 @@ function slipPDFBlob(){
   let isiBaris=[];
   if(lengkap){
     rows.forEach((c,i)=>{const d=durasi(c.start,c.end),rt=ratePerJam(c.tutor,c.cls);
-      isiBaris.push([String(i+1),fmtD_(c.date),c.start+"-"+c.end,c.cls||"-",c.lang||"-",
+      const sp=subOf(c);
+      isiBaris.push([String(i+1),fmtD_(c.date),c.start+"-"+c.end,
+        (c.cls||"-")+(sp?" (ganti "+sp.as+")":""),c.lang||"-",
         String(d),rt.toLocaleString("id-ID"),Math.round(rt*d).toLocaleString("id-ID")]);});
   }else{
     const by={};
@@ -4346,12 +4493,14 @@ function exLogRows(a,b){
   const now=new Date();
   const cs=classes.filter(c=>c.date>=a&&c.date<=b)
     .sort((x,y)=>x.date===y.date?String(x.start).localeCompare(String(y.start)):x.date.localeCompare(y.date));
-  const rows=[["Tanggal","Hari","Mulai","Selesai","Durasi (jam)","Bahasa","Tutor","Murid/Kelas","Tipe",
+  const rows=[["Tanggal","Hari","Mulai","Selesai","Durasi (jam)","Bahasa","Tutor Dibayar","Tutor Tetap",
+    "Pengganti?","Alasan Pengganti","Murid/Kelas","Tipe",
     "Status","Rate per Jam","Fee","Status Bayar","Status Murid","Tanda","Diubah Oleh","Waktu Ubah"]];
   cs.forEach(c=>{
-    const st=statusOf(c,now), nm=normName(c.cls||""), ms=nm?mstatNow(nm,c.date):null;
+    const st=statusOf(c,now), nm=normName(c.cls||""), ms=nm?mstatNow(nm,c.date):null, sp=subOf(c);
     rows.push([c.date,HARI7[new Date(c.date+"T00:00:00").getDay()],c.start,c.end,
-      durasi(c.start,c.end),c.lang||"",c.tutor,c.cls||"",tipeKelas(c),st,
+      durasi(c.start,c.end),c.lang||"",c.tutor,tutorAsli(c),sp?"ya":"",sp?(sp.note||""):"",
+      c.cls||"",tipeKelas(c),st,
       ratePerJam(c.tutor,c.cls),feeOf(c,now),
       st==="Selesai"?(paidCover(c.tutor,c.date)?"Sudah dibayar":"Belum dibayar"):"-",
       ms?(MSTAT[ms.st]||MSTAT.lain).l:"Aktif",
@@ -5800,7 +5949,7 @@ function boot(){
   if(!ME)setTimeout(pickUser,300);
   undoStack=lget(UKEY,[]);
   classes=lget(CKEY,[]).map(normClass);U=lget(RKEY,{rates:{},tutors:{}});paid=lget(PKEY,{});queue=lget(QKEY,[]);
-  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};
+  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};U.sub=U.sub||{};
   // tidak ada injeksi data bawaan — kalau cache kosong, tunggu sinkron dari Sheet
   document.getElementById("cfgUrl").value=CFG.url;
   document.getElementById("cfgToken").value=CFG.token;
