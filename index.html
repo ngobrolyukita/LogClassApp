@@ -289,7 +289,9 @@
   .followbox{background:#FDF1F1;border:1px solid #F1CFCF;border-radius:9px;padding:9px 11px;margin-bottom:9px;font-size:12px;color:#8E1F1F;font-weight:600}
   .sheet.mini{max-width:480px;border-radius:16px;max-height:92vh;max-height:92dvh;margin-bottom:auto;margin-top:auto}
   .sheet.mini .sheet-head{border-radius:16px 16px 0 0}
-  .sheetov.center{align-items:center;padding:14px}
+  .sheetov.center{align-items:center;justify-content:center;padding:14px}
+  .sheetov.center .sheet{border-radius:16px;max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px)}
+  .sheetov.center .sheet-head{border-radius:16px 16px 0 0}
   #printArea{display:none;background:#fff;font-family:Arial,sans-serif;color:#000;font-size:12px;padding:18px;max-width:800px;margin:0 auto}
   #printArea .ph{display:flex;justify-content:space-between;border-bottom:2.5px solid #5B3FD9;padding-bottom:8px;margin-bottom:12px}
   #printArea h1{font-size:17px;margin:0}
@@ -518,7 +520,7 @@
     </div>
   </div>
 
-  <div class="sheetov" id="subOv">
+  <div class="sheetov center" id="subOv">
     <div class="sheet">
       <div class="sheet-head">
         <div><div class="ttl">⇄ Tutor Pengganti Sementara</div>
@@ -527,8 +529,14 @@
       </div>
       <div class="sheet-body">
         <div id="subInfo"></div>
-        <div class="field"><label>Tutor pengganti</label>
-          <select id="subTutor" onchange="hitungFeeSub()" style="width:100%;padding:9px;font-size:13px"></select></div>
+        <div class="field"><label>Tutor pengganti <small style="font-weight:600;color:var(--ink-soft)">— ketik untuk mencari</small></label>
+          <input type="text" id="subTutor" list="dlSub" autocomplete="off" placeholder="Ketik nama tutor…"
+            oninput="hitungFeeSub()" onchange="hitungFeeSub()" style="width:100%;padding:9px;font-size:13px">
+          <datalist id="dlSub"></datalist></div>
+        <div class="field" style="margin-top:8px"><label>Rate per jam untuk sesi ini
+          <small style="font-weight:600;color:var(--ink-soft)">— kosongkan untuk memakai rate tutor itu</small></label>
+          <input type="number" id="subRate" min="0" step="1000" placeholder="otomatis"
+            oninput="hitungFeeSub()" style="width:100%;padding:9px;font-size:13px"></div>
         <div id="subFee" style="margin-top:8px"></div>
         <div class="field" style="margin-top:8px"><label>Keterangan</label>
           <input type="text" id="subNote" placeholder="mis. tutor sakit, izin, jadwal bentrok"></div>
@@ -540,7 +548,7 @@
     </div>
   </div>
 
-  <div class="sheetov" id="gtOv">
+  <div class="sheetov center" id="gtOv">
     <div class="sheet">
       <div class="sheet-head">
         <div><div class="ttl">🔄 Ganti Tutor</div><div class="sub" id="gtSub">Pilih dari daftar tutor terdaftar</div></div>
@@ -548,8 +556,10 @@
       </div>
       <div class="sheet-body">
         <div id="gtInfo"></div>
-        <div class="field"><label>Tutor baru</label>
-          <select id="gtTutor" style="width:100%;padding:9px;font-size:13px"></select></div>
+        <div class="field"><label>Tutor baru <small style="font-weight:600;color:var(--ink-soft)">— ketik untuk mencari</small></label>
+          <input type="text" id="gtTutor" list="dlGt" autocomplete="off" placeholder="Ketik nama tutor…"
+            style="width:100%;padding:9px;font-size:13px">
+          <datalist id="dlGt"></datalist></div>
         <div class="field" style="margin-top:8px"><label>Keterangan / alasan pindah</label>
           <input type="text" id="gtNote" placeholder="mis. jadwal bentrok, murid minta ganti, tutor resign"></div>
       </div>
@@ -968,7 +978,7 @@ function gantiTutorMurid(nmEnc){
   const semua=allTutorNames().filter(t=>!lama.some(l=>l.toLowerCase()===t.toLowerCase()));
   const sama=semua.filter(t=>bhs.length&&bhs.includes(tutorLang(t)));
   const lain=semua.filter(t=>!sama.includes(t));
-  const opt=t=>`<option value="${t}">${t}${tutorLang(t)?" — "+tutorLang(t):""}</option>`;
+  const opt=t=>`<option value="${t}">${tutorLang(t)||""}</option>`;
   document.getElementById("gtInfo").innerHTML=`
     <div class="mini-kpis" style="margin:0 0 9px">
       <div class="kpi hi"><div class="v">${pindah.length}</div><div class="l">Jadwal Dipindah</div></div>
@@ -978,10 +988,8 @@ function gantiTutorMurid(nmEnc){
     <p class="note" style="margin:0 0 9px">Yang dipindah hanya jadwal yang <b>belum jalan</b>.
       ${tetap} kelas yang sudah Selesai atau Postponed tetap tercatat atas nama tutor lama —
       supaya perhitungan gaji periode lalu tidak berubah.</p>`;
-  document.getElementById("gtTutor").innerHTML=
-    `<option value="">— pilih tutor —</option>`+
-    (sama.length?`<optgroup label="Mengajar ${bhs.join(", ")}">${sama.map(opt).join("")}</optgroup>`:"")+
-    (lain.length?`<optgroup label="Tutor lain">${lain.map(opt).join("")}</optgroup>`:"");
+  document.getElementById("dlGt").innerHTML=sama.concat(lain).map(opt).join("");
+  document.getElementById("gtTutor").value="";
   document.getElementById("gtNote").value="";
   bukaOv("gtOv");
 }
@@ -1001,8 +1009,11 @@ function keMasterTutor(){
 function lanjutGantiTutor(){
   if(!gtCtx)return;
   const {nm,lama,pindah,tetap}=gtCtx;
-  const baru=normName(document.getElementById("gtTutor").value||"");
-  if(!baru)return toast("Pilih dulu tutor barunya");
+  let baru=normName(document.getElementById("gtTutor").value||"");
+  if(!baru)return toast("Isi dulu nama tutor barunya");
+  const cocok=allTutorNames().find(x=>x.toLowerCase()===baru.toLowerCase());
+  if(cocok)baru=cocok;
+  else if(!confirm("\""+baru+"\" belum terdaftar sebagai tutor.\n\nDaftarkan dulu di Master Rate supaya rate-nya terisi.\n\nTetap pakai nama ini?"))return;
   const alasan=(document.getElementById("gtNote").value||"").trim();
   tutupGT();
   if(!pindah.length){
@@ -1209,11 +1220,19 @@ function statusOf(c,now){
   const s=new Date(c.date+"T"+c.start+":00"),e=new Date(c.date+"T"+c.end+":00");
   if(now>=e)return "Selesai"; if(now>=s)return "Berlangsung"; return "Akan Datang";
 }
+/* Rate yang berlaku untuk SATU sesi. Kalau sesi itu dipegang tutor pengganti dan
+   rate-nya diisi manual, angka itulah yang dipakai — bukan rate master si pengganti.
+   Semua perhitungan fee lewat sini supaya tidak ada dua sumber angka. */
+function rateSesi(c){
+  const s=(U.sub||{})[String(c&&c.id)];
+  if(s&&+s.rate>0)return +s.rate;
+  return ratePerJam(c.tutor,c.cls);
+}
 function feeOf(c,now){
   if(statusOf(c,now)!=="Selesai")return 0;
-  return Math.round(ratePerJam(c.tutor,c.cls)*durasi(c.start,c.end));
+  return Math.round(rateSesi(c)*durasi(c.start,c.end));
 }
-function projFee(c){return Math.round(ratePerJam(c.tutor,c.cls)*durasi(c.start,c.end));}
+function projFee(c){return Math.round(rateSesi(c)*durasi(c.start,c.end));}
 
 /* ---------- periode gaji (cut-off 25) ---------- */
 function periodKeyOf(dateStr){
@@ -1925,7 +1944,7 @@ function editClass(id){
   document.getElementById("eClass").value=c.cls||"";
   document.getElementById("eLang").innerHTML=DATA.langs.map(l=>`<option>${l}</option>`).join("");
   document.getElementById("eLang").value=c.lang;
-  document.getElementById("eFee").value=ratePerJam(c.tutor,c.cls)||"";
+  document.getElementById("eFee").value=rateSesi(c)||"";
   document.getElementById("dlAllStud").innerHTML=allStudentNames().map(s=>`<option>${s}</option>`).join("");
   document.getElementById("ePostpone").textContent=c.ov==="Postponed"?"Batal Postpone":"Postpone";
   document.getElementById("eClearFlag").style.display=c.flag?"inline-block":"none";
@@ -1938,7 +1957,7 @@ function closeEdit(){editId=null;tutupOv("editOv");}
 function renderFlagBox(c){
   const box=document.getElementById("eFlagBox");
   if(!c.flag){box.style.display="none";return;}
-  const master=ratePerJam(c.tutor,c.cls), dur=durasi(c.start,c.end);
+  const master=rateSesi(c), dur=durasi(c.start,c.end);
   let title=FLAGS[c.flag], desc="", act="";
   if(c.flag==="CEK_RATE"){
     const csv=+c.flagVal||0;
@@ -2235,7 +2254,7 @@ function renderLog(){
     const st=statusOf(c,now), cl=st.toLowerCase().replace(" ","");
     const fee=st==="Selesai"?feeOf(c,now):(st==="Postponed"?0:projFee(c));
     const zero=st!=="Selesai";
-    const noRate=ratePerJam(c.tutor,c.cls)===0;
+    const noRate=rateSesi(c)===0;
     return `<div class="cls-item${st==="Berlangsung"?" live":""}">
       <div class="cls-time">${luas?`<small class="dchip" onclick="bukaTgl('${c.date}')">${c.date.slice(8)}/${c.date.slice(5,7)}</small>`:""}${c.start}<small>– ${c.end}</small></div>
       <div class="cls-main">
@@ -2553,7 +2572,7 @@ function renderDrill(){
         <td>${c.cls?`<span class="link" onclick="closeDrill();openStudent(du('${eu(c.cls)}'))">${c.cls}</span>`:"—"}</td>
         <td>${c.lang||"—"}</td>
         <td class="num">${durasi(c.start,c.end)} jam</td>
-        <td class="num">${rp(ratePerJam(c.tutor,c.cls))}</td>
+        <td class="num">${rp(rateSesi(c))}</td>
         <td class="num"><b>${rp(feeOf(c,now))}</b></td>
         ${pakaiBayar?`<td>${bayarChip(c)}</td>`:""}</tr>`).join("")}</tbody>
       <tfoot><tr><td colspan="${pakaiBayar?6:6}">${rows.length} sesi</td>
@@ -3252,7 +3271,7 @@ function bukaSub(idEnc){
   const lain=kandidat.filter(t=>!sama.includes(t));
   const opt=t=>{
     const rt=ratePerJam(t,c.cls);
-    return `<option value="${t}">${t}${tutorLang(t)?" — "+tutorLang(t):""} · ${rt?rp(rt)+"/jam":"RATE BELUM DIISI"}</option>`;
+    return `<option value="${t}">${tutorLang(t)?tutorLang(t)+" · ":""}${rt?rp(rt)+"/jam":"rate belum diisi"}</option>`;
   };
   document.getElementById("subInfo").innerHTML=`
     <div class="mini-kpis" style="margin:0 0 9px">
@@ -3262,14 +3281,14 @@ function bukaSub(idEnc){
       <div class="kpi"><div class="v" style="font-size:12px">${rp(Math.round(ratePerJam(asli,c.cls)*jam))}</div><div class="l">Fee Kalau Tidak Diganti</div></div>
     </div>
     ${s?`<div class="filterchip" style="background:#E8F1F6;border-color:#9CC4D8">
-        Sesi ini sedang dipegang <b>${c.tutor}</b> sebagai pengganti ${s.as}${s.note?" · "+s.note:""}
+        Sesi ini sedang dipegang <b>${c.tutor}</b> sebagai pengganti ${s.as}${s.note?" · "+s.note:""}${
+        +s.rate>0?" · rate manual "+rp(s.rate)+"/jam":""}
         <button class="btn ghost small" onclick="lepasSub('${eu(String(c.id))}')">↩ Kembalikan ke ${s.as}</button></div>`:""}
     <p class="note" style="margin:0 0 9px">Fee sesi ini akan masuk ke <b>tutor pengganti</b>, memakai rate pengganti itu sendiri.
       Sesi lain milik ${asli} tidak terpengaruh. Kelas ini tetap tercatat sebagai kelas ${asli} di halaman murid.</p>`;
-  document.getElementById("subTutor").innerHTML=`<option value="">— pilih tutor pengganti —</option>`+
-    (sama.length?`<optgroup label="Mengajar ${c.lang}">${sama.map(opt).join("")}</optgroup>`:"")+
-    (lain.length?`<optgroup label="Tutor lain">${lain.map(opt).join("")}</optgroup>`:"");
-  if(s)document.getElementById("subTutor").value=c.tutor;
+  document.getElementById("dlSub").innerHTML=sama.concat(lain).map(opt).join("");
+  document.getElementById("subTutor").value=s?c.tutor:"";
+  document.getElementById("subRate").value=(s&&+s.rate>0)?s.rate:"";
   document.getElementById("subNote").value=s?(s.note||""):"";
   document.getElementById("subFee").innerHTML="";
   bukaOv("subOv");
@@ -3278,36 +3297,53 @@ function bukaSub(idEnc){
 function hitungFeeSub(){
   if(!subCtx)return;
   const c=classes.find(x=>String(x.id)===String(subCtx.id));
-  const t=document.getElementById("subTutor").value;
+  let t=normName(document.getElementById("subTutor").value||"");
   const e=document.getElementById("subFee");
   if(!c||!t){e.innerHTML="";return;}
-  const jam=durasi(c.start,c.end), rt=ratePerJam(t,c.cls), fee=Math.round(rt*jam);
-  e.innerHTML=rt>0
-    ? `<div class="filterchip" style="background:#E6F4EC;border-color:#9CCBB2">
-        Fee untuk <b>${t}</b>: ${rp(rt)}/jam × ${jam} jam = <b>${rp(fee)}</b></div>`
-    : `<div class="filterchip" style="background:#FDECEC;border-color:#E5B4B4">
-        <b>Rate ${t} belum diisi</b> — kalau diteruskan, sesi ini dihitung <b>Rp 0</b>.
-        Isi dulu di Master Rate supaya gajinya tidak hilang.</div>`;
+  // samakan dulu dengan ejaan yang terdaftar, supaya "lee" tetap ketemu rate "Lee"
+  const cocok=allTutorNames().find(x=>x.toLowerCase()===t.toLowerCase());
+  const kenal=!!cocok; if(cocok)t=cocok;
+  const jam=durasi(c.start,c.end);
+  const manual=+String(document.getElementById("subRate").value||"").replace(/\D/g,"")||0;
+  const rt=manual>0?manual:ratePerJam(t,c.cls);
+  const fee=Math.round(rt*jam);
+  e.innerHTML=
+    (!kenal?`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+        <b>"${t}"</b> belum ada di daftar tutor — kalau diteruskan, namanya ditambahkan sebagai tutor baru.</div>`:"")+
+    (rt>0
+      ? `<div class="filterchip" style="background:#E6F4EC;border-color:#9CCBB2">
+          Fee untuk <b>${t}</b>: ${rp(rt)}/jam × ${jam} jam = <b>${rp(fee)}</b>
+          <span style="font-weight:600;color:var(--ink-soft)">${manual>0?"· rate diisi manual, khusus sesi ini":"· rate master tutor"}</span></div>`
+      : `<div class="filterchip" style="background:#FDECEC;border-color:#E5B4B4">
+          <b>Rate ${t} belum ada</b> — isi kotak rate di atas, atau sesi ini dihitung <b>Rp 0</b>.</div>`);
 }
 function pasangSub(){
   if(!subCtx||!guard())return;
   const c=classes.find(x=>String(x.id)===String(subCtx.id));
   if(!c)return;
-  const baru=normName(document.getElementById("subTutor").value||"");
-  if(!baru)return toast("Pilih dulu tutor penggantinya");
+  let baru=normName(document.getElementById("subTutor").value||"");
+  if(!baru)return toast("Isi dulu nama tutor penggantinya");
+  const cocok=allTutorNames().find(x=>x.toLowerCase()===baru.toLowerCase());
+  if(cocok)baru=cocok;                                  // samakan ejaan dengan yang sudah ada
   const asli=tutorAsli(c);
   if(baru===asli)return lepasSub(eu(String(c.id)));
   const note=(document.getElementById("subNote").value||"").trim();
-  const jam=durasi(c.start,c.end), rt=ratePerJam(baru,c.cls);
-  if(rt<=0&&!confirm("Rate "+baru+" belum diisi.\n\nKalau diteruskan, sesi ini dihitung Rp 0 dan gajinya hilang.\n\nTetap lanjut?"))return;
+  const manual=+String(document.getElementById("subRate").value||"").replace(/\D/g,"")||0;
+  const jam=durasi(c.start,c.end), rt=manual>0?manual:ratePerJam(baru,c.cls);
+  if(!cocok&&!confirm("\""+baru+"\" belum terdaftar sebagai tutor.\n\nTambahkan sebagai tutor baru?"))return;
+  if(rt<=0&&!confirm("Rate "+baru+" belum ada dan kotak rate dikosongkan.\n\nKalau diteruskan, sesi ini dihitung Rp 0 dan gajinya hilang.\n\nTetap lanjut?"))return;
   snapshot("Pengganti "+baru);
   U.sub=U.sub||{};
-  U.sub[String(c.id)]={as:asli,note,by:meName(),at:new Date().toISOString()};
+  U.sub[String(c.id)]={as:asli,note,rate:manual,by:meName(),at:new Date().toISOString()};
+  if(!cocok){delete U.del["T:"+baru];U.tutors[baru]={lang:c.lang||"",rate:0};
+    if(CFG.url)push({action:"setrate",rows:[{id:"T:"+baru,tutor:baru,cls:"",rate:0,lang:c.lang||""}]});}
   c.tutor=baru;stampBy(c,"pengganti");
   upsertClass(c);pushSUB(String(c.id),U.sub[String(c.id)]);
   cacheAll();tutupOv("subOv");subCtx=null;
   renderAll();if(detailCtx)renderDetail();
-  toast(fmtD_(c.date)+" "+c.start+" dipegang "+baru+" · fee "+rp(Math.round(rt*jam))+" masuk ke "+baru);
+  refreshTutorList();
+  toast(fmtD_(c.date)+" "+c.start+" dipegang "+baru+" · fee "+rp(Math.round(rt*jam))+" masuk ke "+baru+
+    (manual>0?" (rate manual)":""));
 }
 function lepasSub(idEnc){
   if(!guard())return;
@@ -3326,7 +3362,8 @@ function lepasSub(idEnc){
 function subBadge(c){
   const s=subOf(c);
   if(!s)return "";
-  return `<span class="subtag" title="Pengganti ${s.as}${s.note?" · "+s.note:""} · fee masuk ke ${c.tutor}">⇄ pengganti ${s.as}</span>`;
+  return `<span class="subtag" title="Pengganti ${s.as}${s.note?" · "+s.note:""} · fee masuk ke ${c.tutor}${
+    +s.rate>0?" · rate manual "+rp(s.rate)+"/jam":""}">⇄ pengganti ${s.as}${+s.rate>0?" · "+rp(s.rate)+"/j":""}</span>`;
 }
 /* ================= TAB DATA MURID ================= */
 let mLang=new Set(), mStat=new Set(), mBatas=100;
@@ -3811,7 +3848,7 @@ function slipTeks(){
       const d=durasi(c.start,c.end);
       const sp=subOf(c);
       L.push((i+1)+". "+fmtD_(c.date)+" "+c.start+"–"+c.end+" · "+(c.cls||"—")+
-        (sp?" (menggantikan "+sp.as+")":"")+" · "+d+" jam · Rp "+Math.round(ratePerJam(c.tutor,c.cls)*d).toLocaleString("id-ID"));
+        (sp?" (menggantikan "+sp.as+")":"")+" · "+d+" jam · Rp "+Math.round(rateSesi(c)*d).toLocaleString("id-ID"));
     });
     if(rows.length>BATAS)L.push("… dan "+(rows.length-BATAS)+" sesi lainnya (lihat slip PDF).");
   }else{
@@ -4011,7 +4048,7 @@ function slipPDFBlob(){
 
   let isiBaris=[];
   if(lengkap){
-    rows.forEach((c,i)=>{const d=durasi(c.start,c.end),rt=ratePerJam(c.tutor,c.cls);
+    rows.forEach((c,i)=>{const d=durasi(c.start,c.end),rt=rateSesi(c);
       const sp=subOf(c);
       isiBaris.push([String(i+1),fmtD_(c.date),c.start+"-"+c.end,
         (c.cls||"-")+(sp?" (ganti "+sp.as+")":""),c.lang||"-",
@@ -4019,7 +4056,7 @@ function slipPDFBlob(){
   }else{
     const by={};
     rows.forEach(c=>{const k=c.cls||"-";
-      by[k]=by[k]||{n:0,jam:0,g:0,langs:new Set(),rate:ratePerJam(c.tutor,c.cls)};
+      by[k]=by[k]||{n:0,jam:0,g:0,langs:new Set(),rate:rateSesi(c)};
       by[k].n++;by[k].jam+=durasi(c.start,c.end);by[k].g+=feeOf(c,now);by[k].langs.add(c.lang);});
     Object.entries(by).sort((a,b)=>b[1].g-a[1].g).forEach(([nm,o],i)=>
       isiBaris.push([String(i+1),nm,[...o.langs].join(", "),String(o.n),
@@ -4261,7 +4298,7 @@ function slipFull(){
     <table>
       <tr><th>No</th><th>Tanggal</th><th>Jam</th><th>Murid / Kelas</th><th>Program</th>
         <th class="num">Durasi</th><th class="num">Rate/Jam (Rp)</th><th class="num">Fee (Rp)</th></tr>
-      ${rows.map((c,i)=>{const d=durasi(c.start,c.end),rt=ratePerJam(c.tutor,c.cls);
+      ${rows.map((c,i)=>{const d=durasi(c.start,c.end),rt=rateSesi(c);
         return `<tr><td>${i+1}</td><td>${fmtD_(c.date)}</td><td>${c.start}–${c.end}</td>
           <td>${c.cls||"—"}</td><td>${c.lang}</td><td class="num">${d}</td>
           <td class="num">${rt.toLocaleString("id-ID")}</td>
@@ -4276,7 +4313,7 @@ function slipCompact(pgbreak){
   const by={};
   rows.forEach(c=>{
     const k=c.cls||"—";
-    by[k]=by[k]||{n:0,jam:0,g:0,langs:new Set(),rate:ratePerJam(c.tutor,c.cls)};
+    by[k]=by[k]||{n:0,jam:0,g:0,langs:new Set(),rate:rateSesi(c)};
     by[k].n++;by[k].jam+=durasi(c.start,c.end);by[k].g+=feeOf(c,new Date());by[k].langs.add(c.lang);});
   const items=Object.entries(by).sort((a,b)=>b[1].g-a[1].g);
   return slipShell(`<div style="font-size:11px;font-weight:bold;margin:8px 0 2px">Rincian per Murid / Kelas:</div>
@@ -4351,7 +4388,7 @@ function togglePaid(t){
   const sudahRp=sdh.reduce((s,c)=>s+feeOf(c,now),0);
   const jam=Math.round(cs.reduce((s,c)=>s+durasi(c.start,c.end),0)*100)/100;
   const ket=cs.filter(c=>c.flag).length;
-  const rate0=cs.filter(c=>ratePerJam(c.tutor,c.cls)===0).length;
+  const rate0=cs.filter(c=>rateSesi(c)===0).length;
   if(on&&!cs.length)return toast(t+" sudah lunas untuk periode ini");
   if(on){
     if(!confirm(
@@ -4501,7 +4538,7 @@ function exLogRows(a,b){
     rows.push([c.date,HARI7[new Date(c.date+"T00:00:00").getDay()],c.start,c.end,
       durasi(c.start,c.end),c.lang||"",c.tutor,tutorAsli(c),sp?"ya":"",sp?(sp.note||""):"",
       c.cls||"",tipeKelas(c),st,
-      ratePerJam(c.tutor,c.cls),feeOf(c,now),
+      rateSesi(c),feeOf(c,now),
       st==="Selesai"?(paidCover(c.tutor,c.date)?"Sudah dibayar":"Belum dibayar"):"-",
       ms?(MSTAT[ms.st]||MSTAT.lain).l:"Aktif",
       c.flag?(FLAGS[c.flag]||c.flag):"",c.by||"",c.at||""]);
@@ -5306,7 +5343,7 @@ function payHere(tutor){
   const semuaP=classes.filter(c=>c.tutor===tutor&&inPay(c,key)&&statusOf(c,now)==="Selesai");
   const totP=semuaP.reduce((a,c)=>a+feeOf(c,now),0);
   const sudahP=splitPaid(tutor,semuaP).sudah.reduce((a,c)=>a+feeOf(c,now),0);
-  const rate0=belum.filter(c=>ratePerJam(c.tutor,c.cls)===0).length;
+  const rate0=belum.filter(c=>rateSesi(c)===0).length;
   if(!confirm(
     "TANDAI DIBAYAR — RENTANG TANGGAL\n\n"+tutor+"\n"+pFrom+" s/d "+pTo+"\n\n"+
     "  Sesi dibayar sekarang : "+belum.length+"\n"+
@@ -5334,7 +5371,7 @@ function payRange(tutor){
   if(!belum.length)return toast("Semua sesi di rentang ini sudah ditandai dibayar");
   const gaji=belum.reduce((a,c)=>a+feeOf(c,now),0);
   const jam=Math.round(belum.reduce((a,c)=>a+durasi(c.start,c.end),0)*100)/100;
-  const rate0=belum.filter(c=>ratePerJam(c.tutor,c.cls)===0).length;
+  const rate0=belum.filter(c=>rateSesi(c)===0).length;
   if(!confirm(
     "TANDAI DIBAYAR — RENTANG TANGGAL\n\n"+tutor+"\n"+dFrom+" s/d "+dTo+"\n\n"+
     "  Sesi belum dibayar : "+belum.length+"\n"+
@@ -5690,7 +5727,7 @@ function exportCSV(){
   const rows=[["Date","Start Time","End Time","Durasi (jam)","Language","Tutor","Student/Class","Notes","Status","Rate (Rp/jam)","","Fee Final (Rp)"]];
   cs.forEach(c=>{const st=statusOf(c,now);
     rows.push([c.date,c.start,c.end,durasi(c.start,c.end),c.lang,c.tutor,c.cls,"",
-      st==="Selesai"?"Done":st,ratePerJam(c.tutor,c.cls),"",feeOf(c,now)]);});
+      st==="Selesai"?"Done":st,rateSesi(c),"",feeOf(c,now)]);});
   const csv=rows.map(r=>r.map(esc).join(",")).join("\n");
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));
@@ -5844,7 +5881,7 @@ function importCSVFile(input){
       classes=classes.filter(c=>!dates.has(c.date));
       const delIds=hapus.map(c=>String(c.id));
       incoming.forEach(({c,fee})=>{
-        const dur=durasi(c.start,c.end), known=ratePerJam(c.tutor,c.cls);
+        const dur=durasi(c.start,c.end), known=rateSesi(c);
         const tutor=c.tutor, cls=c.cls, lang=c.lang;
         // nama baru -> otomatis masuk master data, tapi ditandai
         const tBaru=!knownTutors.has(tutor), sBaru=cls&&!knownStudents.has(cls);
