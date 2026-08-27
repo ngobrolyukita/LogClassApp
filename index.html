@@ -1718,7 +1718,7 @@ async function fullSync(){
     // Sheet = satu-satunya sumber data. Tidak pernah ada pengisian otomatis.
     classes=raw.map(normClass).filter(c=>c.tutor&&/^\d{4}-\d{2}-\d{2}$/.test(c.date));
     if(raw.length&&!classes.length)toast("Data terbaca "+raw.length+" baris tapi format tanggalnya tidak dikenali — hubungi admin");
-    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{},sub:{}};sisaJual=[];
+    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{},sub:{},wk:{}};sisaJual=[];
     (all.rates||[]).forEach(r=>{
       const id=String(r.id||""), val=+r.rate;
       if(id.slice(0,2)==="N:"){U.newTag[id.slice(2)]=r.lang||"nama";return;}   // penanda nama baru
@@ -1738,6 +1738,10 @@ async function fullSync(){
           (U.topup[nm]=U.topup[nm]||[]).push({ke:+p[1]||seq,tgl:p[2]||"",jam:val||0,
             note:p[3]||"",by:p[4]||"",at:p[5]||"",seq});
         }
+        return;}
+      if(id.slice(0,2)==="W:"){                                                 // tutor dibayar mingguan
+        const nm=id.slice(2);
+        if(nm&&val)U.wk[nm]=1;
         return;}
       if(id.slice(0,2)==="X:"){                                                 // tutor pengganti sementara
         const cid=id.slice(2), raw=String(r.lang||"");
@@ -3246,6 +3250,97 @@ function hapusBeli(oid){
   renderMurid();if(detailCtx)renderDetail();
   toast("Catatan pembelian dihapus");
 }
+/* ================= GAJI MINGGUAN (Senin–Minggu) =================
+   Sebagian tutor dibayar per minggu, bukan per periode cut-off 26–25.
+   Penandanya per tutor dan bisa dimatikan kapan saja — kalau mati, tutor itu
+   kembali mengikuti periode cut-off seperti yang lain.
+   Disimpan sebagai baris "W:<nama tutor>" di sheet Rates. */
+const WK_AWAL=["Wahyudian","Agnes Kania","Wisnu","Robby","Thomas","Arief","Syifa","Marcos"];
+function seedMingguan(){
+  if(lget("ny_wk_seed_v1",false))return;
+  lset("ny_wk_seed_v1",true);
+  if(Object.keys(U.wk||{}).length)return;
+  const semua=allTutorNames();
+  WK_AWAL.forEach(cari=>{
+    const k=cari.toLowerCase();
+    const t=semua.find(x=>x.toLowerCase()===k)||
+            semua.find(x=>x.toLowerCase().startsWith(k+" "))||
+            semua.find(x=>x.toLowerCase().split(" ").includes(k));
+    if(t)U.wk[t]=1;
+  });
+  cacheAll();
+}
+function mingguan(t){return !!(U.wk||{})[t];}
+function setMingguan(t,on){
+  if(!guard())return;
+  U.wk=U.wk||{};
+  if(on)U.wk[t]=1;else delete U.wk[t];
+  cacheAll();
+  if(CFG.url){
+    if(on)push({action:"setrate",rows:[{id:"W:"+t,tutor:t,cls:"",rate:1,lang:"mingguan"}]});
+    else push({action:"delrate",ids:["W:"+t]});
+  }
+  renderAll();if(detailCtx)renderDetail();
+  toast(t+(on?" dibayar mingguan (Senin–Minggu)":" kembali ke periode cut-off 26–25"));
+}
+function akhirMinggu(senin){
+  const d=new Date(senin+"T00:00:00");d.setDate(d.getDate()+6);
+  return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+}
+/* daftar minggu Senin–Minggu yang bersinggungan dengan rentang tertentu */
+function daftarMinggu(a,b){
+  const out=[];
+  let s=weekStart(a);
+  const batas=weekStart(b);
+  let n=0;
+  while(s<=batas&&n++<60){
+    out.push([s,akhirMinggu(s)]);
+    const d=new Date(s+"T00:00:00");d.setDate(d.getDate()+7);
+    s=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+  }
+  return out;
+}
+function rekapMinggu(t,a,b){
+  const now=new Date();
+  return daftarMinggu(a,b).map(([x,y])=>{
+    const rows=classes.filter(c=>c.tutor===t&&c.date>=x&&c.date<=y&&statusOf(c,now)==="Selesai");
+    const gaji=rows.reduce((s2,c)=>s2+feeOf(c,now),0);
+    const jam=rows.reduce((s2,c)=>s2+durasi(c.start,c.end),0);
+    const lunas=rows.length>0&&rows.every(c=>paidCover(t,c.date));
+    return {from:x,to:y,n:rows.length,jam:Math.round(jam*100)/100,gaji,lunas};
+  }).filter(w=>w.n>0);
+}
+function labelMinggu(x,y){return fmtD_(x).slice(0,5)+"–"+fmtD_(y);}
+/* blok mingguan di halaman detail tutor */
+function blokMingguan(t){
+  const on=mingguan(t);
+  // ikut periode yang sedang dilihat di Tutor Card, bukan selalu periode berjalan
+  const selP=(document.getElementById("fPeriod")||{}).value||periodKeyOf(todayStr());
+  const [a,b]=(dPeriod==="range"&&dFrom&&dTo)?[dFrom,dTo]:periodRange(selP);
+  const W=on?rekapMinggu(t,a,b):[];
+  return `<div class="jdet" style="margin:10px 0">
+    <div class="jdet-h">
+      <span class="t">🗓 Gaji Mingguan</span>
+      <span class="chip" style="${on?"background:#E6F4EC;color:#1B6B47":""}">${on?"AKTIF · Senin–Minggu":"tidak aktif"}</span>
+      <span style="flex:1"></span>
+      <button class="btn ${on?"ghost":""} small editonly" onclick="setMingguan(du('${eu(t)}'),${on?"false":"true"})">
+        ${on?"Matikan, pakai periode 26–25":"Aktifkan bayar mingguan"}</button>
+    </div>
+    ${on?(W.length?W.map(w=>`<div class="belirow">
+        <span class="tg">${labelMinggu(w.from,w.to)}</span>
+        <span class="pr">${w.n} sesi · ${w.jam} jam
+          ${w.lunas?`<span class="mtag aktif">lunas</span>`:`<span class="mtag vakum">belum dibayar</span>`}</span>
+        <span class="rp">${rp(w.gaji)}</span>
+        <button class="btn ghost small" onclick="slipPDF('${eu(t)}','${w.from}','${w.to}')">Slip</button>
+        <button class="btn ${w.lunas?"ghost":"warn"} small editonly"
+          onclick="setPaidRange(du('${eu(t)}'),'${w.from}','${w.to}',${w.lunas?"false":"true"});renderDetail()">
+          ${w.lunas?"Batal":"Tandai dibayar"}</button>
+      </div>`).join("")
+      :`<div class="empty" style="padding:10px">Belum ada kelas Selesai pada ${fmtD_(a)} – ${fmtD_(b)}.</div>`)
+    :`<p class="note" style="margin:0">Tutor ini mengikuti periode gaji cut-off 26–25 seperti yang lain.
+       Aktifkan kalau pembayarannya per minggu Senin–Minggu — nanti muncul daftar minggu beserta total dan tombol slip masing-masing.</p>`}
+  </div>`;
+}
 /* ================= TUTOR PENGGANTI SEMENTARA =================
    Kasusnya: tutor tetap berhalangan untuk beberapa sesi saja, digantikan tutor lain,
    dan sesi itu HARUS dibayar ke penggantinya.
@@ -4228,18 +4323,73 @@ function slipPDF(tutorEnc,from,to){
   openSlipView();
 }
 function slipRange(){return slipCtx&&slipCtx.from?[slipCtx.from,slipCtx.to]:null;}
+function isiSlipRange(a,b){
+  document.getElementById("slFrom").value=a;
+  document.getElementById("slTo").value=b;
+  pratinjauSlipRange();
+}
+function pratinjauSlipRange(){
+  const e=document.getElementById("slPrev"); if(!e||!slipCtx)return;
+  const a=document.getElementById("slFrom").value, b=document.getElementById("slTo").value;
+  if(!a||!b){e.innerHTML="";return;}
+  const now=new Date(), x=a<=b?a:b, y=a<=b?b:a;
+  const rows=classes.filter(c=>c.tutor===slipCtx.tutor&&c.date>=x&&c.date<=y&&statusOf(c,now)==="Selesai");
+  const gaji=rows.reduce((s2,c)=>s2+feeOf(c,now),0);
+  const jam=rows.reduce((s2,c)=>s2+durasi(c.start,c.end),0);
+  const lunas=rows.length>0&&rows.every(c=>paidCover(slipCtx.tutor,c.date));
+  e.innerHTML=rows.length
+    ? `<div class="filterchip" style="background:#E6F4EC;border-color:#9CCBB2">
+        ${fmtD_(x)} – ${fmtD_(y)}: <b>${rows.length} sesi</b> · ${Math.round(jam*100)/100} jam ·
+        <b>${rp(gaji)}</b> · ${lunas?"sudah dibayar (cap PAID otomatis nyala)":"belum dibayar (slip draf konfirmasi)"}</div>`
+    : `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+        Tidak ada kelas Selesai di ${fmtD_(x)} – ${fmtD_(y)} — slipnya akan kosong.</div>`;
+}
+function terapkanSlipRange(){slipScope(true);}
+function __stamp(){return !!(slipCtx&&slipCtx.stamp);}
+function __prevHTML(){const e=document.getElementById("slPrev");return e?e.innerHTML:"";}
 function slipPeriodLabel(){
   const r=slipRange();
   return r?fmtD_(r[0])+" – "+fmtD_(r[1]):periodLabel(slipCtx.key);
 }
 // pindah antara slip rentang dan slip periode penuh tanpa keluar dari tampilan cetak
+/* Dulu tombol ini menolak jalan kalau belum ada rentang yang dipilih di layar lain.
+   Sekarang rentangnya bisa diisi langsung di sini, jadi selalu bisa dipakai —
+   baik untuk slip draf konfirmasi maupun slip yang sudah dibayar. */
 function slipScope(pakaiRentang){
   if(!slipCtx)return;
+  const box=document.getElementById("slipRangeBox");
   if(pakaiRentang){
-    const a=(payMode==="range"&&pFrom)?pFrom:(dPeriod==="range"&&dFrom?dFrom:"");
-    if(!a)return toast("Belum ada rentang tanggal yang dipilih");
-    slipCtx.from=a;slipCtx.to=(payMode==="range"&&pTo)?pTo:dTo;
-  }else{slipCtx.from="";slipCtx.to="";}
+    if(box&&box.style.display==="none"){
+      const t=slipCtx.tutor;
+      const [pa,pb]=periodRange(slipCtx.key);
+      let a=slipCtx.from||(payMode==="range"&&pFrom?pFrom:(dPeriod==="range"&&dFrom?dFrom:""));
+      let b=slipCtx.to  ||(payMode==="range"&&pTo  ?pTo  :(dPeriod==="range"&&dTo  ?dTo  :""));
+      if(!a){                                        // bawaan: minggu berjalan kalau tutor mingguan
+        if(mingguan(t)){a=weekStart(todayStr());b=akhirMinggu(a);}
+        else{a=pa;b=pb;}
+      }
+      document.getElementById("slFrom").value=a;
+      document.getElementById("slTo").value=b;
+      // pintasan minggu dihitung dari periode yang memuat tanggal awal yang tampil,
+      // bukan dari periode berjalan — supaya tetap muncul saat melihat periode lama
+      const [wa,wb]=periodRange(periodKeyOf(a||pa));
+      const W=rekapMinggu(t,wa,wb);
+      document.getElementById("slWeeks").innerHTML=W.length
+        ? `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+            <span style="font-size:11px;font-weight:700;color:#5D5680">${mingguan(t)?"Minggu (Sen–Min):":"Pintasan mingguan:"}</span>`+
+          W.map(w=>`<button class="btn ${w.lunas?"ghost":"small"} small"
+             onclick="isiSlipRange('${w.from}','${w.to}')" title="${w.n} sesi · ${rp(w.gaji)}${w.lunas?" · sudah dibayar":""}">
+             ${labelMinggu(w.from,w.to)} · ${rp(w.gaji)}${w.lunas?" ✓":""}</button>`).join("")+`</div>`
+        : "";
+      box.style.display="block";
+      pratinjauSlipRange();
+      return;
+    }
+    const a=document.getElementById("slFrom").value, b=document.getElementById("slTo").value;
+    if(!a||!b)return toast("Isi dulu tanggal dari dan sampainya");
+    slipCtx.from=a<=b?a:b;slipCtx.to=a<=b?b:a;
+    box.style.display="none";
+  }else{slipCtx.from="";slipCtx.to="";if(box)box.style.display="none";}
   const now=new Date();
   const rows=classes.filter(c=>c.tutor===slipCtx.tutor&&statusOf(c,now)==="Selesai"&&
     (slipCtx.from?(c.date>=slipCtx.from&&c.date<=slipCtx.to):inPay(c,slipCtx.key)));
@@ -4369,6 +4519,17 @@ function openSlipView(){
       <button class="btn warn small" id="btnStamp" onclick="toggleStamp()">Cap PAID: OFF</button>
       <button class="btn" onclick="window.print()">🖨 Cetak / Simpan PDF</button>
       <button class="btn ghost" onclick="_printCleanup&&_printCleanup()">← Kembali</button>
+      <div class="noprint" id="slipRangeBox" style="display:none;width:100%;border-top:1px solid #DDD;padding-top:8px;margin-top:2px">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          <b style="font-size:12px">Rentang bayar:</b>
+          <span>dari <input type="date" id="slFrom" onchange="pratinjauSlipRange()"></span>
+          <span>s/d <input type="date" id="slTo" onchange="pratinjauSlipRange()"></span>
+          <button class="btn small" onclick="terapkanSlipRange()">Terapkan</button>
+          <button class="btn ghost small" onclick="slipScope(false)">✕ Kembali ke periode penuh</button>
+        </div>
+        <div id="slWeeks" style="margin-top:7px"></div>
+        <div id="slPrev" style="margin-top:6px"></div>
+      </div>
       <div class="noprint" id="shareRow" style="width:100%;border-top:1px solid #DDD;padding-top:8px;margin-top:2px"></div>
       <div class="hint">✏️ Preview bisa diedit langsung sebelum cetak (tap teksnya). Ganti versi akan memuat ulang isi slip. <b>Lengkap</b> = rincian tiap sesi · <b>Ringkas</b> = rekap per murid · <b>Keduanya</b> = 2 halaman.</div>
     </div><div id="slipContent" contenteditable="true" spellcheck="false"></div>`;
@@ -5456,6 +5617,7 @@ function renderDetail(){
           ${bl.length?`· <span style="color:var(--red)">${bl.length} sesi (${rp(blRp)}) belum</span>`:""}</div>
         ${bl.length?`<button class="btn small" onclick="payRange(du('${eu(name)}'))">Tandai rentang ini dibayar</button>`:""}
       </div>`;})():""}
+  ${type==="tutor"?blokMingguan(name):""}
   ${type==="tutor"&&paidList(name).length?`<div class="rangepay" style="display:block">
       <div style="font-weight:700;margin-bottom:5px">Riwayat pembayaran</div>
       ${paidList(name).map(p=>`<div class="paidchip">${p.rentang?p.from+" → "+p.to:"Periode penuh "+periodLabel(p.key)}
@@ -5996,7 +6158,7 @@ function boot(){
   if(!ME)setTimeout(pickUser,300);
   undoStack=lget(UKEY,[]);
   classes=lget(CKEY,[]).map(normClass);U=lget(RKEY,{rates:{},tutors:{}});paid=lget(PKEY,{});queue=lget(QKEY,[]);
-  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};U.sub=U.sub||{};
+  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};U.sub=U.sub||{};U.wk=U.wk||{};seedMingguan();
   // tidak ada injeksi data bawaan — kalau cache kosong, tunggu sinkron dari Sheet
   document.getElementById("cfgUrl").value=CFG.url;
   document.getElementById("cfgToken").value=CFG.token;
