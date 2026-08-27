@@ -194,6 +194,7 @@
   .sheet-foot{flex:0 0 auto;background:var(--card);border-top:1px solid var(--line);
         padding:11px 14px calc(11px + env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;gap:8px;z-index:2}
   body.terkunci{overflow:hidden}
+  body:has(#printArea[style*="block"]){overflow:auto!important}
   .mrow{display:grid;grid-template-columns:74px 1fr 150px 92px 92px 108px 96px;gap:9px;align-items:center;
         padding:9px 10px;border-bottom:1px solid var(--line);font-size:12px}
   .mrow:hover{background:var(--iris-tint)}
@@ -995,9 +996,15 @@ function gantiTutorMurid(nmEnc){
 }
 /* Selama panel terbuka, halaman di belakangnya dikunci. Tanpa ini, di layar pendek
    gulirannya "nyangkut" ke halaman belakang dan tombol di panel jadi tak terjangkau. */
+/* Kunci gulir hanya kalau ada panel yang benar-benar terlihat.
+   Panel yang sudah di-display:none (mis. saat tampilan slip dibuka) tidak dihitung —
+   ini yang dulu bikin halaman slip ikut terkunci dan tidak bisa digulir. */
 function kunciLatar(){
-  document.body.classList.toggle("terkunci",
-    !!document.querySelector(".sheetov.on"));
+  const adaTampil=[...document.querySelectorAll(".sheetov.on")]
+    .some(el=>el.style.display!=="none"&&getComputedStyle(el).display!=="none");
+  const slipTampil=(document.getElementById("printArea")||{}).style?
+    document.getElementById("printArea").style.display==="block":false;
+  document.body.classList.toggle("terkunci",adaTampil&&!slipTampil);
 }
 function bukaOv(id){document.getElementById(id).classList.add("on");kunciLatar();}
 function tutupOv(id){document.getElementById(id).classList.remove("on");kunciLatar();}
@@ -4350,6 +4357,7 @@ function openSlipView(){
   const prevDisp=hide.map(el=>el.style.display);
   const prevOn=[...document.querySelectorAll(".sheetov.on")];
   hide.forEach(el=>el.style.display="none");
+  prevOn.forEach(el=>el.classList.remove("on"));
   const pa=document.getElementById("printArea");
   pa.innerHTML=`<div class="noprint">
       <span style="font-weight:800;font-size:12px">Versi slip:</span>
@@ -4366,6 +4374,7 @@ function openSlipView(){
     </div><div id="slipContent" contenteditable="true" spellcheck="false"></div>`;
   paintSlip();renderShareRow();
   pa.style.display="block";
+  document.body.classList.remove("terkunci");     // slip harus bisa digulir
   window.scrollTo(0,0);
   let done=false;
   _printCleanup=()=>{
@@ -4373,6 +4382,7 @@ function openSlipView(){
     pa.style.display="none";pa.innerHTML="";slipCtx=null;
     hide.forEach((el,i)=>el.style.display=prevDisp[i]||"");
     prevOn.forEach(el=>el.classList.add("on"));
+    kunciLatar();
     _printCleanup=null;
   };
   window.onafterprint=null;
