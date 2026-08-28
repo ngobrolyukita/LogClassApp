@@ -524,6 +524,20 @@
     </div>
   </div>
 
+  <div class="sheetov center" id="askOv">
+    <div class="sheet mini">
+      <div class="sheet-head">
+        <div><div class="ttl" id="askTitle"></div><div class="sub" id="askSub"></div></div>
+        <button class="btn ghost small" onclick="tutupAsk()">✕</button>
+      </div>
+      <div class="sheet-body"><div id="askBody"></div></div>
+      <div class="sheet-foot">
+        <button class="btn" id="askOk">Simpan</button>
+        <button class="btn ghost" onclick="tutupAsk()">Batal</button>
+      </div>
+    </div>
+  </div>
+
   <div class="sheetov center" id="subOv">
     <div class="sheet">
       <div class="sheet-head">
@@ -3367,21 +3381,30 @@ function kelasCampur(){
     .sort((a,b)=>b.tutor.length-a.tutor.length||a.cls.localeCompare(b.cls,"id"));
 }
 /* ubah nama kelas hanya untuk sesi milik satu tutor */
-function ubahKelasTutor(tutorEnc,clsEnc,usul){
+function ubahKelasTutor(tutorEnc,clsEnc,usulEnc){
   if(!guard())return;
   const tutor=du(tutorEnc), cls=du(clsEnc);
+  let usul=usulEnc||"";
+  if(/%[0-9A-Fa-f]{2}/.test(usul)){try{usul=du(usul);}catch(e){}}
   const milik=classes.filter(c=>c.cls===cls&&tutorAsli(c)===tutor);
   if(!milik.length)return toast("Tidak ada sesi "+cls+" milik "+tutor);
   const lainnya=classes.filter(c=>c.cls===cls&&tutorAsli(c)!==tutor).length;
-  let v=prompt(
-    "UBAH NAMA KELAS — hanya sesi milik "+tutor+"\n\n"+
-    "Nama sekarang : "+cls+"\n"+
-    "Sesi "+tutor+"  : "+milik.length+" sesi (ikut berubah)\n"+
-    "Sesi tutor lain : "+lainnya+" sesi (TIDAK berubah)\n\n"+
-    "Nama baru:", usul||cls);
-  if(v==null)return;
-  v=normName(v);
-  if(!v||v===cls)return;
+  tanyaForm({
+    judul:"Ubah Nama Kelas",
+    sub:"Hanya sesi milik "+tutor,
+    pesan:"Nama sekarang: "+cls+"\n"+
+      milik.length+" sesi "+tutor+" ikut berubah · "+lainnya+" sesi tutor lain TIDAK berubah.",
+    fields:[{label:"Nama baru",nilai:usul||cls,ph:"mis. A1.2 JERMAN JULY GROUP B"}],
+    tombol:"Ubah nama",
+    ok:([v])=>terapkanNamaKelas(tutor,cls,v)
+  });
+}
+function terapkanNamaKelas(tutor,cls,vRaw){
+  const milik=classes.filter(c=>c.cls===cls&&tutorAsli(c)===tutor);
+  const lainnya=classes.filter(c=>c.cls===cls&&tutorAsli(c)!==tutor).length;
+  const v=normName(vRaw||"");
+  if(!v)return toast("Nama barunya kosong");
+  if(v===cls)return toast("Nama barunya sama dengan yang sekarang");
   const bentrok=classes.some(c=>c.cls===v&&tutorAsli(c)!==tutor);
   if(bentrok&&!confirm('"'+v+'" sudah dipakai tutor lain.\n\nKalau diteruskan, kelasnya tercampur lagi. Tetap lanjut?'))return;
   snapshot("Ubah nama kelas");
@@ -3391,7 +3414,9 @@ function ubahKelasTutor(tutorEnc,clsEnc,usul){
   if(r>0&&!rateExists(tutor,v))setRate(tutor,v,r,tutorLang(tutor));
   const rows=[];
   milik.forEach(c=>{c.cls=v;stampBy(c,"nama kelas");rows.push(sheetRow(c));});
-  // baris rate untuk nama lama dibuang kalau sudah tidak ada kelas yang memakainya
+  // baris rate nama lama dibuang: milik tutor ini kalau sudah tidak dipakai lagi,
+  // dan milik siapa pun kalau nama kelas lamanya sudah hilang sama sekali
+  if(!classes.some(c=>c.cls===cls&&tutorAsli(c)===tutor))removeRate(tutor,cls);
   if(!classes.some(c=>c.cls===cls))
     effRateKeys().forEach(k=>{const i=k.indexOf("|");if(k.slice(i+1)===cls)removeRate(k.slice(0,i),cls);});
   selesaiMassal();cacheAll();lupakanIndex();
@@ -3410,6 +3435,10 @@ function usulNamaKelas(tutor,cls){
   // ganti nama bahasa yang salah di dalam nama kelas
   let v=cls.replace(/\b(GERMAN|JERMAN|SPANISH|SPANYOL|MANDARIN|CHINESE|ENGLISH|INGGRIS|INDONESIAN|INDONESIA)\b/gi,benar);
   if(v.toUpperCase()===cls.toUpperCase())v=cls+" — "+benar;
+  /* Kalau kelas ini dipakai beberapa tutor, memperbaiki nama bahasanya saja TIDAK memisahkan
+     apa pun — semua tutor akan mendapat nama baru yang sama persis dan tercampur lagi.
+     Jadi nama tutornya ikut ditempelkan supaya usulannya benar-benar unik. */
+  if(tutorKelas(cls).length>1)v+=" · "+tutor;
   return v;
 }
 /* daftar kelas campur untuk dibereskan */
@@ -3434,6 +3463,41 @@ function renderKelasCampur(){
         </div>`;}).join("")}
     </div>`).join("");
 }
+/* ================= PANEL ISIAN SENDIRI =================
+   Chrome mematikan prompt() dan confirm() setelah beberapa kali muncul berturut-turut
+   ("Prevent this page from creating additional dialogs"). Begitu itu aktif, prompt
+   langsung mengembalikan null tanpa memunculkan apa pun — tombolnya terlihat mati
+   padahal kodenya jalan. Karena itu semua isian penting memakai panel sendiri. */
+let askCb=null;
+function tanyaForm(opt){
+  const {judul,sub,fields,ok,tombol}=opt;
+  askCb=ok;
+  document.getElementById("askTitle").textContent=judul||"Isian";
+  document.getElementById("askSub").textContent=sub||"";
+  document.getElementById("askBody").innerHTML=
+    (opt.pesan?`<div class="note" style="margin:0 0 10px;white-space:pre-line">${opt.pesan}</div>`:"")+
+    fields.map((f,i)=>`<div class="field" style="margin-bottom:9px">
+      <label>${f.label}${f.hint?` <small style="font-weight:600;color:var(--ink-soft)">${f.hint}</small>`:""}</label>
+      ${f.pilihan
+        ? `<input type="text" id="ask_${i}" list="askdl_${i}" autocomplete="off" value="${String(f.nilai==null?"":f.nilai).replace(/"/g,"&quot;")}"
+             placeholder="${f.ph||""}" style="width:100%;padding:9px;font-size:13px">
+           <datalist id="askdl_${i}">${f.pilihan.map(x=>`<option value="${String(x).replace(/"/g,"&quot;")}"></option>`).join("")}</datalist>`
+        : `<input type="${f.tipe||"text"}" id="ask_${i}" value="${String(f.nilai==null?"":f.nilai).replace(/"/g,"&quot;")}"
+             placeholder="${f.ph||""}" style="width:100%;padding:9px;font-size:13px">`}
+    </div>`).join("");
+  document.getElementById("askOk").textContent=tombol||"Simpan";
+  document.getElementById("askOk").onclick=()=>{
+    const v=fields.map((f,i)=>String(document.getElementById("ask_"+i).value||"").trim());
+    const cb=askCb; tutupAsk();
+    if(cb)cb(v);
+  };
+  bukaOv("askOv");
+  setTimeout(()=>{const e=document.getElementById("ask_0");if(e){e.focus();e.select&&e.select();}},60);
+  document.getElementById("askBody").onkeydown=e=>{
+    if(e.key==="Enter"){e.preventDefault();document.getElementById("askOk").click();}
+  };
+}
+function tutupAsk(){askCb=null;tutupOv("askOv");}
 /* ================= NOMOR INDUK TUTOR =================
    Satu tutor = satu nomor, walaupun dia mengajar beberapa bahasa.
    Nomornya menempel ke NAMA tutor, bukan ke bahasa atau ke kelas, jadi tidak akan
@@ -4032,10 +4096,17 @@ function blokMurid(nama){
 function editKontakMurid(id){
   if(!guard())return;
   const m=U.murid[id];if(!m)return;
-  const nm=prompt("Nama murid (dipakai di seluruh app)",m.nm);if(nm===null)return;
-  const em=prompt("Email",m.email||"");if(em===null)return;
-  const wa=prompt("Nomor WhatsApp (0815... / +62815...)",m.wa?waTampil(m.wa):"");if(wa===null)return;
-  const ct=prompt("Catatan",m.catatan||"");if(ct===null)return;
+  tanyaForm({
+    judul:"Data Murid",sub:id+" · "+m.nm,
+    fields:[{label:"Nama murid",nilai:m.nm,hint:"— dipakai di seluruh app; ejaan lama tetap dikenali"},
+            {label:"Email",nilai:m.email||"",tipe:"email"},
+            {label:"Nomor WhatsApp",nilai:m.wa?waTampil(m.wa):"",ph:"0815... / +62815..."},
+            {label:"Catatan",nilai:m.catatan||""}],
+    ok:([nm,em,wa,ct])=>simpanDataMurid(id,nm,em,wa,ct)
+  });
+}
+function simpanDataMurid(id,nm,em,wa,ct){
+  const m=U.murid[id];if(!m)return;
   const nmBaru=String(nm).trim();
   if(nmBaru&&nmBaru!==m.nm){m.al=[...new Set([...(m.al||[]),nkey(nmBaru),nkey(m.nm)])];m.nm=nmBaru;}
   m.email=String(em).trim();m.wa=waNorm(wa);m.catatan=String(ct).trim();
@@ -4058,13 +4129,20 @@ function mintaGabung(id){
 }
 function tambahBeli(id){
   if(!guard())return;
-  const tgl=prompt("Tanggal pembelian (YYYY-MM-DD)",todayStr());if(tgl===null)return;
+  tanyaForm({
+    judul:"Catat Pembelian",sub:id+" · "+namaMid(id),
+    fields:[{label:"Tanggal",nilai:todayStr(),tipe:"date"},
+            {label:"Produk / paket",nilai:"",ph:"mis. Kelas Privat Bahasa Jerman 10 jam"},
+            {label:"Nominal",nilai:"",tipe:"number",ph:"1900000",hint:"— angka saja"},
+            {label:"Jumlah jam paket",nilai:"",tipe:"number",hint:"— kosongkan kalau tidak tahu"},
+            {label:"Metode bayar",nilai:"Transfer Bank",pilihan:["Transfer Bank","Duitku","Tunai","Lainnya"]}],
+    tombol:"Catat",
+    ok:(v)=>simpanBeliManual(id,v)
+  });
+}
+function simpanBeliManual(id,[tgl,produk,nominal,jam,metode]){
   const t=jParseTgl(tgl)||normDate(tgl);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(t))return toast("Tanggalnya belum benar");
-  const produk=prompt("Produk / paket yang dibeli","");if(produk===null)return;
-  const nominal=prompt("Nominal (angka saja, tanpa titik)","");if(nominal===null)return;
-  const jam=prompt("Jumlah jam paket (kosongkan kalau tidak tahu)","");if(jam===null)return;
-  const metode=prompt("Metode bayar (Transfer Bank / Duitku / Tunai / ...)","Transfer Bank");if(metode===null)return;
   const n=+String(nominal).replace(/\D/g,"");
   const sudah=beliMurid(id);
   const tipe=(!sudah.length||t<(sudah[0].tgl||"9999"))?"pertama":"ulang";
@@ -4207,10 +4285,14 @@ function setKontak(t,wa,email){
 function editKontak(t,lanjut){
   if(!guard())return;
   const k=kontakOf(t);
-  const wa=prompt("Nomor WhatsApp "+t+"\n(boleh 0815..., +62815..., atau 62815...)\nKosongkan untuk menghapus.",k.wa?waTampil(k.wa):"");
-  if(wa===null)return;
-  const em=prompt("Email "+t+"\nKosongkan kalau tidak ada.",k.email||"");
-  if(em===null)return;
+  tanyaForm({
+    judul:"Kontak Tutor",sub:t,
+    fields:[{label:"Nomor WhatsApp",nilai:k.wa?waTampil(k.wa):"",ph:"0815... / +62815...",hint:"— kosongkan untuk menghapus"},
+            {label:"Email",nilai:k.email||"",tipe:"email",ph:"nama@email.com"}],
+    ok:([wa,em])=>simpanKontakTutor(t,wa,em,lanjut)
+  });
+}
+function simpanKontakTutor(t,wa,em,lanjut){
   if(setKontak(t,wa,em)){
     toast("Kontak "+t+" tersimpan");
     if(document.getElementById("shareRow"))renderShareRow();
@@ -5696,10 +5778,24 @@ function editRate(tutor,cls,cur){
 }
 function renameEntity(type,oldName){
   if(!guard())return;
+  const isT=type==="tutor";
+  const pilihan=(isT?allTutorNames():allStudentNames()).filter(n=>n!==oldName);
+  const nC=classes.filter(c=>isT?c.tutor===oldName:c.cls===oldName).length;
+  tanyaForm({
+    judul:"Ubah Nama "+(isT?"Tutor":"Murid/Kelas"),
+    sub:oldName+(isT&&tidOf(oldName)?" · "+tidOf(oldName):""),
+    pesan:"Berlaku di "+nC+" kelas. Kalau nama tujuannya sudah ada, datanya DIGABUNG jadi satu"+
+      (isT?" — dipakai untuk membetulkan nama tutor yang tertulis dua kali.":"."),
+    fields:[{label:"Nama baru",nilai:oldName,pilihan,
+      hint:"— ketik, atau pilih nama yang sudah ada untuk menggabungkan"}],
+    tombol:"Ubah nama",
+    ok:([v])=>terapkanRename(type,oldName,v)
+  });
+}
+function terapkanRename(type,oldName,vRaw){
+  const isT=type==="tutor";
   const label=isT?"tutor":"murid/kelas";
-  let v=prompt("Nama baru untuk "+label+' "'+oldName+'":',oldName);
-  if(v==null)return;
-  v=normName(v);
+  let v=normName(vRaw||"");
   if(!v||v===oldName)return;
   const pool=(isT?allTutorNames():allStudentNames()).filter(n=>n!==oldName);
   const exact=pool.find(p=>p.toLowerCase()===v.toLowerCase());
@@ -5740,9 +5836,29 @@ function renameEntity(type,oldName){
     if(CFG.url)push({action:"delrate",ids:["C:"+oldName]});
     pushMStat(v);
   }
+  // semua data yang memakai NAMA TUTOR sebagai kunci ikut pindah,
+  // kalau tidak, nomor induk / kontak / tanda mingguan tertinggal di nama lama
+  if(isT){
+    if(U.tid&&U.tid[oldName]){
+      const tid=U.tid[oldName];
+      if(!U.tid[v]){U.tid[v]=tid;if(CFG.url)push({action:"setrate",rows:[{id:"N:"+tid,tutor:v,cls:"",rate:0,lang:"v1"}]});}
+      delete U.tid[oldName];
+    }
+    if(U.wk&&U.wk[oldName]){delete U.wk[oldName];U.wk[v]=1;
+      if(CFG.url){push({action:"delrate",ids:["W:"+oldName]});
+        push({action:"setrate",rows:[{id:"W:"+v,tutor:v,cls:"",rate:1,lang:"mingguan"}]});}}
+    if(U.kontak&&U.kontak[oldName]&&!U.kontak[v]){
+      const kk=U.kontak[oldName];U.kontak[v]=kk;delete U.kontak[oldName];
+      if(CFG.url){push({action:"delrate",ids:["K:"+oldName]});
+        push({action:"setrate",rows:[{id:"K:"+v,tutor:v,cls:"",rate:0,
+          lang:["v1",kk.wa||"",kk.email||"",kk.by||"",kk.at||""].join("~")}]});}
+    }
+    Object.entries(U.sub||{}).forEach(([cid,o])=>{
+      if(o.as===oldName){o.as=v;pushSUB(cid,o);}});
+  }
   const rows=[];
   affC.forEach(c=>{ if(isT)c.tutor=v; else c.cls=v; rows.push(sheetRow(c)); });
-  cacheAll();
+  cacheAll();lupakanIndex();
   if(CFG.url)for(let i=0;i<rows.length;i+=150)push({action:"upsert",rows:rows.slice(i,i+150)});
   refreshTutorList();
   if(detailCtx&&detailCtx.name===oldName)detailCtx.name=v;
