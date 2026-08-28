@@ -559,8 +559,16 @@
         <div id="gtInfo"></div>
         <div class="field"><label>Tutor baru <small style="font-weight:600;color:var(--ink-soft)">— ketik untuk mencari</small></label>
           <input type="text" id="gtTutor" list="dlGt" autocomplete="off" placeholder="Ketik nama tutor…"
-            style="width:100%;padding:9px;font-size:13px">
+            oninput="hitungGT()" onchange="hitungGT()" style="width:100%;padding:9px;font-size:13px">
           <datalist id="dlGt"></datalist></div>
+        <div class="field" style="margin-top:8px">
+          <label style="cursor:pointer;display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+            <input type="checkbox" id="gtIkut" onchange="hitungGT()" style="vertical-align:-2px">
+            <span>Termasuk sesi yang <b>sudah Selesai</b> sejak</span>
+            <input type="date" id="gtSejak" onchange="hitungGT()" style="padding:5px">
+          </label>
+          <div class="hint" style="margin-top:3px">Centang kalau tutor pengganti sebenarnya sudah mengajar sesi-sesi itu —
+            fee jamnya ikut pindah ke pengganti.</div></div>
         <div class="field" style="margin-top:8px"><label>Keterangan / alasan pindah</label>
           <input type="text" id="gtNote" placeholder="mis. jadwal bentrok, murid minta ganti, tutor resign"></div>
       </div>
@@ -715,6 +723,11 @@
       </div>
       <div class="row-actions"><button class="btn" onclick="saveRate()">Simpan Rate</button></div>
     </div>
+    <div class="card" id="cardMix">
+      <h2>🧩 Kelas Reguler Dipakai Beberapa Tutor</h2>
+      <div id="mixBox"></div>
+    </div>
+
     <div class="card">
       <h2>Export Daftar Murid</h2>
       <p class="note" style="margin:0 0 9px">Semua nama murid/kelas yang pernah muncul di log, lengkap dengan bahasa,
@@ -972,27 +985,70 @@ function gantiTutorMurid(nmEnc){
   const punya=classes.filter(c=>normName(c.cls)===normName(nm));
   if(!punya.length)return toast("Murid ini belum punya jadwal");
   const lama=[...new Set(punya.map(tutorAsli))];
-  const pindah=punya.filter(c=>statusOf(c,now)!=="Selesai"&&c.ov!=="Postponed");
-  const tetap=punya.length-pindah.length;
   const bhs=[...new Set(punya.map(c=>c.lang).filter(Boolean))];
-  gtCtx={nm,lama,pindah,tetap,bhs};
+  gtCtx={nm,lama,punya,bhs};
+  const el=document.getElementById("gtSejak");
+  if(el&&!el.value)el.value=todayStr();
   const semua=allTutorNames().filter(t=>!lama.some(l=>l.toLowerCase()===t.toLowerCase()));
   const sama=semua.filter(t=>bhs.length&&bhs.includes(tutorLang(t)));
   const lain=semua.filter(t=>!sama.includes(t));
   const opt=t=>`<option value="${t}">${tutorLang(t)||""}</option>`;
-  document.getElementById("gtInfo").innerHTML=`
-    <div class="mini-kpis" style="margin:0 0 9px">
-      <div class="kpi hi"><div class="v">${pindah.length}</div><div class="l">Jadwal Dipindah</div></div>
-      <div class="kpi"><div class="v">${tetap}</div><div class="l">Tetap di Tutor Lama</div></div>
-      <div class="kpi"><div class="v" style="font-size:12px">${lama.join(", ")}</div><div class="l">Tutor Sekarang</div></div>
-    </div>
-    <p class="note" style="margin:0 0 9px">Yang dipindah hanya jadwal yang <b>belum jalan</b>.
-      ${tetap} kelas yang sudah Selesai atau Postponed tetap tercatat atas nama tutor lama —
-      supaya perhitungan gaji periode lalu tidak berubah.</p>`;
   document.getElementById("dlGt").innerHTML=sama.concat(lain).map(opt).join("");
   document.getElementById("gtTutor").value="";
   document.getElementById("gtNote").value="";
+  hitungGT();
   bukaOv("gtOv");
+}
+/* Sesi mana saja yang ikut pindah.
+   Bawaan: hanya jadwal yang belum jalan.
+   Kalau "termasuk sesi yang sudah Selesai" dicentang, sesi Selesai sejak tanggal tertentu
+   ikut pindah juga — ini untuk kasus tutor pengganti yang sebenarnya sudah mengajar,
+   tapi log-nya terlanjur tercatat atas nama tutor lama. Fee jam itu jadi ikut ke pengganti.
+   Sesi yang sudah ditandai DIBAYAR tidak pernah ikut pindah. */
+function pilahGT(){
+  if(!gtCtx)return {pindah:[],selesai:[],terkunci:[],tetap:[]};
+  const now=new Date();
+  const ikut=(document.getElementById("gtIkut")||{}).checked;
+  const sejak=(document.getElementById("gtSejak")||{}).value||todayStr();
+  const pindah=[],selesai=[],terkunci=[],tetap=[];
+  gtCtx.punya.forEach(c=>{
+    const sudah=statusOf(c,now)==="Selesai";
+    if(!sudah&&c.ov!=="Postponed"){pindah.push(c);return;}
+    if(sudah&&ikut&&c.date>=sejak){
+      if(paidCover(c.tutor,c.date))terkunci.push(c); else selesai.push(c);
+      return;
+    }
+    tetap.push(c);
+  });
+  return {pindah,selesai,terkunci,tetap};
+}
+function hitungGT(){
+  if(!gtCtx)return;
+  const {pindah,selesai,terkunci,tetap}=pilahGT();
+  const now=new Date();
+  const t=normName((document.getElementById("gtTutor")||{}).value||"");
+  const semuaPindah=pindah.concat(selesai);
+  const fee=selesai.reduce((s2,c)=>s2+feeOf(c,now),0);
+  const feeBaru=t?selesai.reduce((s2,c)=>s2+Math.round(ratePerJam(t,c.cls)*durasi(c.start,c.end)),0):0;
+  document.getElementById("gtInfo").innerHTML=`
+    <div class="mini-kpis" style="margin:0 0 9px">
+      <div class="kpi hi"><div class="v">${semuaPindah.length}</div><div class="l">Sesi Dipindah</div></div>
+      <div class="kpi"><div class="v" style="color:${selesai.length?"#0E5F8A":""}">${selesai.length}</div><div class="l">Sudah Selesai · Fee Ikut Pindah</div></div>
+      <div class="kpi"><div class="v">${tetap.length}</div><div class="l">Tetap di Tutor Lama</div></div>
+      <div class="kpi"><div class="v" style="color:${terkunci.length?"#A9761B":""}">${terkunci.length}</div><div class="l">Sudah Dibayar · Tidak Bisa</div></div>
+      <div class="kpi"><div class="v" style="font-size:12px">${gtCtx.lama.join(", ")}</div><div class="l">Tutor Sekarang</div></div>
+    </div>
+    ${selesai.length?`<div class="filterchip" style="background:#E8F1F6;border-color:#9CC4D8;display:block">
+      <b>${selesai.length} sesi yang sudah Selesai ikut pindah.</b>
+      Fee ${rp(fee)} keluar dari ${gtCtx.lama.join(", ")}${t?` dan masuk ${rp(feeBaru)} ke <b>${t}</b>`:""}.
+      ${t&&feeBaru!==fee?`<br><span style="color:#8A5309">Angkanya berbeda karena rate ${t} untuk kelas ini tidak sama.</span>`:""}
+      </div>`:""}
+    ${terkunci.length?`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B;display:block">
+      <b>${terkunci.length} sesi sudah ditandai dibayar</b> — tidak ikut pindah, supaya slip gaji yang sudah terbit tidak berubah.
+      Kalau memang harus pindah, batalkan dulu tanda dibayarnya di halaman tutor.</div>`:""}
+    <p class="note" style="margin:0">Jadwal yang belum jalan selalu ikut pindah.
+      Sesi Selesai hanya ikut kalau kotak di bawah dicentang — dipakai saat tutor pengganti
+      sebenarnya sudah mengajar tapi log-nya terlanjur atas nama tutor lama.</p>`;
 }
 /* Selama panel terbuka, halaman di belakangnya dikunci. Tanpa ini, di layar pendek
    gulirannya "nyangkut" ke halaman belakang dan tombol di panel jadi tak terjangkau. */
@@ -1015,35 +1071,58 @@ function keMasterTutor(){
 }
 function lanjutGantiTutor(){
   if(!gtCtx)return;
-  const {nm,lama,pindah,tetap}=gtCtx;
+  const {nm,lama}=gtCtx;
+  const {pindah,selesai,terkunci,tetap}=pilahGT();
+  const semua=pindah.concat(selesai);
   let baru=normName(document.getElementById("gtTutor").value||"");
   if(!baru)return toast("Isi dulu nama tutor barunya");
   const cocok=allTutorNames().find(x=>x.toLowerCase()===baru.toLowerCase());
   if(cocok)baru=cocok;
   else if(!confirm("\""+baru+"\" belum terdaftar sebagai tutor.\n\nDaftarkan dulu di Master Rate supaya rate-nya terisi.\n\nTetap pakai nama ini?"))return;
   const alasan=(document.getElementById("gtNote").value||"").trim();
+  const now=new Date();
+  const feeLama=selesai.reduce((s2,c)=>s2+feeOf(c,now),0);
+  const feeBaru=selesai.reduce((s2,c)=>s2+Math.round(ratePerJam(baru,c.cls)*durasi(c.start,c.end)),0);
   tutupGT();
-  if(!pindah.length){
-    if(!confirm("Tidak ada jadwal yang bisa dipindah — semua kelasnya sudah Selesai.\n\n"+
-      "Tetap catat perpindahan ini sebagai keterangan saja?"))return;
-  }else if(!confirm("Pindahkan "+pindah.length+" jadwal "+nm+"\n\n"+
+  if(!semua.length){
+    if(!confirm("Tidak ada sesi yang bisa dipindah.\n\nTetap catat perpindahan ini sebagai keterangan saja?"))return;
+  }else if(!confirm("Pindahkan "+semua.length+" sesi "+nm+"\n\n"+
       "dari : "+lama.join(", ")+"\n"+
       "ke   : "+baru+"\n\n"+
-      tetap+" kelas yang sudah Selesai tetap tercatat atas nama tutor lama.\n\nLanjutkan?"))return;
+      "  Jadwal belum jalan   : "+pindah.length+"\n"+
+      "  Sudah Selesai        : "+selesai.length+
+      (selesai.length?"  (fee "+rp(feeLama)+" → "+rp(feeBaru)+" ke "+baru+")":"")+"\n"+
+      "  Tetap di tutor lama  : "+tetap.length+"\n"+
+      (terkunci.length?"  Sudah dibayar, dilewati : "+terkunci.length+"\n":"")+
+      "\nLanjutkan?"))return;
+  if(selesai.length&&!confirm("Konfirmasi kedua.\n\n"+selesai.length+
+      " sesi yang SUDAH SELESAI akan pindah ke "+baru+".\n\n"+
+      "Gaji "+rp(feeLama)+" keluar dari "+lama.join(", ")+" dan "+rp(feeBaru)+" masuk ke "+baru+".\n"+
+      "Kalau slip periode ini sudah terlanjur dikirim, slipnya perlu dikirim ulang.\n\nLanjutkan?"))return;
   const dari=lama.join(", "), by=meName(), at=new Date().toISOString(), d=todayStr();
   const rows=[];
   mulaiMassal();
+  snapshot("Ganti tutor "+nm);
   pindah.forEach(c=>{
     const sp=subOf(c);
     if(sp){sp.as=baru;pushSUB(String(c.id),sp);return;}  // sesi yang dipegang pengganti: pemiliknya saja yang pindah
     c.tutor=baru;rows.push(sheetRow(c));});
+  // sesi yang sudah Selesai: fee jamnya benar-benar pindah ke tutor pengganti
+  selesai.forEach(c=>{
+    const sp=subOf(c);
+    if(sp){delete U.sub[String(c.id)];pushSUB(String(c.id),null);}   // pengganti sementara jadi permanen
+    c.tutor=baru;stampBy(c,"ganti tutor");rows.push(sheetRow(c));});
   selesaiMassal();
   cacheAll();
   if(CFG.url)for(let i=0;i<rows.length;i+=150)push({action:"upsert",rows:rows.slice(i,i+150)});
   const id="G"+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
-  pushGtut(id,{nm,dari,ke:baru,alasan,n:pindah.length,by,at,d});
+  pushGtut(id,{nm,dari,ke:baru,
+    alasan:alasan+(selesai.length?(alasan?" · ":"")+selesai.length+" sesi Selesai ikut pindah ("+rp(feeBaru)+")":""),
+    n:semua.length,by,at,d});
   renderAll();if(detailCtx)renderDetail();
-  toast(nm+": "+pindah.length+" jadwal pindah ke "+baru+" · "+tetap+" kelas lama tetap di "+dari);
+  toast(nm+": "+semua.length+" sesi pindah ke "+baru+
+    (selesai.length?" · fee "+rp(feeBaru)+" ikut pindah":"")+
+    (terkunci.length?" · "+terkunci.length+" sesi sudah dibayar dilewati":""));
 }
 function hapusGtut(idEnc){
   if(!guard())return;
@@ -3250,6 +3329,93 @@ function hapusBeli(oid){
   renderMurid();if(detailCtx)renderDetail();
   toast("Catatan pembelian dihapus");
 }
+/* ================= PISAH KELAS REGULER PER TUTOR =================
+   Dulu satu nama kelas reguler ("A1.2 SPANISH JULY GROUP B") dipakai beberapa tutor
+   sekaligus, jadi rate, hitungan pertemuan, dan riwayatnya tercampur.
+   Fungsi ini mengubah nama kelas HANYA untuk sesi milik satu tutor, sehingga
+   satu kelas merujuk ke satu tutor. Tutor pengganti sementara tidak ikut terpisah
+   karena sesi itu memang tetap milik kelas yang sama. */
+function tutorKelas(cls){
+  return [...new Set(classes.filter(c=>c.cls===cls).map(tutorAsli).filter(Boolean))];
+}
+function kelasCampur(){
+  const map={};
+  classes.forEach(c=>{
+    if(!c.cls||!isReg(c))return;
+    (map[c.cls]=map[c.cls]||new Set()).add(tutorAsli(c));
+  });
+  return Object.entries(map).filter(([,v])=>v.size>1)
+    .map(([cls,v])=>({cls,tutor:[...v].sort(),n:classes.filter(c=>c.cls===cls).length}))
+    .sort((a,b)=>b.tutor.length-a.tutor.length||a.cls.localeCompare(b.cls,"id"));
+}
+/* ubah nama kelas hanya untuk sesi milik satu tutor */
+function ubahKelasTutor(tutorEnc,clsEnc,usul){
+  if(!guard())return;
+  const tutor=du(tutorEnc), cls=du(clsEnc);
+  const milik=classes.filter(c=>c.cls===cls&&tutorAsli(c)===tutor);
+  if(!milik.length)return toast("Tidak ada sesi "+cls+" milik "+tutor);
+  const lainnya=classes.filter(c=>c.cls===cls&&tutorAsli(c)!==tutor).length;
+  let v=prompt(
+    "UBAH NAMA KELAS — hanya sesi milik "+tutor+"\n\n"+
+    "Nama sekarang : "+cls+"\n"+
+    "Sesi "+tutor+"  : "+milik.length+" sesi (ikut berubah)\n"+
+    "Sesi tutor lain : "+lainnya+" sesi (TIDAK berubah)\n\n"+
+    "Nama baru:", usul||cls);
+  if(v==null)return;
+  v=normName(v);
+  if(!v||v===cls)return;
+  const bentrok=classes.some(c=>c.cls===v&&tutorAsli(c)!==tutor);
+  if(bentrok&&!confirm('"'+v+'" sudah dipakai tutor lain.\n\nKalau diteruskan, kelasnya tercampur lagi. Tetap lanjut?'))return;
+  snapshot("Ubah nama kelas");
+  mulaiMassal();
+  // rate ikut pindah supaya fee tidak jadi nol
+  const r=ratePerJam(tutor,cls);
+  if(r>0&&!rateExists(tutor,v))setRate(tutor,v,r,tutorLang(tutor));
+  const rows=[];
+  milik.forEach(c=>{c.cls=v;stampBy(c,"nama kelas");rows.push(sheetRow(c));});
+  // baris rate untuk nama lama dibuang kalau sudah tidak ada kelas yang memakainya
+  if(!classes.some(c=>c.cls===cls))
+    effRateKeys().forEach(k=>{const i=k.indexOf("|");if(k.slice(i+1)===cls)removeRate(k.slice(0,i),cls);});
+  selesaiMassal();cacheAll();lupakanIndex();
+  if(CFG.url)for(let i=0;i<rows.length;i+=150)push({action:"upsert",rows:rows.slice(i,i+150)});
+  renderAll();if(detailCtx)renderDetail();
+  toast(milik.length+" sesi "+tutor+": "+cls+" → "+v);
+}
+/* usulan nama: bahasa sebenarnya diambil dari log, bukan dari tulisan di nama kelas */
+function usulNamaKelas(tutor,cls){
+  const milik=classes.filter(c=>c.cls===cls&&tutorAsli(c)===tutor);
+  const bhs=[...new Set(milik.map(c=>c.lang).filter(Boolean))][0]||"";
+  const ID={German:"JERMAN",Spanish:"SPANYOL",Mandarin:"MANDARIN",English:"INGGRIS",
+    "Professional English":"INGGRIS PRO","Business English":"INGGRIS BISNIS",Indonesian:"INDONESIA"};
+  const benar=ID[bhs]||bhs.toUpperCase();
+  if(!benar)return cls;
+  // ganti nama bahasa yang salah di dalam nama kelas
+  let v=cls.replace(/\b(GERMAN|JERMAN|SPANISH|SPANYOL|MANDARIN|CHINESE|ENGLISH|INGGRIS|INDONESIAN|INDONESIA)\b/gi,benar);
+  if(v.toUpperCase()===cls.toUpperCase())v=cls+" — "+benar;
+  return v;
+}
+/* daftar kelas campur untuk dibereskan */
+function renderKelasCampur(){
+  const e=document.getElementById("mixBox"); if(!e)return;
+  const L=kelasCampur();
+  if(!L.length){e.innerHTML=`<p class="note" style="margin:0">Semua kelas reguler sudah satu tutor satu kelas. 👍</p>`;return;}
+  e.innerHTML=`<p class="note" style="margin:0 0 8px"><b>${L.length} kelas reguler dipakai lebih dari satu tutor.</b>
+      Selama masih dipakai bersama, rate, hitungan pertemuan, dan riwayatnya bercampur.
+      Ubah nama kelas per tutor supaya terpisah — nama bahasanya juga diperbaiki otomatis mengikuti bahasa asli di log.</p>`+
+    L.map(k=>`<div class="jdet" style="margin:0 0 8px;padding:9px 11px">
+      <div style="font-weight:800;font-size:12.5px;margin-bottom:5px">${k.cls}
+        <span class="chip">${k.tutor.length} tutor</span><span class="chip">${k.n} sesi</span></div>
+      ${k.tutor.map(t=>{
+        const milik=classes.filter(c=>c.cls===k.cls&&tutorAsli(c)===t);
+        const bhs=[...new Set(milik.map(c=>c.lang).filter(Boolean))].join(", ");
+        const usul=usulNamaKelas(t,k.cls);
+        return `<div class="belirow">
+          <span class="pr"><b>${t}</b> <span style="color:var(--ink-soft);font-size:11px">${milik.length} sesi · ${bhs||"—"}</span>
+            <div style="color:var(--ink-soft);font-size:11px">usul: <b>${usul}</b></div></span>
+          <button class="btn small editonly" onclick="ubahKelasTutor(du('${eu(t)}'),du('${eu(k.cls)}'),du('${eu(usul)}'))">✎ Pisahkan</button>
+        </div>`;}).join("")}
+    </div>`).join("");
+}
 /* ================= GAJI MINGGUAN (Senin–Minggu) =================
    Sebagian tutor dibayar per minggu, bukan per periode cut-off 26–25.
    Penandanya per tutor dan bisa dimatikan kapan saja — kalau mati, tutor itu
@@ -5345,6 +5511,7 @@ function renderStats(){
   renderJual();renderExport();
 }
 function renderMaster(){
+  renderKelasCampur();
   renderSisaJual();
   const el=document.getElementById("tblMaster");if(!el)return;
   const q=(document.getElementById("mSearch").value||"").toLowerCase();
@@ -5740,11 +5907,16 @@ function renderDetail(){
          <span class="link" onclick="openStudent(du('${eu(s)}'))">${s}</span>${tagOf(o)}
          <div class="meta">${o.last?"terakhir "+o.last:"belum ada kelas selesai"}${o.post?" · "+o.post+" postponed"+(o.postRun>=POST_BERUNTUN?" ("+o.postRun+"× beruntun)":""):""}${o.next?" · berikutnya "+o.next:""}${o.ms&&o.ms.note?" · "+o.ms.note:""}</div>
        </div>
-       <b style="${o.n?"":"color:var(--ink-soft)"};white-space:nowrap">${o.n} sesi</b></div>`).join("")
+       <b style="${o.n?"":"color:var(--ink-soft)"};white-space:nowrap">${o.n} sesi</b>
+       ${isT?`<button class="btn ghost small editonly" title="Ubah nama kelas ini — hanya untuk sesi ${name}"
+          onclick="event.stopPropagation();ubahKelasTutor(du('${eu(name)}'),du('${eu(s)}'),du('${eu(usulNamaKelas(name,s))}'))">✎</button>
+          ${tutorKelas(s).length>1?`<span class="mtag cuti" title="Kelas ini juga dipakai: ${tutorKelas(s).filter(x=>x!==name).join(", ")}">dipakai ${tutorKelas(s).length} tutor</span>`:""}`:""}
+       </div>`).join("")
       :`<div class="empty">Belum ada murid terjadwal.</div>`)+
      (sisa>0||dStudAll&&studs.length>6?`<div style="text-align:center;margin-top:8px">
         <button class="btn ghost small" onclick="toggleStuds()">${dStudAll?"↑ Lihat sebagian":"↓ Lihat semua ("+studs.length+" murid)"}</button></div>`:"")+
-     `<p class="note" style="margin:8px 0 0">Klik nama murid untuk melihat riwayat, mencatat status (cuti, paket selesai, tidak ada kabar) &amp; mengganti tutor.</p></div>`;
+     `<p class="note" style="margin:8px 0 0">Klik nama murid untuk melihat riwayat, mencatat status (cuti, paket selesai, tidak ada kabar) &amp; mengganti tutor.${
+       isT?" Tombol ✎ mengubah nama kelas <b>hanya untuk sesi tutor ini</b> — dipakai untuk memisahkan kelas reguler yang dulu dipakai beberapa tutor.":""}</p></div>`;
     // rate tutor ini
     const rates=[];
     Object.entries(U.rates).forEach(([k,v])=>{const[t,c]=k.split("|");if(t===name)rates.push({c,v,user:1});});
