@@ -189,7 +189,10 @@
   .sheet-head{flex:0 0 auto;background:var(--card);border-bottom:1px solid var(--line);padding:13px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;border-radius:18px 18px 0 0;z-index:2}
   .sheet-head .ttl{font-weight:800;font-size:15.5px}
   .sheet-head .sub{font-size:11.5px;color:var(--ink-soft);font-weight:600}
-  .sheet-body{padding:13px 14px 22px;flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  /* min-height:0 wajib — tanpa ini, isi panel menolak mengecil di dalam kolom flex,
+     jadi bagian bawahnya terpotong dan tidak bisa digulir sama sekali. */
+  .sheet-body{padding:13px 14px 22px;flex:1 1 auto;min-height:0;overflow-y:auto;
+        overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
   /* tombol aksi selalu kelihatan, tidak ikut terpotong saat isi panjang */
   .sheet-foot{flex:0 0 auto;background:var(--card);border-top:1px solid var(--line);
         padding:11px 14px calc(11px + env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;gap:8px;z-index:2}
@@ -723,6 +726,11 @@
       </div>
       <div class="row-actions"><button class="btn" onclick="saveRate()">Simpan Rate</button></div>
     </div>
+    <div class="card" id="cardTid">
+      <h2>🆔 Nomor Induk Tutor</h2>
+      <div id="tidBox"></div>
+    </div>
+
     <div class="card" id="cardMix">
       <h2>🧩 Kelas Reguler Dipakai Beberapa Tutor</h2>
       <div id="mixBox"></div>
@@ -789,7 +797,10 @@
   <div class="sheet">
     <div class="sheet-head">
       <div><div class="ttl" id="drTitle"></div><div class="sub" id="drSub"></div></div>
-      <button class="btn ghost small" onclick="closeDrill()">✕ Tutup</button>
+      <div style="display:flex;gap:7px;flex-wrap:wrap">
+        <button class="btn small" id="drProfil">👤 Buka profil tutor</button>
+        <button class="btn ghost small" onclick="closeDrill()">✕ Tutup</button>
+      </div>
     </div>
     <div class="sheet-body" id="drBody"></div>
   </div>
@@ -1797,7 +1808,7 @@ async function fullSync(){
     // Sheet = satu-satunya sumber data. Tidak pernah ada pengisian otomatis.
     classes=raw.map(normClass).filter(c=>c.tutor&&/^\d{4}-\d{2}-\d{2}$/.test(c.date));
     if(raw.length&&!classes.length)toast("Data terbaca "+raw.length+" baris tapi format tanggalnya tidak dikenali — hubungi admin");
-    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{},sub:{},wk:{}};sisaJual=[];
+    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{},sub:{},wk:{},tid:{}};sisaJual=[];
     (all.rates||[]).forEach(r=>{
       const id=String(r.id||""), val=+r.rate;
       if(id.slice(0,2)==="N:"){U.newTag[id.slice(2)]=r.lang||"nama";return;}   // penanda nama baru
@@ -1817,6 +1828,10 @@ async function fullSync(){
           (U.topup[nm]=U.topup[nm]||[]).push({ke:+p[1]||seq,tgl:p[2]||"",jam:val||0,
             note:p[3]||"",by:p[4]||"",at:p[5]||"",seq});
         }
+        return;}
+      if(id.slice(0,2)==="N:"){                                                 // nomor induk tutor
+        const tid=id.slice(2), nm=String(r.tutor||"");
+        if(tid&&nm)U.tid[nm]=tid;
         return;}
       if(id.slice(0,2)==="W:"){                                                 // tutor dibayar mingguan
         const nm=id.slice(2);
@@ -2349,7 +2364,7 @@ function renderLog(){
       <div class="cls-time">${luas?`<small class="dchip" onclick="bukaTgl('${c.date}')">${c.date.slice(8)}/${c.date.slice(5,7)}</small>`:""}${c.start}<small>– ${c.end}</small></div>
       <div class="cls-main">
         <div class="t"><span class="link" onclick="openTutor(du('${eu(c.tutor)}'))">${c.tutor}</span>${U.newTag[c.tutor]?' <span class="st unpaid" style="font-size:9px">BARU</span>':''}</div>
-        <div class="c">${subBadge(c)} ${meetBadge(c)} ${c.cls?`<span class="link" onclick="openStudent(du('${eu(c.cls)}'))">${c.cls}</span>`:"—"} · ${c.lang}${noRate?' · <span style="color:var(--red)">rate?</span>':''}${c.flag?` · <span class="st postponed" style="cursor:pointer" title="Tap untuk perbaiki" onclick="editClass('${c.id}')">⚠ ${FLAGS[c.flag]||c.flag} — perbaiki</span>`:''}</div>
+        <div class="c">${subBadge(c)}${subBadgeSaran(c)} ${meetBadge(c)} ${c.cls?`<span class="link" onclick="openStudent(du('${eu(c.cls)}'))">${c.cls}</span>`:"—"} · ${c.lang}${noRate?' · <span style="color:var(--red)">rate?</span>':''}${c.flag?` · <span class="st postponed" style="cursor:pointer" title="Tap untuk perbaiki" onclick="editClass('${c.id}')">⚠ ${FLAGS[c.flag]||c.flag} — perbaiki</span>`:''}</div>
         ${lastEdit(c)?`<div class="le">diubah oleh <b>${lastEdit(c)}</b></div>`:""}
         <div class="cls-act">
           <button class="btn warn small" onclick="togglePostpone('${c.id}')">${c.ov==="Postponed"?"Batal Postpone":"Postpone"}</button>
@@ -2644,6 +2659,8 @@ function closeDrill(){drillCtx=null;tutupOv("drillOv");}
 function renderDrill(){
   if(!drillCtx)return;
   const {kind,t}=drillCtx, now=new Date();
+  const bp=document.getElementById("drProfil");
+  if(bp){bp.onclick=()=>openTutor(t);bp.textContent="👤 Profil "+t;}
   const key=document.getElementById("fPeriod").value;
   const [pa,pb]=periodRange(key);
   const pakaiRange=payMode==="range";
@@ -3102,7 +3119,7 @@ function muridIndex(){
     (m.al||[]).forEach(a=>{if(a&&!MIDX[a])MIDX[a]=id;}));
   return MIDX;
 }
-function lupakanIndex(){MIDX=null;REKAP=null;_hitNama=null;DUP=null;}
+function lupakanIndex(){MIDX=null;REKAP=null;_hitNama=null;DUP=null;DUPT=null;}
 function midOf(nm){const i=muridIndex();return i[nkey(nm)]||i[nkey(pecahNama(nm).utama)]||"";}
 function muridOf(nm){const id=midOf(nm);return id?Object.assign({id},U.murid[id]):null;}
 function namaMid(id){const m=(U.murid||{})[id];return m?m.nm:id;}
@@ -3164,6 +3181,7 @@ function jadwalAutoId(){
   clearTimeout(_autoT);
   _autoT=setTimeout(()=>{
     const t=daftarkanTutorBaru();
+    bikinIdTutor(true);
     const baru=muridBelumPunyaId();
     const n=baru.length?bikinIdMurid(true):0;
     if(n||t){
@@ -3416,6 +3434,112 @@ function renderKelasCampur(){
         </div>`;}).join("")}
     </div>`).join("");
 }
+/* ================= NOMOR INDUK TUTOR =================
+   Satu tutor = satu nomor, walaupun dia mengajar beberapa bahasa.
+   Nomornya menempel ke NAMA tutor, bukan ke bahasa atau ke kelas, jadi tidak akan
+   bentrok saat tutor yang sama muncul di beberapa mata pelajaran.
+   Disimpan sebagai baris "N:<nomor>" di sheet Rates. */
+function tidOf(t){return (U.tid||{})[t]||"";}
+function U_tid(){return U.tid||{};}
+function __C(){return classes;}
+function tidBerikut(){
+  let mx=0;
+  Object.values(U.tid||{}).forEach(v=>{const n=parseInt(String(v).replace(/\D/g,""),10);if(n>mx)mx=n;});
+  return "T-"+String(mx+1).padStart(4,"0");
+}
+function tutorBelumPunyaId(){return allTutorNames().filter(t=>!tidOf(t));}
+function bikinIdTutor(diam){
+  if(!canEdit())return 0;
+  const baru=tutorBelumPunyaId();
+  if(!baru.length){if(!diam)toast("Semua tutor sudah punya nomor induk");return 0;}
+  if(!diam&&!confirm(baru.length+" tutor belum punya nomor induk. Buatkan sekarang?"))return 0;
+  U.tid=U.tid||{};
+  mulaiMassal();
+  let nomor=parseInt(tidBerikut().replace(/\D/g,""),10);
+  const rows=[];
+  baru.forEach(t=>{
+    const id="T-"+String(nomor++).padStart(4,"0");
+    U.tid[t]=id;
+    rows.push({id:"N:"+id,tutor:t,cls:"",rate:0,lang:"v1"});
+  });
+  selesaiMassal();cacheAll();
+  if(CFG.url)for(let i=0;i<rows.length;i+=200)push({action:"setrate",rows:rows.slice(i,i+200)});
+  if(!diam)toast(baru.length+" nomor induk tutor dibuat");
+  renderMaster();
+  return baru.length;
+}
+/* nama tutor yang sangat mirip — kemungkinan orang yang sama ditulis dua kali */
+let DUPT=null;
+function cekDuplikatTutor(){
+  if(DUPT)return DUPT;
+  const L=allTutorNames().map(t=>({t,k:nkey(t)})).filter(x=>x.k.length>=4);
+  DUPT=[];
+  for(let i=0;i<L.length;i++)for(let j=i+1;j<L.length;j++){
+    const a=L[i],b=L[j];
+    if(Math.abs(a.k.length-b.k.length)>5)continue;
+    const p=miripPersen(a.k,b.k);
+    if(p>=85)DUPT.push({a,b,p});
+  }
+  DUPT.sort((x,y)=>y.p-x.p);
+  return DUPT;
+}
+function renderIdTutor(){
+  const e=document.getElementById("tidBox"); if(!e)return;
+  const belum=tutorBelumPunyaId(), total=allTutorNames().length, dup=cekDuplikatTutor();
+  e.innerHTML=
+    `<div class="mini-kpis" style="margin:0 0 8px">
+      <div class="kpi hi"><div class="v">${total-belum.length}/${total}</div><div class="l">Tutor Bernomor</div></div>
+      <div class="kpi"><div class="v" style="color:${dup.length?"#9B2C2C":"#1B6B47"}">${dup.length}</div><div class="l">Nama Mirip · Perlu Dicek</div></div>
+    </div>`+
+    (belum.length?`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+      <b>${belum.length} tutor belum punya nomor induk.</b>
+      <button class="btn small editonly" onclick="bikinIdTutor()">🆔 Buatkan sekarang</button></div>`:"")+
+    (dup.length?`<div class="filterchip" style="background:#FDECEC;border-color:#E5B4B4;display:block">
+      <b>Nama tutor yang sangat mirip</b> — kemungkinan satu orang ditulis dua kali.
+      Gabungkan lewat ✎ Ubah Nama di profil tutor supaya nomornya tidak dobel.
+      <div style="margin-top:6px">${dup.slice(0,8).map(d=>`<div class="belirow">
+        <span class="pr"><b>${d.a.t}</b> <span style="color:var(--ink-soft)">${tidOf(d.a.t)||"—"}</span>
+          &nbsp;↔&nbsp; <b>${d.b.t}</b> <span style="color:var(--ink-soft)">${tidOf(d.b.t)||"—"}</span>
+          <span class="chip">${d.p}% mirip</span></span>
+        <button class="btn ghost small" onclick="openTutor(du('${eu(d.a.t)}'))">Lihat</button>
+      </div>`).join("")}${dup.length>8?`<div class="hint">… dan ${dup.length-8} pasang lagi</div>`:""}</div></div>`:"")+
+    `<p class="note" style="margin:0">Nomor menempel ke <b>nama tutor</b>, bukan ke bahasa —
+      satu tutor tetap satu nomor walaupun mengajar beberapa bahasa sekaligus.
+      Nomor baru dibuat otomatis untuk tutor yang baru muncul di log.</p>`;
+}
+/* ================= SARAN TUTOR PENGGANTI DARI CATATAN IMPOR =================
+   Kalau CSV jadwal memuat catatan seperti "pengganti Budi" atau "diganti oleh Budi",
+   catatan itu dibaca dan dicocokkan ke daftar tutor, lalu ditawarkan di baris log
+   supaya tinggal satu klik untuk memasangnya. */
+const POLA_SUB=/(?:peng[g]?anti(?:kan)?(?:\s*oleh)?|di\s*ganti(?:kan)?(?:\s*oleh)?|ganti\s*tutor|sub(?:stitute)?|replace(?:d)?\s*by|cover(?:ed)?\s*by)\s*[:\-–]?\s*([A-Za-zÀ-ÿ.'\- ]{3,40})/i;
+function deteksiPengganti(c){
+  if(!c||adaSub(c))return null;
+  const sumber=[c.cls||"",c.flagVal||"",c.act||""];
+  for(const teks of sumber){
+    const m=String(teks).match(POLA_SUB);
+    if(!m)continue;
+    const kasar=normName(m[1]).replace(/[)\]]+$/,"").trim();
+    if(!kasar)continue;
+    const semua=allTutorNames().filter(t=>t!==tutorAsli(c));
+    let pilih=semua.find(t=>t.toLowerCase()===kasar.toLowerCase());
+    if(!pilih)pilih=semua.find(t=>nkey(t)===nkey(kasar));
+    if(!pilih){
+      let best=null,sc=0;
+      semua.forEach(t=>{const p=miripPersen(nkey(t),nkey(kasar));if(p>sc){sc=p;best=t;}});
+      if(sc>=80)pilih=best;
+    }
+    return {teks:m[0].trim(),kasar,tutor:pilih||"",asal:teks};
+  }
+  return null;
+}
+function subBadgeSaran(c){
+  const d=deteksiPengganti(c);
+  if(!d)return "";
+  return `<span class="subtag" style="background:#FFF3CD;border-color:#E5C97B;color:#8A5309;cursor:pointer"
+    title="Catatan di log: &quot;${d.teks}&quot;${d.tutor?" — cocok dengan tutor "+d.tutor:" — nama tutornya belum ketemu di daftar"}"
+    onclick="event.stopPropagation();bukaSub('${eu(String(c.id))}','${eu(d.tutor||d.kasar)}')">
+    ⇄ saran: ${d.tutor||d.kasar}${d.tutor?"":" (?)"}</span>`;
+}
 /* ================= GAJI MINGGUAN (Senin–Minggu) =================
    Sebagian tutor dibayar per minggu, bukan per periode cut-off 26–25.
    Penandanya per tutor dan bisa dimatikan kapan saja — kalau mati, tutor itu
@@ -3527,7 +3651,7 @@ function pushSUB(cid,o){
   push({action:"setrate",rows:[{id:"X:"+cid,tutor:o.as,cls:"",rate:0,lang:"v1~"+JSON.stringify(o)}]});
 }
 let subCtx=null;
-function bukaSub(idEnc){
+function bukaSub(idEnc,usulEnc){
   if(!guard())return;
   const id=du(idEnc), c=classes.find(x=>String(x.id)===String(id));
   if(!c)return toast("Kelas tidak ditemukan");
@@ -3555,10 +3679,13 @@ function bukaSub(idEnc){
     <p class="note" style="margin:0 0 9px">Fee sesi ini akan masuk ke <b>tutor pengganti</b>, memakai rate pengganti itu sendiri.
       Sesi lain milik ${asli} tidak terpengaruh. Kelas ini tetap tercatat sebagai kelas ${asli} di halaman murid.</p>`;
   document.getElementById("dlSub").innerHTML=sama.concat(lain).map(opt).join("");
-  document.getElementById("subTutor").value=s?c.tutor:"";
+  const usul=usulEnc?du(usulEnc):"";
+  document.getElementById("subTutor").value=s?c.tutor:usul;
   document.getElementById("subRate").value=(s&&+s.rate>0)?s.rate:"";
   document.getElementById("subNote").value=s?(s.note||""):"";
   document.getElementById("subFee").innerHTML="";
+  const d=deteksiPengganti(c);
+  if(d&&!s)document.getElementById("subNote").value=d.teks;
   bukaOv("subOv");
   hitungFeeSub();
 }
@@ -5511,7 +5638,7 @@ function renderStats(){
   renderJual();renderExport();
 }
 function renderMaster(){
-  renderKelasCampur();
+  renderKelasCampur();renderIdTutor();
   renderSisaJual();
   const el=document.getElementById("tblMaster");if(!el)return;
   const q=(document.getElementById("mSearch").value||"").toLowerCase();
@@ -5569,7 +5696,6 @@ function editRate(tutor,cls,cur){
 }
 function renameEntity(type,oldName){
   if(!guard())return;
-  const isT=type==="tutor";
   const label=isT?"tutor":"murid/kelas";
   let v=prompt("Nama baru untuk "+label+' "'+oldName+'":',oldName);
   if(v==null)return;
@@ -5638,7 +5764,13 @@ function delUserRate(key,isTutor){
 let showKelar=false;
 function toggleKelar(){showKelar=!showKelar;if(detailCtx)renderDetail();}
 let detailCtx=null, dSort={key:"date",dir:-1}, dPeriod="all", dFrom="", dTo="";
-function openTutor(name){dSort={key:"date",dir:-1};dPeriod="all";dStat="all";dStudAll=false;detailCtx={type:"tutor",name};renderDetail();}
+/* Panel drill menutupi seluruh layar, jadi kalau tidak ditutup dulu,
+   halaman profil terbuka di BELAKANGNYA dan kelihatan seperti tidak bisa diklik. */
+function openTutor(name){
+  closeDrill();
+  dSort={key:"date",dir:-1};dPeriod="all";dStat="all";dStudAll=false;
+  detailCtx={type:"tutor",name};renderDetail();
+}
 /* pindah tab dari kode (dipakai untuk lompat antar halaman) */
 function bukaTab(p){
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.p===p));
@@ -5660,7 +5792,8 @@ function openMuridId(id){
   if(!m)return toast("ID "+id+" tidak ditemukan");
   openStudent(m.nm);
 }
-function openStudent(name){dSort={key:"date",dir:-1};dPeriod="all";dStat="all";detailCtx={type:"student",name};renderDetail();}
+function openStudent(name){
+  closeDrill();dSort={key:"date",dir:-1};dPeriod="all";dStat="all";detailCtx={type:"student",name};renderDetail();}
 function closeDetail(){detailCtx=null;tutupOv("detailOv");}
 function sortDetail(key){
   if(dSort.key===key)dSort.dir*=-1;else dSort={key,dir:key==="date"?-1:1};
@@ -5745,6 +5878,7 @@ function arrow(k){return dSort.key===k?(dSort.dir>0?" ▲":" ▼"):"";}
 function renderDetail(){
   if(!detailCtx)return;
   const now=new Date(), {type,name}=detailCtx;
+  const isT=type==="tutor";
   let rows=classes.filter(c=>type==="tutor"?c.tutor===name:c.cls===name);
   if(dPeriod==="range"){
     if(dFrom)rows=rows.filter(c=>c.date>=dFrom);
@@ -5784,6 +5918,12 @@ function renderDetail(){
           ${bl.length?`· <span style="color:var(--red)">${bl.length} sesi (${rp(blRp)}) belum</span>`:""}</div>
         ${bl.length?`<button class="btn small" onclick="payRange(du('${eu(name)}'))">Tandai rentang ini dibayar</button>`:""}
       </div>`;})():""}
+  ${type==="tutor"?`<div class="row-actions" style="margin:0 0 6px">
+      <span class="mid" style="font-family:ui-monospace,monospace;font-weight:800;color:var(--iris-dark)">${tidOf(name)||"belum bernomor"}</span>
+      ${tidOf(name)?"":`<button class="btn ghost small editonly" onclick="bikinIdTutor()">🆔 Buatkan nomor induk</button>`}
+      ${(()=>{const b=[...new Set(classes.filter(c=>tutorAsli(c)===name&&c.lang).map(c=>c.lang))];
+        return b.length>1?`<span class="chip" title="Satu nomor induk tetap berlaku untuk semua bahasa">${b.length} bahasa: ${b.join(", ")}</span>`:"";})()}
+    </div>`:""}
   ${type==="tutor"?blokMingguan(name):""}
   ${type==="tutor"&&paidList(name).length?`<div class="rangepay" style="display:block">
       <div style="font-weight:700;margin-bottom:5px">Riwayat pembayaran</div>
@@ -6330,7 +6470,7 @@ function boot(){
   if(!ME)setTimeout(pickUser,300);
   undoStack=lget(UKEY,[]);
   classes=lget(CKEY,[]).map(normClass);U=lget(RKEY,{rates:{},tutors:{}});paid=lget(PKEY,{});queue=lget(QKEY,[]);
-  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};U.sub=U.sub||{};U.wk=U.wk||{};seedMingguan();
+  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};U.sub=U.sub||{};U.wk=U.wk||{};U.tid=U.tid||{};seedMingguan();
   // tidak ada injeksi data bawaan — kalau cache kosong, tunggu sinkron dari Sheet
   document.getElementById("cfgUrl").value=CFG.url;
   document.getElementById("cfgToken").value=CFG.token;
