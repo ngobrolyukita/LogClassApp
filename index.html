@@ -213,6 +213,8 @@
   .mtag{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:800}
   .subtag{display:inline-block;background:#E8F1F6;color:#0E5F8A;border:1px solid #9CC4D8;
         padding:1px 7px;border-radius:99px;font-size:10px;font-weight:800;white-space:nowrap}
+  .tstat{display:inline-block;margin-left:5px;font-size:9px;font-weight:800;letter-spacing:.3px;
+        padding:1px 6px;border-radius:99px;border:1px solid;vertical-align:1px;white-space:nowrap}
   .tnum{display:inline-block;margin-left:6px;font-family:ui-monospace,monospace;font-size:10px;
         font-weight:700;color:var(--iris-dark);background:var(--iris-tint);
         padding:1px 6px;border-radius:99px;vertical-align:1px}
@@ -490,9 +492,13 @@
       </select>
     </div>
     <div class="langbar" id="langBar" title="Centang satu atau beberapa bahasa"></div>
+    <div class="langbar" id="tStatBar"></div>
     <div class="rangerow" id="payRangeRow">
       <button class="btn ghost small" id="btnPayMode" onclick="togglePayMode()">📅 Rentang tanggal sendiri</button>
       <span id="payRangeCtl"></span>
+      <button class="btn ghost small" onclick="exBayar('sudah')">✅ Export Sudah Dibayar</button>
+      <button class="btn ghost small" onclick="exBayar('belum')">⏳ Export Belum Dibayar</button>
+      <button class="btn ghost small" onclick="exBayar('semua')">📦 Export Semua</button>
     </div>
     <div class="kpis" id="payKpis"></div>
     <div id="payFilterChip"></div>
@@ -505,6 +511,14 @@
   <div class="panel" id="p-murid">
     <div class="card">
       <h2>🎓 Data Murid</h2>
+      <div class="rangerow" id="mRangeRow">
+        <span>Periode</span>
+        <select id="mPeriod" onchange="setMPeriod(this.value)"></select>
+        <span id="mRangeBox" style="display:none">dari
+          <input type="date" id="mFrom" onchange="setMRange('a',this.value)"> s/d
+          <input type="date" id="mTo" onchange="setMRange('b',this.value)"></span>
+        <button class="btn ghost small" onclick="setMPeriod('all')">Semua waktu</button>
+      </div>
       <div id="mWarn"></div>
       <div class="mini-kpis" id="mKpis"></div>
       <div class="langbar" id="mLangBar"></div>
@@ -1037,7 +1051,7 @@ function gantiTutorMurid(nmEnc){
   const semua=allTutorNames().filter(t=>!lama.some(l=>l.toLowerCase()===t.toLowerCase()));
   const sama=semua.filter(t=>bhs.length&&bhs.includes(tutorLang(t)));
   const lain=semua.filter(t=>!sama.includes(t));
-  const opt=t=>`<option value="${t}">${tutorLang(t)||""}</option>`;
+  const opt=t=>`<option value="${t}">${[tutorLang(t),tstatOf(t)!=="part"?TSTAT[tstatOf(t)].l:""].filter(Boolean).join(" · ")}</option>`;
   document.getElementById("dlGt").innerHTML=sama.concat(lain).map(opt).join("");
   document.getElementById("gtTutor").value="";
   document.getElementById("gtNote").value="";
@@ -1842,7 +1856,7 @@ async function fullSync(){
     // Sheet = satu-satunya sumber data. Tidak pernah ada pengisian otomatis.
     classes=raw.map(normClass).filter(c=>c.tutor&&/^\d{4}-\d{2}-\d{2}$/.test(c.date));
     if(raw.length&&!classes.length)toast("Data terbaca "+raw.length+" baris tapi format tanggalnya tidak dikenali — hubungi admin");
-    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{},sub:{},wk:{},tid:{}};sisaJual=[];
+    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{},sub:{},wk:{},tid:{},tstat:{}};sisaJual=[];
     (all.rates||[]).forEach(r=>{
       const id=String(r.id||""), val=+r.rate;
       if(id.slice(0,2)==="N:"){U.newTag[id.slice(2)]=r.lang||"nama";return;}   // penanda nama baru
@@ -1862,6 +1876,10 @@ async function fullSync(){
           (U.topup[nm]=U.topup[nm]||[]).push({ke:+p[1]||seq,tgl:p[2]||"",jam:val||0,
             note:p[3]||"",by:p[4]||"",at:p[5]||"",seq});
         }
+        return;}
+      if(id.slice(0,2)==="Q:"){                                                 // status kepegawaian tutor
+        const nm=id.slice(2), st=String(r.lang||"").trim();
+        if(nm&&TSTAT[st])U.tstat[nm]=st;
         return;}
       if(id.slice(0,2)==="N:"){                                                 // nomor induk tutor
         const tid=id.slice(2), nm=String(r.tutor||"");
@@ -2367,7 +2385,7 @@ function renderLog(){
     box.innerHTML=Object.entries(by).sort((a,b)=>b[1].gaji-a[1].gaji).map(([t,o])=>`
       <div style="padding:9px 2px;border-bottom:1px solid var(--line)">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <span class="link" style="font-weight:800" onclick="openTutor(du('${eu(t)}'))">${t}</span>
+          <span class="link" style="font-weight:800" onclick="openTutor(du('${eu(t)}'))">${t}</span>${tutorTag(t,true)}
           <b style="color:var(--iris-dark)">${rp(o.gaji)}</b>
         </div>
         ${o.items.map(c=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink-soft);padding:2px 0 0 10px">
@@ -2397,7 +2415,7 @@ function renderLog(){
     return `<div class="cls-item${st==="Berlangsung"?" live":""}">
       <div class="cls-time">${luas?`<small class="dchip" onclick="bukaTgl('${c.date}')">${c.date.slice(8)}/${c.date.slice(5,7)}</small>`:""}${c.start}<small>– ${c.end}</small></div>
       <div class="cls-main">
-        <div class="t"><span class="link" onclick="openTutor(du('${eu(c.tutor)}'))">${c.tutor}</span>${U.newTag[c.tutor]?' <span class="st unpaid" style="font-size:9px">BARU</span>':''}</div>
+        <div class="t"><span class="link" onclick="openTutor(du('${eu(c.tutor)}'))">${c.tutor}</span>${tutorTag(c.tutor,true)}${U.newTag[c.tutor]?' <span class="st unpaid" style="font-size:9px">BARU</span>':''}</div>
         <div class="c">${subBadge(c)}${subBadgeSaran(c)} ${meetBadge(c)} ${c.cls?`<span class="link" onclick="openStudent(du('${eu(c.cls)}'))">${c.cls}</span>`:"—"} · ${c.lang}${noRate?' · <span style="color:var(--red)">rate?</span>':''}${c.flag?` · <span class="st postponed" style="cursor:pointer" title="Tap untuk perbaiki" onclick="editClass('${c.id}')">⚠ ${FLAGS[c.flag]||c.flag} — perbaiki</span>`:''}</div>
         ${lastEdit(c)?`<div class="le">diubah oleh <b>${lastEdit(c)}</b></div>`:""}
         <div class="cls-act">
@@ -2522,12 +2540,21 @@ function renderTutorCards(){
   const q=(document.getElementById("tSearch").value||"").toLowerCase();
   const LPT=langPerTutor();
   renderLangBar(LPT);
+  renderStatBar(allTutorNames());
   const langAktif=[...langPilih];
   const langSel=langAktif.join(" + ");
   /* okT = tutor ini mengajar SALAH SATU bahasa yang dicentang (gabungan, bukan irisan).
      Saringan bekerja di tingkat TUTOR, bukan per kelas — jadi angka gaji, sudah dibayar,
      dan sisa dibayar tiap tutor tetap utuh (semua bahasa) supaya penandaan bayar tidak salah. */
-  const okT=t=>!langAktif.length||(LPT[t]&&langAktif.some(l=>LPT[t].has(l)));
+  const okLang=t=>!langAktif.length||(LPT[t]&&langAktif.some(l=>LPT[t].has(l)));
+  /* Former disembunyikan dari daftar DAN dari seluruh KPI, supaya angka periode berjalan
+     tidak tercampur tutor yang sudah keluar. Kalau statusnya dicentang sendiri, tetap tampil. */
+  const okStat=t=>{
+    const k=tstatOf(t);
+    if(tStatFilter.size)return tStatFilter.has(k);
+    return !(sembunyiFormer&&k==="former");
+  };
+  const okT=t=>okLang(t)&&okStat(t);
   const[pa,pb]=periodRange(key);
   const bm=document.getElementById("btnPayMode"), rc=document.getElementById("payRangeCtl");
   if(bm)bm.className="btn "+(payMode==="range"?"":"ghost")+" small";
@@ -2589,9 +2616,15 @@ function renderTutorCards(){
     s.murid.forEach(m=>{allMurid.add(m);if(msLC[m]==="selesai")allKelar.add(m);});
     s.aktif.forEach(m=>{if(msLC[m]!=="selesai")allAktif.add(m);});});
   const retensiAll=allMurid.size?1-allKelar.size/allMurid.size:null;
-  let allTUm=0,allTUt=0,allTUr=0;
-  allMurid.forEach(m=>{if(TUI[m]){allTUm++;allTUt+=TUI[m].n;allTUr+=TUI[m].inR;}});
+  let allTUm=0,allTUt=0,allTUr=0,allTUmP=0;
+  allMurid.forEach(m=>{if(TUI[m]){allTUm++;allTUt+=TUI[m].n;allTUr+=TUI[m].inR;
+    if(TUI[m].inR>0)allTUmP++;}});
   const tuRateAll=allMurid.size?allTUm/allMurid.size:null;
+  /* Rasio yang dipakai di KPI: murid yang top up DI PERIODE INI dibagi murid yang diajar
+     di periode ini. Versi lama membandingkan top up seumur hidup dengan murid periode ini,
+     jadi angkanya tidak bisa dibandingkan antar periode. */
+  const tuRateP=allMurid.size?allTUmP/allMurid.size:null;
+  const cStat=hitungTstat(Object.keys(stat).filter(t=>okLang(t)));
 
   const sortBy=(document.getElementById("tSort")||{}).value||"gaji";
   const rows=Object.entries(by).sort((a,b)=>{
@@ -2628,8 +2661,12 @@ function renderTutorCards(){
     <div class="kpi${sel("batal")||sel("rendah")}" onclick="drillG('comp')"><div class="v" style="color:${allDue?(allDone/allDue>=.95?"#1B6B47":allDone/allDue>=.85?"#A9761B":"var(--red)"):"var(--ink-soft)"}">${allDue?Math.round(allDone/allDue*100)+"%":"—"}</div><div class="l">Completion · ${allBatal} batal</div></div>
     <div class="kpi${sel("pasif")}" onclick="drillG('murid')"><div class="v">${allMurid.size}</div><div class="l">Murid · ${allAktif.size} aktif</div></div>
     <div class="kpi${sel("kelar")}" onclick="drillG('selesai')"><div class="v" style="color:#1B6B47">${allKelar.size}</div><div class="l">Paket Selesai · retensi ${retensiAll==null?"—":Math.round(retensiAll*100)+"%"}</div></div>
-    <div class="kpi${sel("topup")||sel("notopup")}" onclick="drillG('topup')" title="${allTUm} dari ${allMurid.size} murid tercatat pernah top up · ${allTUt} transaksi seluruhnya · ${allTUr} transaksi bertanggal di ${payMode==="range"?"rentang ini":"periode ini"}"><div class="v" style="color:#0E5F8A">${allTUm}</div><div class="l">Murid Top Up · ${allTUt} transaksi</div></div>
-    <div class="kpi${sel("topup")}" onclick="drillG('topup')" title="Berapa persen murid yang tercatat pernah top up — makin tinggi makin loyal."><div class="v" style="color:${tuRateAll==null?"var(--ink-soft)":tuRateAll>=.4?"#1B6B47":tuRateAll>=.2?"#A9761B":"var(--red)"}">${tuRateAll==null?"—":Math.round(tuRateAll*100)+"%"}</div><div class="l">Rasio Top Up · ${allTUr} di periode</div></div>
+    <div class="kpi${sel("topup")}" onclick="drillG('topup')" title="${allTUr} transaksi top up bertanggal di ${payMode==="range"?"rentang "+pFrom+" – "+pTo:"periode ini"} dari ${allMurid.size} murid yang diajar di ${payMode==="range"?"rentang":"periode"} ini. Naik-turunnya bisa dibandingkan antar periode karena keduanya memakai rentang yang sama."><div class="v" style="color:${tuRateP==null?"var(--ink-soft)":tuRateP>=.25?"#1B6B47":tuRateP>=.1?"#A9761B":"var(--red)"}">${tuRateP==null?"—":Math.round(tuRateP*1000)/10+"%"}</div><div class="l">Rasio Top Up ${payMode==="range"?"Rentang":"Periode"} · ${allTUr} trx</div></div>
+    ${Object.entries(TSTAT).map(([k,d])=>{
+      const n=cStat[k]||0;
+      return `<div class="kpi${tStatFilter.has(k)?" on":""}" onclick="toggleTStat('${k}')"
+        title="Klik untuk menyaring hanya tutor ${d.l}"><div class="v" style="color:${d.c}">${n}</div>
+        <div class="l">${d.l}</div></div>`;}).join("")}
     ${payMode==="range"?`<div class="kpi" onclick="drillG('sesi')"><div class="v" style="font-size:14px">${rp(tot.gaji)}</div><div class="l">Gaji di Rentang ${pFrom}–${pTo}</div></div>`:""}`;
   const box=document.getElementById("tutorCards");
   const cocokMurid=t=>stat[t]?[...stat[t].murid].some(m=>m.includes(q)):false;
@@ -2663,7 +2700,8 @@ function renderTutorCards(){
     const blm=splitPaid(t,inR).belum, blmRp=blm.reduce((a,c)=>a+feeOf(c,now),0);
     return `<div class="tcard">
       <div class="nm"><span class="link" onclick="openTutor(du('${eu(t)}'))">${t}</span>
-        ${tidOf(t)?`<span class="tnum" title="Nomor induk tutor">${tidOf(t)}</span>`:""}</div>
+        ${tidOf(t)?`<span class="tnum" title="Nomor induk tutor">${tidOf(t)}</span>`:""}
+        ${tutorTag(t,true)}</div>
       ${q&&!t.toLowerCase().includes(q)&&!cocokTid(t)&&stat[t]?`<div class="hit">cocok murid: ${[...stat[t].murid].filter(m=>m.includes(q)).slice(0,3).join(", ")}</div>`:""}
       ${q&&!t.toLowerCase().includes(q)&&cocokTid(t)?`<div class="hit">cocok nomor induk: ${tidOf(t)}</div>`:""}
       <div class="lg">${tutorLang(t)||"—"}</div>
@@ -2926,7 +2964,7 @@ function bayarSisa(tEnc){
 function drillG(kind){
   const {list,pa,pb,key,now,inScope}=payAgg();
   const lbl=payMode==="range"?`rentang ${fmtD_(pFrom)} – ${fmtD_(pTo)}`:`periode ${fmtD_(pa)} – ${fmtD_(pb)}`;
-  const buka=t=>`<span class="link" onclick="closeDrill();openTutor(du('${eu(t)}'))">${t}</span>`;
+  const buka=t=>`<span class="link" onclick="closeDrill();openTutor(du('${eu(t)}'))">${t}</span>${tutorTag(t,true)}`;
   const tblTutor=(rows,kolom)=>rows.length?`<div class="scroll"><table class="dtab">
       <thead><tr><th>Tutor</th><th>Bahasa</th>${kolom.map(k=>`<th class="num">${k[0]}</th>`).join("")}</tr></thead>
       <tbody>${rows.map(o=>`<tr><td>${buka(o.t)}</td><td>${tutorLang(o.t)||"—"}</td>
@@ -3527,6 +3565,143 @@ function tanyaForm(opt){
   };
 }
 function tutupAsk(){askCb=null;tutupOv("askOv");}
+/* ================= EXPORT REKAP PEMBAYARAN =================
+   Mengikuti periode / rentang tanggal yang sedang dipilih di Tutor Card, ditambah
+   saringan bahasa dan status yang sedang aktif — jadi isinya persis yang terlihat di layar.
+   Perhitungan sudah/belum dibayar memakai penanda pembayaran yang sama dengan slip gaji,
+   supaya tidak muncul dua versi angka. */
+function exBayar(mode){
+  const now=new Date(), key=document.getElementById("fPeriod").value;
+  const pakaiRange=payMode==="range";
+  const [pa,pb]=periodRange(key);
+  const a=pakaiRange?pFrom:pa, b=pakaiRange?pTo:pb;
+  if(pakaiRange&&(!pFrom||!pTo))return toast("Isi dulu rentang tanggalnya");
+
+  const LPT=langPerTutor(), langAktif=[...langPilih];
+  const okLang=t=>!langAktif.length||(LPT[t]&&langAktif.some(l=>LPT[t].has(l)));
+  const okStat=t=>tStatFilter.size?tStatFilter.has(tstatOf(t)):!(sembunyiFormer&&isFormer(t));
+  const inScope=c=>pakaiRange?(c.date>=pFrom&&c.date<=pTo):inPay(c,key);
+
+  const A={};
+  classes.filter(c=>inScope(c)&&statusOf(c,now)==="Selesai"&&okLang(c.tutor)&&okStat(c.tutor))
+    .forEach(c=>{
+      const o=A[c.tutor]=A[c.tutor]||{sudahN:0,sudahRp:0,belumN:0,belumRp:0,jam:0,
+        tglS:[],tglB:[],murid:new Set(),bayarAt:""};
+      const f=feeOf(c,now), lunas=paidCover(c.tutor,c.date);
+      o.jam+=durasi(c.start,c.end);
+      const nm=normName(c.cls||""); if(nm)o.murid.add(nm);
+      if(lunas){o.sudahN++;o.sudahRp+=f;o.tglS.push(c.date);}
+      else{o.belumN++;o.belumRp+=f;o.tglB.push(c.date);}
+    });
+  Object.keys(A).forEach(t=>{
+    const pl=paidList(t).filter(x=>x.at);
+    A[t].bayarAt=pl.length?String(pl[pl.length-1].at).slice(0,10):"";
+  });
+
+  let daftar=Object.entries(A);
+  if(mode==="sudah")daftar=daftar.filter(([,o])=>o.sudahRp>0&&o.belumRp<1);
+  if(mode==="belum")daftar=daftar.filter(([,o])=>o.belumRp>0);
+  daftar.sort((x,y)=>(y[1].sudahRp+y[1].belumRp)-(x[1].sudahRp+x[1].belumRp));
+  if(!daftar.length)return toast("Tidak ada tutor yang cocok untuk export ini");
+
+  const judul={sudah:"sudah_dibayar",belum:"belum_dibayar",semua:"rekap_pembayaran"}[mode];
+  const rows=[["Nomor Induk","Tutor","Status","Bahasa","Bayar Mingguan","WhatsApp","Email",
+    "Sesi Selesai","Total Jam","Total Gaji","Sudah Dibayar","Sisa Dibayar","Status Bayar",
+    "Sesi Sudah Dibayar","Sesi Belum Dibayar","Kelas Pertama","Kelas Terakhir",
+    "Tanggal Ditandai Bayar","Murid Unik"]];
+  let tTot=0,tSudah=0,tBelum=0,tSesi=0,tJam=0;
+  daftar.forEach(([t,o])=>{
+    const total=o.sudahRp+o.belumRp, sesi=o.sudahN+o.belumN;
+    const semuaTgl=o.tglS.concat(o.tglB).sort();
+    const kk=kontakOf(t);
+    tTot+=total;tSudah+=o.sudahRp;tBelum+=o.belumRp;tSesi+=sesi;tJam+=o.jam;
+    rows.push([tidOf(t)||"",t,tstatL(t),tutorLang(t)||"",mingguan(t)?"ya":"",
+      kk.wa?waTampil(kk.wa):"",kk.email||"",
+      sesi,Math.round(o.jam*100)/100,total,o.sudahRp,o.belumRp,
+      o.belumRp<1?"Lunas":(o.sudahRp>0?"Sebagian":"Belum dibayar"),
+      o.sudahN,o.belumN,semuaTgl[0]||"",semuaTgl[semuaTgl.length-1]||"",
+      o.bayarAt||"",o.murid.size]);
+  });
+  rows.push([]);
+  rows.push(["TOTAL "+daftar.length+" tutor","","","","","","",tSesi,Math.round(tJam*100)/100,
+    tTot,tSudah,tBelum]);
+  rows.push([]);
+  rows.push(["Periode",pakaiRange?"Rentang tanggal sendiri":periodLabel(key),a,"s/d",b]);
+  rows.push(["Saringan bahasa",langAktif.length?langAktif.join(" + "):"semua bahasa"]);
+  rows.push(["Saringan status",tStatFilter.size?[...tStatFilter].map(k=>TSTAT[k].l).join(" + ")
+    :(sembunyiFormer?"semua kecuali Former":"semua status")]);
+  rows.push(["Isi export",{sudah:"hanya tutor yang sudah lunas",
+    belum:"hanya tutor yang masih punya sisa",semua:"semua tutor"}[mode]]);
+  rows.push(["Dibuat",new Date().toLocaleString("id-ID"),"oleh",meName()||"-"]);
+
+  unduhCSV(rows,judul+"_"+a+"_sd_"+b+".csv");
+  toast(daftar.length+" tutor · "+rp(mode==="belum"?tBelum:mode==="sudah"?tSudah:tTot)+" diekspor");
+}
+/* ================= STATUS KEPEGAWAIAN TUTOR =================
+   Bawaan setiap tutor adalah "part" — status paling umum dan paling tidak berisiko
+   kalau salah, karena tidak menyembunyikan siapa pun dari daftar.
+   Disimpan sebagai baris "Q:<nama tutor>" di sheet Rates. */
+const TSTAT={
+  mgmt :{l:"Manajemen", s:"MGMT", c:"#5B3FD9", bg:"#EBE8FC"},
+  full :{l:"Full Timer", s:"FULL", c:"#1B6B47", bg:"#E6F4EC"},
+  part :{l:"Part Timer", s:"PART", c:"#0E5F8A", bg:"#E8F1F6"},
+  former:{l:"Former (resign/out)", s:"FORMER", c:"#9B2C2C", bg:"#FDECEC"}
+};
+function tstatOf(t){return (U.tstat||{})[t]||"part";}
+function tstatL(t){return (TSTAT[tstatOf(t)]||TSTAT.part).l;}
+function isFormer(t){return tstatOf(t)==="former";}
+/* label yang ikut ke mana pun nama tutor tampil */
+function tutorTag(t,kecil){
+  const k=tstatOf(t), d=TSTAT[k]||TSTAT.part;
+  if(k==="part"&&kecil)return "";                    // part timer = bawaan, tidak perlu ditandai di tempat sempit
+  return `<span class="tstat" style="color:${d.c};background:${d.bg};border-color:${d.c}33"
+    title="Status tutor: ${d.l}">${d.s}</span>`;
+}
+function setTstat(t,k){
+  if(!guard())return;
+  if(!TSTAT[k])return;
+  U.tstat=U.tstat||{};
+  if(k==="part")delete U.tstat[t]; else U.tstat[t]=k;
+  cacheAll();
+  if(CFG.url){
+    if(k==="part")push({action:"delrate",ids:["Q:"+t]});
+    else push({action:"setrate",rows:[{id:"Q:"+t,tutor:t,cls:"",rate:0,lang:k}]});
+  }
+  renderAll();if(detailCtx)renderDetail();
+  toast(t+" → "+TSTAT[k].l);
+}
+function hitungTstat(daftar){
+  const c={mgmt:0,full:0,part:0,former:0};
+  (daftar||allTutorNames()).forEach(t=>{c[tstatOf(t)]=(c[tstatOf(t)]||0)+1;});
+  return c;
+}
+/* saringan status di Tutor Card */
+let tStatFilter=new Set(), sembunyiFormer=lget("ny_hideformer_v1",true);
+function toggleTStat(k){
+  if(tStatFilter.has(k))tStatFilter.delete(k);else tStatFilter.add(k);
+  if(k==="former"&&tStatFilter.has("former"))sembunyiFormer=false;
+  closeDrill();renderTutorCards();
+}
+function setSembunyiFormer(v){
+  sembunyiFormer=!!v;lset("ny_hideformer_v1",sembunyiFormer);
+  if(sembunyiFormer)tStatFilter.delete("former");
+  closeDrill();renderTutorCards();
+}
+function resetTStat(){tStatFilter.clear();closeDrill();renderTutorCards();}
+function renderStatBar(daftar){
+  const e=document.getElementById("tStatBar"); if(!e)return;
+  const c=hitungTstat(daftar);
+  e.innerHTML=`<span class="lb-lbl">Status:</span>`+
+    `<span class="lchip${tStatFilter.size?"":" on"}" onclick="resetTStat()">
+      <span class="bx">${tStatFilter.size?"":"\u2713"}</span>Semua</span>`+
+    Object.entries(TSTAT).map(([k,d])=>`<span class="lchip${tStatFilter.has(k)?" on":""}"
+        onclick="toggleTStat('${k}')" title="${d.l}">
+      <span class="bx">${tStatFilter.has(k)?"\u2713":""}</span>
+      <span style="color:${d.c}">${d.l}</span> <span class="n">${c[k]||0}</span></span>`).join("")+
+    `<label class="lchip" style="cursor:pointer" title="Tutor yang sudah resign disembunyikan dari daftar dan dari hitungan KPI">
+      <input type="checkbox" ${sembunyiFormer?"checked":""} onchange="setSembunyiFormer(this.checked)"
+        style="vertical-align:-2px;margin-right:4px">Sembunyikan Former</label>`;
+}
 /* ================= NOMOR INDUK TUTOR =================
    Satu tutor = satu nomor, walaupun dia mengajar beberapa bahasa.
    Nomornya menempel ke NAMA tutor, bukan ke bahasa atau ke kelas, jadi tidak akan
@@ -3751,12 +3926,13 @@ function bukaSub(idEnc,usulEnc){
   const s=subOf(c);
   subCtx={id};
   const asli=tutorAsli(c), jam=durasi(c.start,c.end);
-  const kandidat=allTutorNames().filter(t=>t!==asli);
+  const kandidat=allTutorNames().filter(t=>t!==asli)
+    .sort((x,y)=>(isFormer(x)?1:0)-(isFormer(y)?1:0));
   const sama=kandidat.filter(t=>c.lang&&tutorLang(t)===c.lang);
   const lain=kandidat.filter(t=>!sama.includes(t));
   const opt=t=>{
     const rt=ratePerJam(t,c.cls);
-    return `<option value="${t}">${tutorLang(t)?tutorLang(t)+" · ":""}${rt?rp(rt)+"/jam":"rate belum diisi"}</option>`;
+    return `<option value="${t}">${tutorLang(t)?tutorLang(t)+" · ":""}${rt?rp(rt)+"/jam":"rate belum diisi"}${isFormer(t)?" · SUDAH RESIGN":""}</option>`;
   };
   document.getElementById("subInfo").innerHTML=`
     <div class="mini-kpis" style="margin:0 0 9px">
@@ -3855,6 +4031,39 @@ function subBadge(c){
 }
 /* ================= TAB DATA MURID ================= */
 let mLang=new Set(), mStat=new Set(), mBatas=100;
+/* Periode di tab Data Murid: "all" = seluruh waktu, "custom" = rentang tanggal sendiri,
+   selain itu kunci periode cut-off 26–25. Angka sesi, jam, dan top up ikut rentang ini. */
+let mPeriod="all", mFrom="", mTo="";
+function mRange(){
+  if(mPeriod==="all")return ["0000-01-01","9999-12-31"];
+  if(mPeriod==="custom")return (mFrom&&mTo)?(mFrom<=mTo?[mFrom,mTo]:[mTo,mFrom]):periodRange(monthNow());
+  return periodRange(mPeriod);
+}
+function mLabel(){
+  if(mPeriod==="all")return "seluruh waktu";
+  const[a,b]=mRange();
+  return mPeriod==="custom"?fmtD_(a)+" – "+fmtD_(b):periodLabel(mPeriod);
+}
+function setMPeriod(v){
+  mPeriod=v||"all";mBatas=100;
+  if(mPeriod==="custom"){
+    const[a,b]=periodRange(monthNow());
+    if(!mFrom)mFrom=a; if(!mTo)mTo=b;
+  }
+  lupakanRekap();renderMurid();
+}
+function setMRange(w,v){if(w==="a")mFrom=v;else mTo=v;mBatas=100;lupakanRekap();renderMurid();}
+function isiMPeriod(){
+  const el=document.getElementById("mPeriod"); if(!el)return;
+  const ms=listJMonths();
+  el.innerHTML=`<option value="all">Seluruh waktu</option>`+
+    ms.map(k=>`<option value="${k}">${periodLabel(k)}${k===monthNow()?" · berjalan":""}</option>`).join("")+
+    `<option value="custom">Rentang tanggal sendiri…</option>`;
+  el.value=mPeriod;
+  const rb=document.getElementById("mRangeBox");
+  if(rb){rb.style.display=mPeriod==="custom"?"":"none";
+    if(mPeriod==="custom"){document.getElementById("mFrom").value=mFrom;document.getElementById("mTo").value=mTo;}}
+}
 function tambahBatas(){mBatas+=200;renderMurid();}
 const MSTATUS={aktif:{l:"Aktif",c:"aktif"},kelar:{l:"Paket selesai",c:"kelar"},
                cuti:{l:"Cuti",c:"cuti"},vakum:{l:"Vakum >30 hari",c:"vakum"},
@@ -3872,12 +4081,14 @@ function lupakanRekap(){REKAP=null;}
 function bangunRekap(){
   if(REKAP)return REKAP;
   const idx=muridIndex(), now=new Date(), hariIni=todayStr();
+  const [ra,rb]=(typeof mRange==="function")?mRange():["0000-01-01","9999-12-31"];
   const box={};
   Object.keys(U.murid||{}).forEach(id=>box[id]={cs:[],done:[],post:[],akan:[],jam:0,fee:0,
     tgl:[],tut:{},bhs:new Set()});
   const cacheKey={};
   classes.forEach(c=>{
     if(!c.cls)return;
+    if(c.date<ra||c.date>rb)return;
     const k=c.cls;
     let id=cacheKey[k];
     if(id===undefined){id=idx[nkey(k)]||"";cacheKey[k]=id;}
@@ -3893,10 +4104,13 @@ function bangunRekap(){
   });
   const beli={};
   Object.entries(U.beli||{}).forEach(([oid,o])=>{
-    if(!o.mid)return;(beli[o.mid]=beli[o.mid]||[]).push(Object.assign({oid},o));});
+    if(!o.mid)return;
+    if(o.tgl&&(o.tgl<ra||o.tgl>rb))return;
+    (beli[o.mid]=beli[o.mid]||[]).push(Object.assign({oid},o));});
   Object.values(beli).forEach(L=>L.sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl))));
   const tu={},ms={};
-  Object.keys(U.topup||{}).forEach(nm=>{const id=idx[nkey(nm)];if(id)tu[id]=tuList(nm);});
+  Object.keys(U.topup||{}).forEach(nm=>{const id=idx[nkey(nm)];
+    if(id)tu[id]=tuList(nm).filter(t=>!t.tgl||(t.tgl>=ra&&t.tgl<=rb));});
   Object.keys(U.mstat||{}).forEach(nm=>{const id=idx[nkey(nm)];if(id)ms[id]=mstatNow(nm);});
   REKAP={};
   Object.keys(box).forEach(id=>{
@@ -3959,6 +4173,7 @@ function rekapMuridLambat(id){
 function semuaRekap(){return Object.values(bangunRekap());}
 function renderMurid(){
   const box=document.getElementById("mList"); if(!box)return;
+  isiMPeriod();
   const belum=muridBelumPunyaId();
   const w=document.getElementById("mWarn");
   const dup=cekDuplikat();
@@ -4006,6 +4221,7 @@ function renderMurid(){
   const baru=R.filter(r=>r.mulai&&r.mulai>=per[0]&&r.mulai<=per[1]).length;
   document.getElementById("mKpis").innerHTML=`
     <div class="kpi hi"><div class="v">${tot}</div><div class="l">Total Murid</div></div>
+    <div class="kpi"><div class="v" style="font-size:12px">${mLabel()}</div><div class="l">Periode Ditampilkan</div></div>
     <div class="kpi"><div class="v" style="color:#1B6B47">${aktif}</div><div class="l">Aktif</div></div>
     <div class="kpi"><div class="v">${baru}</div><div class="l">Baru Periode Ini</div></div>
     <div class="kpi"><div class="v">${R.reduce((a,r)=>a+r.topup,0)}</div><div class="l">Total Top Up</div></div>
@@ -4046,7 +4262,7 @@ function renderMurid(){
       <span><span class="nm" onclick="openStudent(du('${eu(r.nm)}'))">${r.nm}</span>
         ${r.akhir?`<div class="sub">terakhir ${fmtD_(r.akhir)}${r.selisih>30?" · "+r.selisih+" hari lalu":""}</div>`:`<div class="sub">belum ada kelas</div>`}</span>
       <span class="kol3 sub">${r.bahasa.join(", ")||"—"}${r.tutor.length?"<br>"+r.tutor.slice(0,2).map(t=>
-        `<span class="link" onclick="event.stopPropagation();openTutor(du('${eu(t)}'))">${t}</span>`).join(", "):""}</span>
+        `<span class="link" onclick="event.stopPropagation();openTutor(du('${eu(t)}'))">${t}</span>${tutorTag(t,true)}`).join(", "):""}</span>
       <span class="r">${r.sesi} · ${r.jam}j</span>
       <span class="r kol4">${r.topup?r.topup+"×":"—"}</span>
       <span class="r">${r.belanja?rp(r.belanja):"—"}${r.beli?`<div class="sub">${r.beli}× beli</div>`:""}</span>
@@ -4094,7 +4310,7 @@ function blokMurid(nama){
       <button class="btn ghost small" onclick="lihatDiTabMurid(du('${eu(r.nm)}'))">🎓 Buka di Data Murid</button>
     </div>
     ${r.tutor.length?`<div class="hint" style="margin:0 0 6px">Tutor: ${r.tutor.map(t=>
-        `<span class="link" onclick="closeDetail();openTutor(du('${eu(t)}'))">${t}</span>`).join(" · ")}</div>`:""}
+        `<span class="link" onclick="closeDetail();openTutor(du('${eu(t)}'))">${t}</span>${tutorTag(t,true)}`).join(" · ")}</div>`:""}
     ${(m.al||[]).length>1?`<div class="hint" style="margin:0 0 7px">Nama lain yang dikenali: ${(m.al||[]).join(" · ")}</div>`:""}
     ${m.catatan?`<div class="note" style="margin:0 0 7px">${m.catatan}</div>`:""}
     <div class="mini-kpis" style="margin:0 0 8px">
@@ -5147,7 +5363,7 @@ function exTutorAgg(a,b){
   })).sort((x,y)=>y.gaji-x.gaji);
 }
 function exTutorRows(a,b){
-  const rows=[["Nomor Induk","Tutor","Bahasa Utama","Semua Bahasa","Bayar Mingguan","WhatsApp","Email",
+  const rows=[["Nomor Induk","Tutor","Status","Bahasa Utama","Semua Bahasa","Bayar Mingguan","WhatsApp","Email",
     "Sesi Selesai","Postponed","Belum Jalan","Total Jadwal","Completion (%)",
     "Jam Mengajar","Rata Rate per Jam","Gaji","Sudah Dibayar","Sisa Dibayar","Status Bayar",
     "Murid Unik","Murid Paket Selesai","Murid Top Up","Transaksi Top Up"]];
@@ -5155,7 +5371,7 @@ function exTutorRows(a,b){
     const lunas=o.gaji>0&&o.sisa<1;
     const kk=kontakOf(o.t);
     const bhs=[...new Set(classes.filter(c=>tutorAsli(c)===o.t&&c.lang).map(c=>c.lang))];
-    rows.push([tidOf(o.t)||"",o.t,tutorLang(o.t)||"",bhs.join(", "),mingguan(o.t)?"ya":"",
+    rows.push([tidOf(o.t)||"",o.t,tstatL(o.t),tutorLang(o.t)||"",bhs.join(", "),mingguan(o.t)?"ya":"",
       kk.wa?waTampil(kk.wa):"",kk.email||"",
       o.done,o.batal,o.akan,o.due+o.akan,
       o.comp==null?"":Math.round(o.comp*1000)/10,
@@ -5175,7 +5391,7 @@ function exTutor(){
    jadi bisa dipakai sebagai data master kepegawaian, bukan sekadar rekap gaji. */
 function exDaftarTutor(){
   const now=new Date();
-  const rows=[["Nomor Induk","Nama Tutor","Bahasa Utama","Semua Bahasa yang Diajar","Rate Dasar",
+  const rows=[["Nomor Induk","Nama Tutor","Status","Bahasa Utama","Semua Bahasa yang Diajar","Rate Dasar",
     "Bayar Mingguan","WhatsApp","Email","Jumlah Kelas Tercatat","Sesi Selesai","Total Jam",
     "Total Gaji Tercatat","Murid Unik","Kelas Pertama","Kelas Terakhir","Jumlah Baris Rate"]];
   allTutorNames().sort((x,y)=>(tidOf(x)||"zz").localeCompare(tidOf(y)||"zz")).forEach(t=>{
@@ -5185,7 +5401,7 @@ function exDaftarTutor(){
     const kk=kontakOf(t);
     const bhs=[...new Set(cs.map(c=>c.lang).filter(Boolean))];
     const nRate=effRateKeys().filter(k=>k.slice(0,k.indexOf("|"))===t).length;
-    rows.push([tidOf(t)||"",t,tutorLang(t)||"",bhs.join(", "),
+    rows.push([tidOf(t)||"",t,tstatL(t),tutorLang(t)||"",bhs.join(", "),
       (U.tutors[t]&&U.tutors[t].rate)||(DATA.tutors[t]&&DATA.tutors[t].rate)||0,
       mingguan(t)?"ya":"",kk.wa?waTampil(kk.wa):"",kk.email||"",
       cs.length,done.length,Math.round(done.reduce((s2,c)=>s2+durasi(c.start,c.end),0)*100)/100,
@@ -5901,7 +6117,7 @@ function renderMaster(){
    f.map(r=>{
     const T=eu(r.t), C=eu(r.c||"");
     return `<tr>
-      <td><span class="link" onclick="openTutor(du('${T}'))">${r.t}</span>${r.user&&r.v>0?' <span class="st selesai" style="font-size:9px">koreksi</span>':''}${badge(r.t)}
+      <td><span class="link" onclick="openTutor(du('${T}'))">${r.t}</span>${tutorTag(r.t,true)}${r.user&&r.v>0?' <span class="st selesai" style="font-size:9px">koreksi</span>':''}${badge(r.t)}
         <button class="btn ghost small" title="Ubah nama tutor" onclick="renameEntity('tutor',du('${T}'))">✎</button></td>
       <td>${r.c?`<span class="link" onclick="openStudent(du('${C}'))">${r.c}</span>${badge(r.c)}
         <button class="btn ghost small" title="Ubah nama murid" onclick="renameEntity('student',du('${C}'))">✎</button>`
@@ -6003,6 +6219,11 @@ function terapkanRename(type,oldName,vRaw){
       const tid=U.tid[oldName];
       if(!U.tid[v]){U.tid[v]=tid;if(CFG.url)push({action:"setrate",rows:[{id:"N:"+tid,tutor:v,cls:"",rate:0,lang:"v1"}]});}
       delete U.tid[oldName];
+    }
+    if(U.tstat&&U.tstat[oldName]){
+      const st=U.tstat[oldName];delete U.tstat[oldName];U.tstat[v]=st;
+      if(CFG.url){push({action:"delrate",ids:["Q:"+oldName]});
+        push({action:"setrate",rows:[{id:"Q:"+v,tutor:v,cls:"",rate:0,lang:st}]});}
     }
     if(U.wk&&U.wk[oldName]){delete U.wk[oldName];U.wk[v]=1;
       if(CFG.url){push({action:"delrate",ids:["W:"+oldName]});
@@ -6196,6 +6417,11 @@ function renderDetail(){
       </div>`;})():""}
   ${type==="tutor"?`<div class="row-actions" style="margin:0 0 6px">
       <span class="mid" style="font-family:ui-monospace,monospace;font-weight:800;color:var(--iris-dark)">${tidOf(name)||"belum bernomor"}</span>
+      <select class="editonly" onchange="setTstat(du('${eu(name)}'),this.value)" title="Status kepegawaian"
+        style="padding:4px 7px;font-size:11.5px;font-weight:700">
+        ${Object.entries(TSTAT).map(([k,d])=>`<option value="${k}"${tstatOf(name)===k?" selected":""}>${d.l}</option>`).join("")}
+      </select>
+      <span class="view-only-tag">${tutorTag(name)}</span>
       ${tidOf(name)?"":`<button class="btn ghost small editonly" onclick="bikinIdTutor()">🆔 Buatkan nomor induk</button>`}
       ${(()=>{const b=[...new Set(classes.filter(c=>tutorAsli(c)===name&&c.lang).map(c=>c.lang))];
         return b.length>1?`<span class="chip" title="Satu nomor induk tetap berlaku untuk semua bahasa">${b.length} bahasa: ${b.join(", ")}</span>`:"";})()}
@@ -6431,7 +6657,7 @@ function renderDetail(){
     const tuts=Object.entries(by).sort((a,b)=>(b[1].last||b[1].first).localeCompare(a[1].last||a[1].first));
     html+=`<div class="card"><h2>Riwayat Tutor (${tuts.length})</h2>`+
      (tuts.length?tuts.map(([t,o],i)=>`<div class="studrow">
-       <div style="flex:1;min-width:0"><span class="link" onclick="openTutor(du('${eu(t)}'))">${t}</span>
+       <div style="flex:1;min-width:0"><span class="link" onclick="openTutor(du('${eu(t)}'))">${t}</span>${tutorTag(t,true)}
          ${i===0?'<span class="tagw e">TERKINI</span>':""}
          <div class="meta">${[...o.langs].join(", ")||"—"} · ${o.first}${o.last&&o.last!==o.first?" → "+o.last:""}${o.post?" · "+o.post+" postponed":""}</div></div>
        <b style="white-space:nowrap">${o.n} sesi</b></div>`).join(""):`<div class="empty">Belum ada kelas.</div>`)+`</div>`;
@@ -6746,7 +6972,7 @@ function boot(){
   if(!ME)setTimeout(pickUser,300);
   undoStack=lget(UKEY,[]);
   classes=lget(CKEY,[]).map(normClass);U=lget(RKEY,{rates:{},tutors:{}});paid=lget(PKEY,{});queue=lget(QKEY,[]);
-  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};U.sub=U.sub||{};U.wk=U.wk||{};U.tid=U.tid||{};seedMingguan();
+  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};U.sub=U.sub||{};U.wk=U.wk||{};U.tid=U.tid||{};U.tstat=U.tstat||{};seedMingguan();
   // tidak ada injeksi data bawaan — kalau cache kosong, tunggu sinkron dari Sheet
   document.getElementById("cfgUrl").value=CFG.url;
   document.getElementById("cfgToken").value=CFG.token;
