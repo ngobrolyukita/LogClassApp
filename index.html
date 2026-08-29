@@ -5,26 +5,41 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ngobrol Yuk! — Log Kelas Cloud</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --ink:#1C1633; --ink-soft:#5D5680; --paper:#F3F1F9; --card:#FFFFFF;
-    --iris:#5B3FD9; --iris-dark:#3E2AA3; --iris-tint:#EAE5FB;
-    --amber:#C97A12; --amber-tint:#FAEEDC; --red:#C7365F; --red-tint:#FBE4EB;
-    --blue:#0E8FB5; --blue-tint:#DFF1F7; --line:#DFDAEE;
+    /* Arsip — tinta petrol di atas kertas dingin, kuningan untuk rupiah */
+    --ink:#12212A; --ink-soft:#5B6E77; --paper:#ECEFEE; --card:#FFFFFF;
+    --iris:#0F5C63; --iris-dark:#0A4149; --iris-tint:#DCEAEA;
+    --amber:#8A5F14; --amber-tint:#F4EAD4; --red:#A0303D; --red-tint:#F6E1E3;
+    --blue:#1F6088; --blue-tint:#DEEAF2; --line:#D3DBDA;
+    --moss:#1C6047; --moss-tint:#DCEBE3;
+    --brass:#8A5F14;
+    --shadow:0 1px 2px rgba(18,33,42,.05), 0 8px 24px -12px rgba(18,33,42,.16);
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;background:var(--paper);color:var(--ink);font-size:14px;line-height:1.5}
-  h1,h2,.kpi .v,.cls-fee .f,.cls-time,.gj,.tab{font-family:'Space Grotesk','IBM Plex Sans',sans-serif}
-  .kpi .v,.cls-fee .f,.cls-time,.gj,td.num,th.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+  body{font-family:'Public Sans',system-ui,-apple-system,sans-serif;background:var(--paper);color:var(--ink);
+       font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  h1,h2,.tab,.ttl,.sheet-head .ttl,.jdet-h .t{font-family:'Bricolage Grotesque','Public Sans',sans-serif;
+       font-weight:700;letter-spacing:-.015em}
+  /* Angka uang, kode, dan jam diset monospasi — inilah yang membuat layar ini
+     terbaca seperti lembar buku besar, bukan dasbor umum. */
+  .kpi .v,.cls-fee .f,.cls-time,.gj,td.num,th.num,.mid,.tnum,.rp,.belirow .rp,.jcell span,.pert,
+  .mrow .r,.turow2 .rp{font-family:'IBM Plex Mono','ui-monospace',monospace;
+       font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;letter-spacing:-.02em}
+  .kpi .v{font-weight:600}
+  h1{letter-spacing:-.02em}
+  ::selection{background:var(--iris-tint);color:var(--iris-dark)}
+  *:focus-visible{outline:2px solid var(--iris);outline-offset:2px;border-radius:6px}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   /* --- pita persetujuan harian (tanda tangan operasional) --- */
   .acc{display:flex;align-items:stretch;gap:0;background:var(--card);border:1px solid var(--line);
        border-left:5px solid var(--iris);border-radius:12px;margin-bottom:12px;overflow:hidden}
-  .acc-lbl{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:9.5px;letter-spacing:1.4px;
+  .acc-lbl{font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:9.5px;letter-spacing:1.4px;
        text-transform:uppercase;color:#fff;background:var(--iris);padding:11px 10px;display:flex;align-items:center;
        writing-mode:vertical-rl;transform:rotate(180deg)}
   .tup{display:inline-block;margin-left:3px;padding:1px 5px;border-radius:6px;font-size:9px;font-weight:700;
-       background:var(--blue-tint);color:#0E5F8A;border:1px solid #BFE0F0;vertical-align:middle}
+       background:var(--blue-tint);color:#1F6088;border:1px solid #BFD5E4;vertical-align:middle}
   .turow{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)}
   .turow:last-child{border-bottom:0}
   .turow button{border:0;background:none;color:var(--red);cursor:pointer;font-size:13px;padding:0 4px}
@@ -37,48 +52,53 @@
         cursor:pointer;background:#fff;line-height:1.15}
   .jcell:hover{border-color:var(--iris);background:var(--iris-tint)}
   .jcell b{display:block;font-size:9.5px;font-weight:700;color:var(--ink-soft)}
-  .jcell span{display:block;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:#132A2E}
-  .jcell.kosong span{color:#C3BEDA}
+  .jcell span{display:block;font-family:'Bricolage Grotesque',sans-serif;font-size:13px;font-weight:700;color:#12212A}
+  .jcell.kosong span{color:#B4C0BF}
   .jcell.hariini{border-color:var(--iris);box-shadow:0 0 0 2px var(--iris-tint)}
   .jcell.pilih{border-color:var(--iris);background:var(--iris);color:#fff}
   .jcell.pilih b,.jcell.pilih span{color:#fff!important}
   .jdet{border:1px solid var(--line);border-left:3px solid var(--iris);border-radius:10px;
         padding:11px 13px;margin-top:10px;background:#fff}
   .jdet-h{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-bottom:8px}
-  .jdet-h .t{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px}
+  .jdet-h .t{font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:14px}
   .turow2{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--line);font-size:12px}
   .turow2 .no{width:19px;color:var(--ink-soft);font-weight:700;font-size:11px}
   .turow2 .nm{font-weight:700}
   .turow2 .mt{color:var(--ink-soft);font-size:11px}
-  .jcell u{display:block;font-size:9px;font-weight:700;color:#1B6B47;text-decoration:none;line-height:1.1}
+  .jcell u{display:block;font-size:9px;font-weight:700;color:#1C6047;text-decoration:none;line-height:1.1}
   .jcell.pilih u{color:#BFE8D2!important}
-  .jcell i{position:absolute;top:-5px;right:-4px;background:#0E5F8A;color:#fff;border-radius:9px;
+  .jcell i{position:absolute;top:-5px;right:-4px;background:#1F6088;color:#fff;border-radius:9px;
         font-style:normal;font-size:9px;font-weight:700;padding:1px 4px;line-height:1.3}
   .acc-body{flex:1;padding:10px 13px;min-width:0}
   .acc-body p{font-size:12px;color:var(--ink-soft);line-height:1.45}
   .acc-sign{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
   .acc-who{border:1px dashed var(--iris);border-radius:9px;padding:6px 11px;background:var(--iris-tint);min-width:0}
-  .acc-who b{display:block;font-family:'Space Grotesk',sans-serif;font-size:12.5px;color:var(--iris-dark);letter-spacing:-.2px}
+  .acc-who b{display:block;font-family:'Bricolage Grotesque',sans-serif;font-size:12.5px;color:var(--iris-dark);letter-spacing:-.2px}
   .acc-who span{font-size:10px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px}
   @media(max-width:520px){.acc-lbl{writing-mode:horizontal-tb;transform:none;padding:7px 13px}
     .acc{flex-direction:column}.acc-who{flex:1}}
   .wrap{max-width:1100px;margin:0 auto;padding:14px 12px 70px}
   header{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap}
-  .brand h1{font-size:17px;font-weight:800;letter-spacing:-.3px}
+  .brand h1{font-size:17px;font-weight:700;letter-spacing:-.02em}
   .brand h1 span{color:var(--iris)}
+  /* Pita periode: seluruh app berputar di sekitar cut-off 26–25, jadi itu yang
+     dijadikan penanda visual — bukan hiasan, melainkan konteks yang selalu berlaku. */
+  header{border-bottom:2px solid var(--ink);padding-bottom:10px}
+  .brand h1::after{content:"";display:block;width:34px;height:3px;background:var(--brass);margin-top:5px;border-radius:2px}
   .clock{font-size:12px;color:var(--ink-soft);font-weight:600}
   .clock b{color:var(--iris-dark);font-variant-numeric:tabular-nums}
   .syncbar{display:flex;gap:8px;align-items:center}
   .dot{width:10px;height:10px;border-radius:99px;background:#A9A2C4}
-  .dot.ok{background:#2F9E6E}.dot.busy{background:var(--amber);animation:pulse 1.2s infinite}.dot.err{background:var(--red)}
+  .dot.ok{background:var(--moss)}.dot.busy{background:var(--amber);animation:pulse 1.2s infinite}.dot.err{background:var(--red)}
   .synctext{font-size:11.5px;color:var(--ink-soft);font-weight:700}
   select,input,button{font-family:inherit;font-size:13.5px}
-  select,input{padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)}
+  select,input,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
   select:focus,input:focus{outline:2px solid var(--iris);outline-offset:1px;border-color:var(--iris)}
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(102px,1fr));gap:8px;margin-bottom:12px}
-  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
-  .kpi .v{font-size:18px;font-weight:800;letter-spacing:-.5px}
-  .kpi .l{font-size:10px;color:var(--ink-soft);font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 12px;
+       box-shadow:var(--shadow)}
+  .kpi .v{font-size:18px;font-weight:600;letter-spacing:-.03em}
+  .kpi .l{font-size:9.5px;color:var(--ink-soft);font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-top:2px}
   .kpi.hi{background:var(--iris);border-color:var(--iris)}
   .kpi.hi .v,.kpi.hi .l{color:#fff}.kpi.hi .l{opacity:.85}
   .kpi.live .v{color:var(--blue)}
@@ -86,20 +106,26 @@
   #kpis .kpi:active{opacity:.75}
   #kpis .kpi.sel{box-shadow:0 0 0 2.5px var(--iris-dark);border-color:var(--iris-dark)}
   .tabs{display:flex;gap:3px;margin-bottom:12px;border-bottom:2px solid var(--line);flex-wrap:wrap}
-  .tab{padding:8px 11px;border:none;background:none;font-weight:700;color:var(--ink-soft);cursor:pointer;border-radius:9px 9px 0 0;font-size:12.5px}
-  .tab.on{color:var(--iris);box-shadow:inset 0 -3px 0 var(--iris);background:var(--iris-tint)}
+  .tab{padding:9px 13px;border:none;background:none;font-weight:600;color:var(--ink-soft);cursor:pointer;
+       border-radius:8px 8px 0 0;font-size:12.5px;letter-spacing:-.01em;transition:color .12s}
+  .tab:hover{color:var(--ink)}
+  .tab.on{color:var(--iris-dark);box-shadow:inset 0 -3px 0 var(--iris);background:var(--iris-tint)}
+  .tabs{border-bottom:1px solid var(--line)}
   .panel{display:none}.panel.on{display:block}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
-  .card h2{font-size:14px;font-weight:800;margin-bottom:10px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px 16px;
+       margin-bottom:12px;box-shadow:var(--shadow)}
+  .card h2{font-size:14.5px;font-weight:700;margin-bottom:11px;letter-spacing:-.015em}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px}
   .field label{display:block;font-size:10.5px;font-weight:700;color:var(--ink-soft);margin-bottom:3px;text-transform:uppercase;letter-spacing:.3px}
   .field input,.field select{width:100%}
-  .btn{padding:8px 15px;border-radius:9px;border:none;background:var(--iris);color:#fff;font-weight:700;cursor:pointer}
-  .btn:hover{background:var(--iris-dark)}
-  .btn.ghost{background:#fff;color:var(--iris);border:1.5px solid var(--iris)}
+  .btn{padding:8px 15px;border-radius:8px;border:1px solid var(--iris);background:var(--iris);color:#fff;
+       font-weight:600;cursor:pointer;letter-spacing:-.01em;transition:background .12s,border-color .12s}
+  .btn:hover{background:var(--iris-dark);border-color:var(--iris-dark)}
+  .btn.ghost{background:#fff;color:var(--iris-dark);border:1px solid var(--line)}
+  .btn.ghost:hover{background:var(--iris-tint);border-color:var(--iris)}
   .btn.small{padding:5px 9px;font-size:11.5px;border-radius:7px}
   .btn.danger{background:#fff;color:var(--red);border:1.5px solid var(--red)}
-  .btn.warn{background:#fff;color:#8A5309;border:1.5px solid var(--amber)}
+  .btn.warn{background:#fff;color:#7A5310;border:1.5px solid var(--amber)}
   .row-actions{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap;align-items:center}
   .st{display:inline-block;padding:2px 9px;border-radius:99px;font-size:10.5px;font-weight:800;white-space:nowrap}
   .st.selesai{background:var(--iris-tint);color:var(--iris-dark)}
@@ -107,7 +133,7 @@
   .st.akandatang{background:#EDEAF6;color:var(--ink-soft)}
   .st.postponed{background:var(--red-tint);color:var(--red)}
   .st.paid{background:var(--iris-tint);color:var(--iris-dark)}
-  .st.unpaid{background:var(--amber-tint);color:#8A5309}
+  .st.unpaid{background:var(--amber-tint);color:#7A5310}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
   .cls-item{display:flex;gap:10px;align-items:flex-start;padding:10px 4px;border-bottom:1px solid var(--line)}
   .cls-item.live{background:var(--blue-tint);border-radius:10px;padding:10px;margin:2px 0}
@@ -126,9 +152,9 @@
     background:var(--iris-tint);border:1px solid #CFC4F5;border-radius:10px;padding:9px 11px;
     margin-top:8px;font-size:12px;color:var(--ink)}
   .paidchip{display:flex;justify-content:space-between;align-items:center;gap:6px;background:#E9F6EF;
-    border:1px solid #BFE3D0;color:#1B6B47;border-radius:7px;padding:3px 5px 3px 8px;font-size:10.5px;
+    border:1px solid #BFE3D0;color:#1C6047;border-radius:7px;padding:3px 5px 3px 8px;font-size:10.5px;
     font-weight:700;margin-top:4px}
-  .paidchip button{border:none;background:transparent;color:#8A2F4A;font-weight:800;cursor:pointer;font-size:12px;padding:0 3px}
+  .paidchip button{border:none;background:transparent;color:#8C2A34;font-weight:800;cursor:pointer;font-size:12px;padding:0 3px}
   .searchrow{margin:9px 0 7px}
   .searchrow input{width:100%;padding:9px 12px;font-size:13.5px;border:1px solid var(--line);
     border-radius:9px;background:var(--paper);font-family:inherit;color:var(--ink)}
@@ -136,15 +162,15 @@
   .rangerow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:7px;font-size:12px;color:var(--ink-soft)}
   .rangerow input{padding:5px 7px;font-size:12px;border:1px solid var(--line);border-radius:7px}
   .pert{display:inline-block;background:var(--iris-tint);color:var(--iris-dark);border:1px solid #CFC4F5;
-        border-radius:6px;padding:1px 6px;font-family:'Space Grotesk',sans-serif;font-weight:700;
+        border-radius:6px;padding:1px 6px;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;
         font-size:10.5px;letter-spacing:.2px;vertical-align:middle}
   .pert.full{background:#DFF3E8;color:#1E7A4F;border-color:#B6E0C9}
   .meetbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);
         border-radius:11px;padding:9px 12px;margin-bottom:11px;font-size:12px;color:var(--ink-soft)}
   .meetbar input{width:112px;padding:5px 7px;font-size:12px;border:1px solid var(--line);border-radius:7px}
   .meetbar input.num{width:58px}
-  .pert.over{background:#FDECEC!important;border-color:#E5B4B4!important;color:#9B2C2C!important}
-  .tup.awal{background:#EFEDF9!important;color:#5D5680!important}
+  .pert.over{background:#F6E1E3!important;border-color:#DCB2B6!important;color:#A0303D!important}
+  .tup.awal{background:#E3EAE9!important;color:#5B6E77!important}
   .pert small{font-weight:600;opacity:.75;font-size:9px}
   .cls-fee{text-align:right;min-width:90px}
   .cls-fee .f{font-weight:800;font-size:12.5px;font-variant-numeric:tabular-nums}
@@ -205,24 +231,24 @@
         padding:9px 10px;border-bottom:1px solid var(--line);font-size:12px}
   .mrow:hover{background:var(--iris-tint)}
   .mrow.head{font-weight:800;font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;
-        letter-spacing:.4px;background:#FAF9FE;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+        letter-spacing:.4px;background:#F7F9F8;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
   .mrow .mid{font-family:ui-monospace,monospace;font-size:11px;color:var(--iris-dark);font-weight:700}
   .mrow .nm{font-weight:700;cursor:pointer}
   .mrow .nm:hover{color:var(--iris);text-decoration:underline}
   .mrow .sub{font-weight:600;font-size:10.5px;color:var(--ink-soft)}
   .mrow .r{text-align:right}
   .mtag{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:800}
-  .subtag{display:inline-block;background:#E8F1F6;color:#0E5F8A;border:1px solid #9CC4D8;
+  .subtag{display:inline-block;background:#DEEAF2;color:#1F6088;border:1px solid #A8C2D4;
         padding:1px 7px;border-radius:99px;font-size:10px;font-weight:800;white-space:nowrap}
   .tstat{display:inline-block;margin-left:5px;font-size:9px;font-weight:800;letter-spacing:.3px;
         padding:1px 6px;border-radius:99px;border:1px solid;vertical-align:1px;white-space:nowrap}
   .tnum{display:inline-block;margin-left:6px;font-family:ui-monospace,monospace;font-size:10px;
         font-weight:700;color:var(--iris-dark);background:var(--iris-tint);
         padding:1px 6px;border-radius:99px;vertical-align:1px}
-  .mtag.aktif{background:#E6F4EC;color:#1B6B47}
-  .mtag.kelar{background:#EFEDF9;color:#5D5680}
-  .mtag.cuti{background:#FFF3CD;color:#8A5309}
-  .mtag.vakum{background:#FDECEC;color:#9B2C2C}
+  .mtag.aktif{background:#DCEBE3;color:#1C6047}
+  .mtag.kelar{background:#E3EAE9;color:#5B6E77}
+  .mtag.cuti{background:#F4EAD4;color:#7A5310}
+  .mtag.vakum{background:#F6E1E3;color:#A0303D}
   @media(max-width:820px){
     .mrow{grid-template-columns:1fr 92px 96px;gap:6px}
     .mrow .kol3,.mrow .kol4{display:none}
@@ -232,13 +258,13 @@
         border-top:1px solid var(--line);font-size:12px}
   .belirow .tg{font-weight:700;min-width:82px}
   .belirow .pr{flex:1;min-width:160px}
-  .belirow .rp{font-weight:800;font-family:'Space Grotesk',sans-serif}
+  .belirow .rp{font-weight:800;font-family:'Bricolage Grotesque',sans-serif}
   .langbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0 2px}
   .langbar .lb-lbl{font-size:11px;font-weight:800;color:var(--ink-soft);margin-right:2px}
   .lchip{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid var(--line);
         color:var(--ink);padding:4px 11px 4px 8px;border-radius:99px;font-size:11.5px;font-weight:700;cursor:pointer}
   .lchip:hover{border-color:var(--iris)}
-  .lchip .bx{width:13px;height:13px;border:1.5px solid #C3BEDA;border-radius:4px;display:inline-block;
+  .lchip .bx{width:13px;height:13px;border:1.5px solid #B4C0BF;border-radius:4px;display:inline-block;
         line-height:11px;text-align:center;font-size:10px;color:transparent}
   .lchip.on{background:var(--iris-tint);border-color:var(--iris);color:var(--iris-dark)}
   .lchip.on .bx{background:var(--iris);border-color:var(--iris);color:#fff}
@@ -252,28 +278,28 @@
   .studrow .meta{font-size:11.5px;color:var(--ink-soft)}
   .studrow.w1{background:#FFF8EC;border-left:3px solid #C98A16;padding-left:8px;border-radius:0 7px 7px 0}
   .studrow.w3{background:#FFF1E4;border-left:3px solid #C4611A;padding-left:8px;border-radius:0 7px 7px 0}
-  .studrow.w4{background:#F9E9E9;border-left:3px solid #8E1F1F;padding-left:8px;border-radius:0 7px 7px 0}
-  .studrow.w2{background:#FDF1F1;border-left:3px solid var(--red);padding-left:8px;border-radius:0 7px 7px 0}
+  .studrow.w4{background:#F9E9E9;border-left:3px solid #8C2A34;padding-left:8px;border-radius:0 7px 7px 0}
+  .studrow.w2{background:#F8E9EA;border-left:3px solid var(--red);padding-left:8px;border-radius:0 7px 7px 0}
   .studrow.wc{background:#EEF4FF;border-left:3px solid #2C5FA8;padding-left:8px;border-radius:0 7px 7px 0}
   .studrow.wp{background:#FFF4F8;border-left:3px solid #A8347A;padding-left:8px;border-radius:0 7px 7px 0}
   .studrow .tagw{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.4px;padding:2px 6px;border-radius:5px;margin-left:5px;vertical-align:middle}
-  .studrow .tagw.a{background:#FDECC8;color:#7A5308}
-  .studrow .tagw.b{background:#F7D9D9;color:#8E1F1F}
+  .studrow .tagw.a{background:#F1E4CB;color:#7A5310}
+  .studrow .tagw.b{background:#F7D9D9;color:#8C2A34}
   .studrow .tagw.a3{background:#FBDCC2;color:#8A4310}
-  .studrow .tagw.b4{background:#8E1F1F;color:#fff}
+  .studrow .tagw.b4{background:#8C2A34;color:#fff}
   .studrow .tagw.cu{background:#DCE8FB;color:#1E4477}
-  .studrow .tagw.ok{background:#DFF3E7;color:#14603E}
+  .studrow .tagw.ok{background:#DCEBE3;color:#154C39}
   .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:10.5px;font-weight:600;opacity:.9}
   .legend span{display:flex;align-items:center;gap:4px}
   .legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
   .legend i.k1{background:#C98A16}
-  .legend i.k4{background:#8E1F1F}
+  .legend i.k4{background:#8C2A34}
   .legend i.k2{background:#D14343}
   .legend i.kc{background:#2C5FA8}
   .legend i.kp{background:#A8347A}
   .studrow .tagw.po{background:#FBD9EB;color:#7D2258}
-  .studrow .rec{font-size:11.5px;color:#8E1F1F;margin-top:3px;font-weight:600}
-  .studrow .rec.a{color:#7A5308}
+  .studrow .rec{font-size:11.5px;color:#8C2A34;margin-top:3px;font-weight:600}
+  .studrow .rec.a{color:#7A5310}
   .studrow.wc{background:#EEF0FF;border-left:3px solid var(--iris);padding-left:8px;border-radius:0 7px 7px 0}
   .studrow .tagw.c{background:#DDE1FF;color:#3B32A8}
   .studrow .rec.c{color:#3B32A8}
@@ -281,60 +307,60 @@
   .tcard .hit{font-size:11px;color:var(--iris);font-weight:700;margin:-3px 0 5px;text-transform:capitalize}
   .studrow.ws{background:#F4F5FF;border-left:3px solid var(--iris);padding-left:8px;border-radius:0 7px 7px 0}
   .studrow .tagw.d{background:#E6E6EC;color:#4A4A57}
-  .studrow .tagw.e{background:#DFF3E7;color:#14603E}
-  .studrow .tagw.g{background:#DFF3E7;color:#14603E;border:1px solid #BFE3D0}
+  .studrow .tagw.e{background:#DCEBE3;color:#154C39}
+  .studrow .tagw.g{background:#DCEBE3;color:#154C39;border:1px solid #BFE3D0}
   .studrow .tagw.t{background:#DCEBFF;color:#0F4C81}
-  .studrow.wg{background:#F1FAF4;border-left:3px solid #1B6B47;padding-left:8px;border-radius:0 7px 7px 0}
+  .studrow.wg{background:#EEF5F1;border-left:3px solid #1C6047;padding-left:8px;border-radius:0 7px 7px 0}
   .studrow.wt{background:#EFF6FF;border-left:3px solid #0F4C81;padding-left:8px;border-radius:0 7px 7px 0}
   .studrow .tagw.p{background:#EDE9FE;color:#4A3AA8}
   .buytag{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.3px;padding:1px 5px;
     border-radius:4px;margin-left:4px;vertical-align:middle}
-  .buytag.b{background:#DFF3E7;color:#14603E}
-  .buytag.c{background:#FDECC8;color:#7A5308}
+  .buytag.b{background:#DCEBE3;color:#154C39}
+  .buytag.c{background:#F1E4CB;color:#7A5310}
   .buytag.n{background:#E6E6EC;color:#4A4A57}
   .gtutrow{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;background:#F5F3FF;
     border:1px solid #DDD6FE;border-radius:8px;padding:7px 9px;margin-top:5px;font-size:11.5px}
-  .gtutrow button{border:none;background:transparent;color:#8A2F4A;font-weight:800;cursor:pointer;font-size:12px;padding:0 3px}
+  .gtutrow button{border:none;background:transparent;color:#8C2A34;font-weight:800;cursor:pointer;font-size:12px;padding:0 3px}
   .msnow{background:var(--iris-tint);border-radius:9px;padding:9px 11px;margin-bottom:9px;font-weight:700;font-size:12.5px}
-  .msnow.lewat{background:#FDF1F1;color:#8E1F1F}
-  .msnow.done{background:#EDF7F1;color:#14603E}
-  .followbox{background:#FDF1F1;border:1px solid #F1CFCF;border-radius:9px;padding:9px 11px;margin-bottom:9px;font-size:12px;color:#8E1F1F;font-weight:600}
+  .msnow.lewat{background:#F8E9EA;color:#8C2A34}
+  .msnow.done{background:#EDF7F1;color:#154C39}
+  .followbox{background:#F8E9EA;border:1px solid #F1CFCF;border-radius:9px;padding:9px 11px;margin-bottom:9px;font-size:12px;color:#8C2A34;font-weight:600}
   .sheet.mini{max-width:480px;border-radius:16px;max-height:92vh;max-height:92dvh;margin-bottom:auto;margin-top:auto}
   .sheet.mini .sheet-head{border-radius:16px 16px 0 0}
   .sheetov.center{align-items:center;justify-content:center;padding:14px}
   .sheetov.center .sheet{border-radius:16px;max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px)}
   .sheetov.center .sheet-head{border-radius:16px 16px 0 0}
   #printArea{display:none;background:#fff;font-family:Arial,sans-serif;color:#000;font-size:12px;padding:18px;max-width:800px;margin:0 auto}
-  #printArea .ph{display:flex;justify-content:space-between;border-bottom:2.5px solid #5B3FD9;padding-bottom:8px;margin-bottom:12px}
+  #printArea .ph{display:flex;justify-content:space-between;border-bottom:2.5px solid #0F5C63;padding-bottom:8px;margin-bottom:12px}
   #printArea h1{font-size:17px;margin:0}
-  #printArea h1 span{color:#5B3FD9}
+  #printArea h1 span{color:#0F5C63}
   #printArea .meta{font-size:11px;color:#333}
   #printArea table{width:100%;border-collapse:collapse;margin:10px 0}
   #printArea th,#printArea td{border:1px solid #999;padding:5px 7px;font-size:10.5px;text-align:left}
-  #printArea th{background:#EAE5FB}
+  #printArea th{background:#DCEAEA}
   #printArea .num{text-align:right}
   #printArea .tot td{font-weight:bold;background:#F4F1FC}
   #printArea .sig{display:flex;justify-content:space-between;gap:14px;margin-top:44px;font-size:11px;text-align:center}
   #printArea .sig .box{width:200px}
   #printArea .sig .role{margin-bottom:56px}
   #printArea .sig .nm{border-top:1px solid #000;padding-top:5px;font-weight:bold}
-  #printArea .lh{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #5B3FD9;padding-bottom:10px;margin-bottom:14px;gap:12px}
+  #printArea .lh{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #0F5C63;padding-bottom:10px;margin-bottom:14px;gap:12px}
   #printArea .lh .co{font-size:15px;font-weight:bold;letter-spacing:.3px}
-  #printArea .lh .brand{font-size:12px;color:#5B3FD9;font-weight:bold}
+  #printArea .lh .brand{font-size:12px;color:#0F5C63;font-weight:bold}
   #printArea .lh .adr{font-size:9.5px;color:#333;line-height:1.45;text-align:right}
   #printArea .doc{text-align:center;font-size:14px;font-weight:bold;letter-spacing:1px;margin:6px 0 2px;text-decoration:underline}
   #printArea .per{text-align:center;font-size:11px;margin-bottom:12px}
   #printArea .sumbox{display:flex;gap:12px;margin:12px 0}
-  #printArea .sumbox .b{flex:1;border:1.5px solid #5B3FD9;border-radius:6px;padding:8px 12px}
+  #printArea .sumbox .b{flex:1;border:1.5px solid #0F5C63;border-radius:6px;padding:8px 12px}
   #printArea .sumbox .lbl2{font-size:9.5px;color:#333;text-transform:uppercase;letter-spacing:.5px}
   #printArea .sumbox .val2{font-size:15px;font-weight:bold}
   #printArea .slipwrap.pgbreak{margin-top:26px;border-top:2px dashed #BBB;padding-top:20px}
   @media print{#printArea .slipwrap.pgbreak{page-break-before:always;margin-top:0;border-top:none;padding-top:0}}
   #printArea .noprint{margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  #printArea .noprint .hint{font-size:11px;color:#5D5680;width:100%}
+  #printArea .noprint .hint{font-size:11px;color:#5B6E77;width:100%}
   #printArea .slipwrap{position:relative}
-  #printArea [contenteditable]:focus{outline:2px dashed #5B3FD9;outline-offset:2px}
-  #printArea .draf{border:2px dashed #C7365F;color:#8A2F4A;background:#FBE4EB;border-radius:8px;
+  #printArea [contenteditable]:focus{outline:2px dashed #0F5C63;outline-offset:2px}
+  #printArea .draf{border:2px dashed #A0303D;color:#8C2A34;background:#F6E1E3;border-radius:8px;
     padding:8px 11px;margin:8px 0 10px;font-weight:800;font-size:11.5px;text-align:center;letter-spacing:.4px}
   #printArea .draf span{display:block;font-weight:600;font-size:10px;letter-spacing:0;margin-top:3px;color:#7A2C43}
   #printArea .stamp{
@@ -1164,17 +1190,17 @@ function hitungGT(){
   document.getElementById("gtInfo").innerHTML=`
     <div class="mini-kpis" style="margin:0 0 9px">
       <div class="kpi hi"><div class="v">${semuaPindah.length}</div><div class="l">Sesi Dipindah</div></div>
-      <div class="kpi"><div class="v" style="color:${selesai.length?"#0E5F8A":""}">${selesai.length}</div><div class="l">Sudah Selesai · Fee Ikut Pindah</div></div>
+      <div class="kpi"><div class="v" style="color:${selesai.length?"#1F6088":""}">${selesai.length}</div><div class="l">Sudah Selesai · Fee Ikut Pindah</div></div>
       <div class="kpi"><div class="v">${tetap.length}</div><div class="l">Tetap di Tutor Lama</div></div>
-      <div class="kpi"><div class="v" style="color:${terkunci.length?"#A9761B":""}">${terkunci.length}</div><div class="l">Sudah Dibayar · Tidak Bisa</div></div>
+      <div class="kpi"><div class="v" style="color:${terkunci.length?"#8A5F14":""}">${terkunci.length}</div><div class="l">Sudah Dibayar · Tidak Bisa</div></div>
       <div class="kpi"><div class="v" style="font-size:12px">${gtCtx.lama.join(", ")}</div><div class="l">Tutor Sekarang</div></div>
     </div>
-    ${selesai.length?`<div class="filterchip" style="background:#E8F1F6;border-color:#9CC4D8;display:block">
+    ${selesai.length?`<div class="filterchip" style="background:#DEEAF2;border-color:#A8C2D4;display:block">
       <b>${selesai.length} sesi yang sudah Selesai ikut pindah.</b>
       Fee ${rp(fee)} keluar dari ${gtCtx.lama.join(", ")}${t?` dan masuk ${rp(feeBaru)} ke <b>${t}</b>`:""}.
-      ${t&&feeBaru!==fee?`<br><span style="color:#8A5309">Angkanya berbeda karena rate ${t} untuk kelas ini tidak sama.</span>`:""}
+      ${t&&feeBaru!==fee?`<br><span style="color:#7A5310">Angkanya berbeda karena rate ${t} untuk kelas ini tidak sama.</span>`:""}
       </div>`:""}
-    ${terkunci.length?`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B;display:block">
+    ${terkunci.length?`<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86;display:block">
       <b>${terkunci.length} sesi sudah ditandai dibayar</b> — tidak ikut pindah, supaya slip gaji yang sudah terbit tidak berubah.
       Kalau memang harus pindah, batalkan dulu tanda dibayarnya di halaman tutor.</div>`:""}
     <p class="note" style="margin:0">Jadwal yang belum jalan selalu ikut pindah.
@@ -1551,8 +1577,8 @@ function renderSimpanWarn(){
   const e=document.getElementById("simpanWarn"); if(!e)return;
   const q=queue.length;
   if(!SIMPAN_GAGAL&&!q){e.innerHTML="";return;}
-  e.innerHTML=`<div class="filterchip" style="display:block;background:${q?"#FFF3CD":"#FDECEC"};
-      border-color:${q?"#E5C97B":"#E5B4B4"}">
+  e.innerHTML=`<div class="filterchip" style="display:block;background:${q?"#F4EAD4":"#F6E1E3"};
+      border-color:${q?"#D8BE86":"#DCB2B6"}">
     ${q?`<b>${q} perubahan belum terkirim ke Google Sheet.</b> Biarkan app terbuka sampai angkanya nol —
         kalau ditutup sekarang, perubahan itu belum aman.
         <button class="btn small" onclick="flush()">Kirim sekarang</button>`:""}
@@ -1716,7 +1742,7 @@ function meetBadge(c){
     +(sisa!=null?" · sisa "+fmtP(sisa)+" jam":"")
     +(lewat?" · SUDAH LEWAT JAM PAKET":"");
   return `<span class="pert${sel?" full":""}${lewat?" over":""}" title="${judul}">Jam ${fmtP(n)}${t?"/"+fmtP(t):""}</span>`
-    +(sisa!=null&&sisa<=1.0001?`<span class="tup" style="background:#8A5309" title="Sisa paket tinggal ${fmtP(sisa)} jam — waktunya ditawari top up">sisa ${fmtP(sisa)}j</span>`:"");
+    +(sisa!=null&&sisa<=1.0001?`<span class="tup" style="background:#7A5310" title="Sisa paket tinggal ${fmtP(sisa)} jam — waktunya ditawari top up">sisa ${fmtP(sisa)}j</span>`:"");
 }
 function saveMeet(){lset(MKEY,MEET);buildMeet();renderAll();}
 function renderMeetBar(){
@@ -2823,7 +2849,7 @@ function renderTutorCards(){
   const compOf=t=>{const s=stat[t];return s&&s.due?s.done/s.due:null;};
   const compTxt=t=>{const v=compOf(t);return v==null?"—":Math.round(v*100)+"%";};
   const compWarna=t=>{const v=compOf(t);
-    return v==null?"var(--ink-soft)":v>=.95?"#1B6B47":v>=.85?"#A9761B":"var(--red)";};
+    return v==null?"var(--ink-soft)":v>=.95?"#1C6047":v>=.85?"#8A5F14":"var(--red)";};
 
   /* --- top up murid: acuan loyalitas ---
      tuMuridOf  = berapa murid tutor ini yang tercatat pernah top up (sekali hitung per murid)
@@ -2888,12 +2914,12 @@ function renderTutorCards(){
     <div class="kpi hi" onclick="drillG('gaji')"><div class="v" style="font-size:14px">${rp(totRp)}</div><div class="l">Total Gaji Periode</div></div>
     <div class="kpi" onclick="drillG('tutor')"><div class="v">${nTutor}</div><div class="l">Tutor</div></div>
     <div class="kpi" onclick="drillG('sesi')"><div class="v">${tot.n}</div><div class="l">Sesi ${payMode==="range"?"di Rentang":"Selesai"}</div></div>
-    <div class="kpi${sel("lunas")}" onclick="drillG('sudah')"><div class="v" style="font-size:14px;color:#1B6B47">${rp(paidRp)}</div><div class="l">Sudah Dibayar · ${paidN}/${nTutor} tutor</div></div>
+    <div class="kpi${sel("lunas")}" onclick="drillG('sudah')"><div class="v" style="font-size:14px;color:#1C6047">${rp(paidRp)}</div><div class="l">Sudah Dibayar · ${paidN}/${nTutor} tutor</div></div>
     <div class="kpi${sel("sisa")}" onclick="drillG('sisa')"><div class="v" style="font-size:14px;color:var(--red)">${rp(totRp-paidRp)}</div><div class="l">Sisa Dibayar</div></div>
-    <div class="kpi${sel("batal")||sel("rendah")}" onclick="drillG('comp')"><div class="v" style="color:${allDue?(allDone/allDue>=.95?"#1B6B47":allDone/allDue>=.85?"#A9761B":"var(--red)"):"var(--ink-soft)"}">${allDue?Math.round(allDone/allDue*100)+"%":"—"}</div><div class="l">Completion · ${allBatal} batal</div></div>
+    <div class="kpi${sel("batal")||sel("rendah")}" onclick="drillG('comp')"><div class="v" style="color:${allDue?(allDone/allDue>=.95?"#1C6047":allDone/allDue>=.85?"#8A5F14":"var(--red)"):"var(--ink-soft)"}">${allDue?Math.round(allDone/allDue*100)+"%":"—"}</div><div class="l">Completion · ${allBatal} batal</div></div>
     <div class="kpi${sel("pasif")}" onclick="drillG('murid')"><div class="v">${allMurid.size}</div><div class="l">Murid · ${allAktif.size} aktif</div></div>
-    <div class="kpi${sel("kelar")}" onclick="drillG('selesai')"><div class="v" style="color:#1B6B47">${allKelar.size}</div><div class="l">Paket Selesai · retensi ${retensiAll==null?"—":Math.round(retensiAll*100)+"%"}</div></div>
-    <div class="kpi${sel("topup")}" onclick="drillG('topup')" title="${trxTU} transaksi top up (catatan paket ${topupSum(_ra,_rb).n} · riwayat pembelian ${_bhT.tot.topup}) dibagi ${trxJual} transaksi penjualan pada ${payMode==="range"?"rentang "+pFrom+" – "+pTo:periodLabel(key)}.${trxJual?"":" Jumlah transaksi penjualannya belum diisi — isi di tab Statistik, card Rasio Top Up."}"><div class="v" style="color:${rasioTrx==null?"var(--ink-soft)":rasioTrx>=.25?"#1B6B47":rasioTrx>=.15?"#A9761B":"var(--red)"}">${rasioTrx==null?"—":Math.round(rasioTrx*1000)/10+"%"}</div><div class="l">Rasio Transaksi Top Up · ${trxTU}/${trxJual||"?"}</div></div>
+    <div class="kpi${sel("kelar")}" onclick="drillG('selesai')"><div class="v" style="color:#1C6047">${allKelar.size}</div><div class="l">Paket Selesai · retensi ${retensiAll==null?"—":Math.round(retensiAll*100)+"%"}</div></div>
+    <div class="kpi${sel("topup")}" onclick="drillG('topup')" title="${trxTU} transaksi top up (catatan paket ${topupSum(_ra,_rb).n} · riwayat pembelian ${_bhT.tot.topup}) dibagi ${trxJual} transaksi penjualan pada ${payMode==="range"?"rentang "+pFrom+" – "+pTo:periodLabel(key)}.${trxJual?"":" Jumlah transaksi penjualannya belum diisi — isi di tab Statistik, card Rasio Top Up."}"><div class="v" style="color:${rasioTrx==null?"var(--ink-soft)":rasioTrx>=.25?"#1C6047":rasioTrx>=.15?"#8A5F14":"var(--red)"}">${rasioTrx==null?"—":Math.round(rasioTrx*1000)/10+"%"}</div><div class="l">Rasio Transaksi Top Up · ${trxTU}/${trxJual||"?"}</div></div>
     ${Object.entries(TSTAT).map(([k,d])=>{
       const n=cStat[k]||0;
       return `<div class="kpi${tStatFilter.has(k)?" on":""}" onclick="toggleTStat('${k}')"
@@ -2942,19 +2968,19 @@ function renderTutorCards(){
       <div class="row klik" onclick="drill('murid','${eu(t)}')" title="${muridOf(t)} murid unik terjadwal · ${aktifOf(t)} masih aktif · ${doneOfT(t)} paketnya selesai · ${pasifOf(t)} belum jalan sama sekali">
         <span>Murid</span><b>${muridOf(t)} <small style="font-weight:700;color:${pasifOf(t)?"var(--red)":"var(--ink-soft)"}">(${aktifOf(t)} aktif)</small>${catatOfT(t)?` <small style="font-weight:700;color:var(--iris)">${catatOfT(t)} dicatat</small>`:""}</b></div>
       <div class="row klik" onclick="drill('selesai','${eu(t)}')" title="Murid yang paketnya sudah habis. Tetap dihitung di total murid, tapi tidak lagi dihitung aktif.">
-        <span>Paket Selesai</span><b>${doneOfT(t)?`<span style="color:#1B6B47">🎓 ${doneOfT(t)}</span>`:"—"}</b></div>
+        <span>Paket Selesai</span><b>${doneOfT(t)?`<span style="color:#1C6047">🎓 ${doneOfT(t)}</span>`:"—"}</b></div>
       <div class="row klik" onclick="drill('selesai','${eu(t)}')" title="Berapa persen murid tutor ini yang paketnya belum selesai — makin tinggi makin bagus retensinya.">
-        <span>Retensi Murid</span><b style="color:${retensiOf(t)==null?"var(--ink-soft)":retensiOf(t)>=.9?"#1B6B47":retensiOf(t)>=.75?"#A9761B":"var(--red)"}">${retensiOf(t)==null?"—":Math.round(retensiOf(t)*100)+"%"}</b></div>
+        <span>Retensi Murid</span><b style="color:${retensiOf(t)==null?"var(--ink-soft)":retensiOf(t)>=.9?"#1C6047":retensiOf(t)>=.75?"#8A5F14":"var(--red)"}">${retensiOf(t)==null?"—":Math.round(retensiOf(t)*100)+"%"}</b></div>
       <div class="row klik" onclick="drill('topup','${eu(t)}')" title="${tuMuridOf(t)} dari ${muridOf(t)} murid tercatat pernah top up · ${tuTrxOf(t)} transaksi seluruhnya · ${tuTrxROf(t)} bertanggal di ${payMode==="range"?"rentang ini":"periode ini"}">
-        <span>Top Up Murid</span><b>${tuMuridOf(t)?`<span style="color:#0E5F8A">🔁 ${tuMuridOf(t)}</span> <small style="font-weight:700;color:var(--ink-soft)">${tuTrxOf(t)}×</small>`:"—"}</b></div>
+        <span>Top Up Murid</span><b>${tuMuridOf(t)?`<span style="color:#1F6088">🔁 ${tuMuridOf(t)}</span> <small style="font-weight:700;color:var(--ink-soft)">${tuTrxOf(t)}×</small>`:"—"}</b></div>
       <div class="row klik" onclick="drill('topup','${eu(t)}')" title="${tuMuridOf(t)} dari ${muridOf(t)} murid tutor ini tercatat top up — makin tinggi makin loyal muridnya. Dihitung dari murid yang diajar di ${payMode==="range"?"rentang":"periode"} ini.">
-        <span>Rasio Murid Top Up</span><b style="color:${tuRateOf(t)==null?"var(--ink-soft)":tuRateOf(t)>=.4?"#1B6B47":tuRateOf(t)>=.2?"#A9761B":"var(--red)"}">${tuRateOf(t)==null?"—":Math.round(tuRateOf(t)*1000)/10+"%"}<small style="font-weight:700;color:var(--ink-soft)"> ${tuMuridOf(t)}/${muridOf(t)}</small></b></div>
+        <span>Rasio Murid Top Up</span><b style="color:${tuRateOf(t)==null?"var(--ink-soft)":tuRateOf(t)>=.4?"#1C6047":tuRateOf(t)>=.2?"#8A5F14":"var(--red)"}">${tuRateOf(t)==null?"—":Math.round(tuRateOf(t)*1000)/10+"%"}<small style="font-weight:700;color:var(--ink-soft)"> ${tuMuridOf(t)}/${muridOf(t)}</small></b></div>
       <div class="row klik" onclick="drill('comp','${eu(t)}')" title="${stat[t]?stat[t].done+" jalan dari "+stat[t].due+" terjadwal · "+stat[t].batal+" postponed":""}">
         <span>Completion</span><b style="color:${compWarna(t)}">${compTxt(t)}${batalOf(t)?` <small style="font-weight:700;color:var(--ink-soft)">(${batalOf(t)} batal)</small>`:""}</b></div>
       ${payMode==="range"?`<div class="row klik" onclick="drill('sesi','${eu(t)}')"><span>Gaji di rentang</span><b>${rp(r.gaji)}</b></div>`:""}
       <div class="gj klik" onclick="drill('total','${eu(t)}')" title="Total gaji seluruh periode cut-off — klik untuk rincian">${rp(total)}<small style="display:block;font-size:10px;font-weight:700;color:var(--ink-soft);letter-spacing:.4px">TOTAL GAJI PERIODE</small></div>
-      <div class="row klik" onclick="drill('sudah','${eu(t)}')"><span>Sudah dibayar</span><b style="color:#1B6B47">${rp(sudah)}</b></div>
-      <div class="row klik" onclick="drill('sisa','${eu(t)}')"><span>Sisa dibayar</span><b style="color:${sisa>0?"var(--red)":"#1B6B47"}">${rp(sisa)}</b></div>
+      <div class="row klik" onclick="drill('sudah','${eu(t)}')"><span>Sudah dibayar</span><b style="color:#1C6047">${rp(sudah)}</b></div>
+      <div class="row klik" onclick="drill('sisa','${eu(t)}')"><span>Sisa dibayar</span><b style="color:${sisa>0?"var(--red)":"#1C6047"}">${rp(sisa)}</b></div>
       ${ent.map(p=>`<div class="paidchip">${p.rentang?p.from+" → "+p.to:"Periode penuh"}
          <button onclick="delPaidId(du('${eu(p.id)}'))" title="Batalkan">✕</button></div>`).join("")}
       <div class="foot">
@@ -3065,7 +3091,7 @@ function renderDrill(){
         const ms=mstatNow(x.nm), akhir=x.tu[x.tu.length-1];
         return `<tr>
         <td><span class="link" onclick="closeDrill();openStudent(du('${eu(x.nm)}'))">${x.nm}</span></td>
-        <td class="num"><b style="color:#0E5F8A">${x.tu.length}×</b></td>
+        <td class="num"><b style="color:#1F6088">${x.tu.length}×</b></td>
         <td>${x.tu.map(r=>`<span class="tup" title="${r.tgl?fmtD_(r.tgl):"tanpa tanggal"}${r.jam?" · "+r.jam+" jam":""}${r.note?" · "+r.note:""}">TU${r.ke}</span>`).join(" ")}</td>
         <td>${akhir&&akhir.tgl?fmtD_(akhir.tgl):"—"}</td>
         <td class="num">${x.sesi}</td>
@@ -3092,7 +3118,7 @@ function renderDrill(){
     judul="Paket Selesai";
     sub=`${t} · ${lblScope}`;
     html=`<p class="dnote"><b>${list.length}</b> dari ${semua.length} murid sudah habis paketnya —
-      retensi <b style="color:${ret==null?"inherit":ret>=.9?"#1B6B47":ret>=.75?"#A9761B":"var(--red)"}">${ret==null?"—":Math.round(ret*100)+"%"}</b>.
+      retensi <b style="color:${ret==null?"inherit":ret>=.9?"#1C6047":ret>=.75?"#8A5F14":"var(--red)"}">${ret==null?"—":Math.round(ret*100)+"%"}</b>.
       Murid di sini tetap dihitung pada total murid, tapi tidak lagi masuk hitungan murid aktif.
       Kalau ada yang lanjut lagi, aktifkan lewat tombol di barisnya.</p>`+
       (list.length?`<div class="scroll"><table class="dtab">
@@ -3249,7 +3275,7 @@ function drillG(kind){
       </div>`+
       tblTutor(rows,[["Terjadwal",o=>o.due,r=>jum(r,o=>o.due)],["Jalan",o=>o.done,r=>jum(r,o=>o.done)],
         ["Postponed",o=>o.batal?`<b style="color:var(--red)">${o.batal}</b>`:"—",r=>jum(r,o=>o.batal)],
-        ["Completion",o=>o.comp==null?"—":`<b style="color:${o.comp>=.95?"#1B6B47":o.comp>=.85?"#A9761B":"var(--red)"}">${Math.round(o.comp*100)}%</b>`,
+        ["Completion",o=>o.comp==null?"—":`<b style="color:${o.comp>=.95?"#1C6047":o.comp>=.85?"#8A5F14":"var(--red)"}">${Math.round(o.comp*100)}%</b>`,
           r=>{const d=jum(r,o=>o.due);return d?Math.round(jum(r,o=>o.done)/d*100)+"%":"—";}]]);
   }
   else if(kind==="selesai"){
@@ -3268,10 +3294,10 @@ function drillG(kind){
       </div>`+
       tblTutor(rows,[["Total Murid",o=>o.murid.size,r=>jum(r,o=>o.murid.size)],
         ["Aktif",o=>o.aktif.size,r=>jum(r,o=>o.aktif.size)],
-        ["Paket Selesai",o=>o.kelar.size?`<b style="color:#1B6B47">${o.kelar.size}</b>`:"—",r=>jum(r,o=>o.kelar.size)],
-        ["Retensi",o=>o.retensi==null?"—":`<b style="color:${o.retensi>=.9?"#1B6B47":o.retensi>=.75?"#A9761B":"var(--red)"}">${Math.round(o.retensi*100)}%</b>`,
+        ["Paket Selesai",o=>o.kelar.size?`<b style="color:#1C6047">${o.kelar.size}</b>`:"—",r=>jum(r,o=>o.kelar.size)],
+        ["Retensi",o=>o.retensi==null?"—":`<b style="color:${o.retensi>=.9?"#1C6047":o.retensi>=.75?"#8A5F14":"var(--red)"}">${Math.round(o.retensi*100)}%</b>`,
           r=>{const m=jum(r,o=>o.murid.size);return m?Math.round((1-jum(r,o=>o.kelar.size)/m)*100)+"%":"—";}],
-        ["Top Up",o=>o.tu.size?`<b style="color:#0E5F8A">${o.tu.size}</b>`:"—",r=>jum(r,o=>o.tu.size)],
+        ["Top Up",o=>o.tu.size?`<b style="color:#1F6088">${o.tu.size}</b>`:"—",r=>jum(r,o=>o.tu.size)],
         ["% Top Up",o=>o.rasioTU==null?"—":Math.round(o.rasioTU*100)+"%",
           r=>{const m=jum(r,o=>o.murid.size);return m?Math.round(jum(r,o=>o.tu.size)/m*100)+"%":"—";}]]);
   }
@@ -3309,10 +3335,10 @@ function drillG(kind){
       </div>
       <h2 style="font-size:12px;margin:0 0 6px">Rekap per Tutor</h2>`+
       tblTutor(rowsT,[["Total Murid",o=>o.murid.size,r=>jum(r,o=>o.murid.size)],
-        ["Murid Top Up",o=>o.tu.size?`<b style="color:#0E5F8A">${o.tu.size}</b>`:"—",r=>jum(r,o=>o.tu.size)],
+        ["Murid Top Up",o=>o.tu.size?`<b style="color:#1F6088">${o.tu.size}</b>`:"—",r=>jum(r,o=>o.tu.size)],
         ["Transaksi",o=>o.tuTrx||"—",r=>jum(r,o=>o.tuTrx)],
         ["Di Periode",o=>o.tuTrxR||"—",r=>jum(r,o=>o.tuTrxR)],
-        ["% Top Up",o=>o.rasioTU==null?"—":`<b style="color:${o.rasioTU>=.4?"#1B6B47":o.rasioTU>=.2?"#A9761B":"var(--red)"}">${Math.round(o.rasioTU*100)}%</b>`,
+        ["% Top Up",o=>o.rasioTU==null?"—":`<b style="color:${o.rasioTU>=.4?"#1C6047":o.rasioTU>=.2?"#8A5F14":"var(--red)"}">${Math.round(o.rasioTU*100)}%</b>`,
           r=>{const m=jum(r,o=>o.murid.size);return m?Math.round(jum(r,o=>o.tu.size)/m*100)+"%":"—";}]])+
       `<h2 style="font-size:12px;margin:14px 0 6px">Murid Paling Loyal</h2>`+
       (murid.length?`<div class="scroll"><table class="dtab">
@@ -3322,7 +3348,7 @@ function drillG(kind){
         <td><span class="link" onclick="closeDrill();openStudent(du('${eu(x.nm)}'))">${x.nm}</span></td>
         <td>${[...x.tutor].map(t=>buka(t)).join(", ")}</td>
         <td>${[...x.lang].join(", ")||"—"}</td>
-        <td class="num"><b style="color:#0E5F8A">${x.tu.length}×</b></td>
+        <td class="num"><b style="color:#1F6088">${x.tu.length}×</b></td>
         <td>${x.tu.map(r=>`<span class="tup" title="${r.tgl?fmtD_(r.tgl):"tanpa tanggal"}${r.jam?" · "+r.jam+" jam":""}${r.note?" · "+r.note:""}">TU${r.ke}</span>`).join(" ")}</td>
         <td>${ak&&ak.tgl?fmtD_(ak.tgl):"—"}</td>
         <td class="num">${x.sesi}</td></tr>`;}).join("")}</tbody>
@@ -3438,6 +3464,29 @@ function lupakanIndex(){MIDX=null;REKAP=null;_hitNama=null;DUP=null;DUPT=null;}
 function midOf(nm){const i=muridIndex();return i[nkey(nm)]||i[nkey(pecahNama(nm).utama)]||"";}
 function muridOf(nm){const id=midOf(nm);return id?Object.assign({id},U.murid[id]):null;}
 function namaMid(id){const m=(U.murid||{})[id];return m?m.nm:id;}
+/* Nama pembeli ikut disimpan di catatan pembelian. Kalau data muridnya hilang
+   (mis. baris registry gagal tersimpan), namanya masih terbaca dan bisa dipulihkan
+   dari catatan itu — jadi transaksinya tidak pernah jadi anonim. */
+function namaBeli(o){
+  if(!o)return "";
+  const m=(U.murid||{})[o.mid];
+  if(m)return m.nm;
+  return String(o.nm||"").trim()||"(murid hilang)";
+}
+function muridHilang(o){return !!(o&&o.mid&&!(U.murid||{})[o.mid]);}
+function pulihkanMurid(oid){
+  if(!guard())return;
+  const o=(U.beli||{})[oid]; if(!o)return;
+  const nm=String(o.nm||"").trim();
+  if(!nm)return toast("Catatan ini tidak menyimpan nama pembelinya — buka Data Murid lalu sambungkan manual");
+  const ada=midOf(nm);
+  if(ada){o.mid=ada;pushBELI(oid,o);cacheAll();lupakanRekap();renderAll();
+    return toast("Disambungkan ke "+nm+" ("+ada+")");}
+  const m=muridBaru(nm);m.daftar=o.tgl||todayStr();
+  U.murid=U.murid||{};U.murid[o.mid]=m;pushMURID(o.mid,m);
+  cacheAll();lupakanIndex();lupakanRekap();renderAll();
+  toast(nm+" dipulihkan dengan nomor "+o.mid);
+}
 function idBerikut(){
   let mx=0;
   Object.keys(U.murid||{}).forEach(k=>{const n=parseInt(String(k).replace(/\D/g,""),10);if(n>mx)mx=n;});
@@ -3632,6 +3681,7 @@ function pushBELI(oid,o){
   cacheAll();
   if(!CFG.url)return;
   if(!o){push({action:"delrate",ids:["B:"+oid]});return;}
+  if(o.mid&&!o.nm)o.nm=namaMid(o.mid);
   const {mid,nominal,...sisa}=o;
   push({action:"setrate",rows:[{id:"B:"+oid,tutor:mid||"",cls:String(o.produk||"").slice(0,80),
     rate:+nominal||0,lang:"v1~"+JSON.stringify(Object.assign({},sisa,
@@ -3704,15 +3754,15 @@ function simpanEditBeli(oid,[tgl,prog,jenis,jam,nominal,dipakai]){
   pushBELI(oid,o);
   segarkanTipeBeli(o.mid);
   cacheAll();lupakanRekap();buildMeet();
-  renderAll();if(detailCtx)renderDetail();
+  renderAll();renderJual();if(detailCtx)renderDetail();
   toast("Pembelian diperbarui · "+o.prog+" · "+(o.jam||(MEET.jamDefault||JAM_PAKET_BAWAAN))+" jam");
 }
 function hapusBeli(oid){
   if(!guard())return;
   const o=(U.beli||{})[oid];if(!o)return;
   if(!confirm("Hapus catatan pembelian "+oid+" ("+(o.produk||"-")+")?"))return;
-  delete U.beli[oid];pushBELI(oid,null);cacheAll();
-  renderMurid();if(detailCtx)renderDetail();
+  delete U.beli[oid];pushBELI(oid,null);cacheAll();lupakanRekap();
+  renderMurid();renderJual();if(detailCtx)renderDetail();
   toast("Catatan pembelian dihapus");
 }
 /* ================= PISAH KELAS REGULER PER TUTOR =================
@@ -3929,10 +3979,10 @@ function exBayar(mode){
    kalau salah, karena tidak menyembunyikan siapa pun dari daftar.
    Disimpan sebagai baris "Q:<nama tutor>" di sheet Rates. */
 const TSTAT={
-  mgmt :{l:"Manajemen", s:"MGMT", c:"#5B3FD9", bg:"#EBE8FC"},
-  full :{l:"Full Timer", s:"FULL", c:"#1B6B47", bg:"#E6F4EC"},
-  part :{l:"Part Timer", s:"PART", c:"#0E5F8A", bg:"#E8F1F6"},
-  former:{l:"Former (resign/out)", s:"FORMER", c:"#9B2C2C", bg:"#FDECEC"}
+  mgmt :{l:"Manajemen", s:"MGMT", c:"#0F5C63", bg:"#DCEAEA"},
+  full :{l:"Full Timer", s:"FULL", c:"#1C6047", bg:"#DCEBE3"},
+  part :{l:"Part Timer", s:"PART", c:"#1F6088", bg:"#DEEAF2"},
+  former:{l:"Former (resign/out)", s:"FORMER", c:"#A0303D", bg:"#F6E1E3"}
 };
 function tstatOf(t){return (U.tstat||{})[t]||"part";}
 function tstatL(t){return (TSTAT[tstatOf(t)]||TSTAT.part).l;}
@@ -4044,12 +4094,12 @@ function renderIdTutor(){
   e.innerHTML=
     `<div class="mini-kpis" style="margin:0 0 8px">
       <div class="kpi hi"><div class="v">${total-belum.length}/${total}</div><div class="l">Tutor Bernomor</div></div>
-      <div class="kpi"><div class="v" style="color:${dup.length?"#9B2C2C":"#1B6B47"}">${dup.length}</div><div class="l">Nama Mirip · Perlu Dicek</div></div>
+      <div class="kpi"><div class="v" style="color:${dup.length?"#A0303D":"#1C6047"}">${dup.length}</div><div class="l">Nama Mirip · Perlu Dicek</div></div>
     </div>`+
-    (belum.length?`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+    (belum.length?`<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86">
       <b>${belum.length} tutor belum punya nomor induk.</b>
       <button class="btn small editonly" onclick="bikinIdTutor()">🆔 Buatkan sekarang</button></div>`:"")+
-    (dup.length?`<div class="filterchip" style="background:#FDECEC;border-color:#E5B4B4;display:block">
+    (dup.length?`<div class="filterchip" style="background:#F6E1E3;border-color:#DCB2B6;display:block">
       <b>Nama tutor yang sangat mirip</b> — kemungkinan satu orang ditulis dua kali.
       Gabungkan lewat ✎ Ubah Nama di profil tutor supaya nomornya tidak dobel.
       <div style="margin-top:6px">${dup.slice(0,8).map(d=>`<div class="belirow">
@@ -4090,7 +4140,7 @@ function deteksiPengganti(c){
 function subBadgeSaran(c){
   const d=deteksiPengganti(c);
   if(!d)return "";
-  return `<span class="subtag" style="background:#FFF3CD;border-color:#E5C97B;color:#8A5309;cursor:pointer"
+  return `<span class="subtag" style="background:#F4EAD4;border-color:#D8BE86;color:#7A5310;cursor:pointer"
     title="Catatan di log: &quot;${d.teks}&quot;${d.tutor?" — cocok dengan tutor "+d.tutor:" — nama tutornya belum ketemu di daftar"}"
     onclick="event.stopPropagation();bukaSub('${eu(String(c.id))}','${eu(d.tutor||d.kasar)}')">
     ⇄ saran: ${d.tutor||d.kasar}${d.tutor?"":" (?)"}</span>`;
@@ -4166,7 +4216,7 @@ function blokMingguan(t){
   return `<div class="jdet" style="margin:10px 0">
     <div class="jdet-h">
       <span class="t">🗓 Gaji Mingguan</span>
-      <span class="chip" style="${on?"background:#E6F4EC;color:#1B6B47":""}">${on?"AKTIF · Senin–Minggu":"tidak aktif"}</span>
+      <span class="chip" style="${on?"background:#DCEBE3;color:#1C6047":""}">${on?"AKTIF · Senin–Minggu":"tidak aktif"}</span>
       <span style="flex:1"></span>
       <button class="btn ${on?"ghost":""} small editonly" onclick="setMingguan(du('${eu(t)}'),${on?"false":"true"})">
         ${on?"Matikan, pakai periode 26–25":"Aktifkan bayar mingguan"}</button>
@@ -4228,7 +4278,7 @@ function bukaSub(idEnc,usulEnc){
       <div class="kpi"><div class="v" style="font-size:12px">${asli}</div><div class="l">Tutor Tetap</div></div>
       <div class="kpi"><div class="v" style="font-size:12px">${rp(Math.round(ratePerJam(asli,c.cls)*jam))}</div><div class="l">Fee Kalau Tidak Diganti</div></div>
     </div>
-    ${s?`<div class="filterchip" style="background:#E8F1F6;border-color:#9CC4D8">
+    ${s?`<div class="filterchip" style="background:#DEEAF2;border-color:#A8C2D4">
         Sesi ini sedang dipegang <b>${c.tutor}</b> sebagai pengganti ${s.as}${s.note?" · "+s.note:""}${
         +s.rate>0?" · rate manual "+rp(s.rate)+"/jam":""}
         <button class="btn ghost small" onclick="lepasSub('${eu(String(c.id))}')">↩ Kembalikan ke ${s.as}</button></div>`:""}
@@ -4259,13 +4309,13 @@ function hitungFeeSub(){
   const rt=manual>0?manual:ratePerJam(t,c.cls);
   const fee=Math.round(rt*jam);
   e.innerHTML=
-    (!kenal?`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+    (!kenal?`<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86">
         <b>"${t}"</b> belum ada di daftar tutor — kalau diteruskan, namanya ditambahkan sebagai tutor baru.</div>`:"")+
     (rt>0
-      ? `<div class="filterchip" style="background:#E6F4EC;border-color:#9CCBB2">
+      ? `<div class="filterchip" style="background:#DCEBE3;border-color:#A6C4B4">
           Fee untuk <b>${t}</b>: ${rp(rt)}/jam × ${jam} jam = <b>${rp(fee)}</b>
           <span style="font-weight:600;color:var(--ink-soft)">${manual>0?"· rate diisi manual, khusus sesi ini":"· rate master tutor"}</span></div>`
-      : `<div class="filterchip" style="background:#FDECEC;border-color:#E5B4B4">
+      : `<div class="filterchip" style="background:#F6E1E3;border-color:#DCB2B6">
           <b>Rate ${t} belum ada</b> — isi kotak rate di atas, atau sesi ini dihitung <b>Rp 0</b>.</div>`);
 }
 function pasangSub(){
@@ -4354,6 +4404,7 @@ function isiMPeriod(){
 function tambahBatas(){mBatas+=200;renderMurid();}
 const MSTATUS={aktif:{l:"Aktif",c:"aktif"},kelar:{l:"Paket selesai",c:"kelar"},
                cuti:{l:"Cuti",c:"cuti"},vakum:{l:"Vakum >30 hari",c:"vakum"},
+               belumjadwal:{l:"Belum dijadwalkan",c:"cuti"},
                belumbeli:{l:"Belum ada pembelian",c:"vakum"}};
 function toggleMLang(l){const v=du(l);mLang.has(v)?mLang.delete(v):mLang.add(v);mBatas=100;renderMurid();}
 function toggleMStat(k){mStat.has(k)?mStat.delete(k):mStat.add(k);mBatas=100;renderMurid();}
@@ -4409,7 +4460,7 @@ function bangunRekap(){
     let status="aktif";
     if(st&&st.st==="selesai")status="kelar";
     else if(st&&st.st==="cuti")status="cuti";
-    else if(!o.cs.length)status="belumbeli";
+    else if(!o.cs.length)status=L.length?"belumjadwal":"belumbeli";   // punya pembelian tapi belum ada kelas
     else if(selisih!=null&&selisih>30&&!o.akan.length)status="vakum";
     REKAP[id]={id,nm:m.nm||id,m,cs:o.cs,done:o.done,post:o.post,akan:o.akan,
       jam:Math.round(o.jam*100)/100,fee:o.fee,
@@ -4447,7 +4498,7 @@ function rekapMuridLambat(id){
   let status="aktif";
   if(ms&&ms.st==="selesai")status="kelar";
   else if(ms&&ms.st==="cuti")status="cuti";
-  else if(!cs.length)status="belumbeli";
+  else if(!cs.length)status=(beliMurid(id).length?"belumjadwal":"belumbeli");
   else if(selisih!=null&&selisih>30&&!akan.length)status="vakum";
   return {id,nm:m.nm||id,m,cs,done,post,akan,jam:Math.round(jam*100)/100,fee,
     bahasa:[...bhs],tutor:tutorUtama,sesi:done.length,
@@ -4466,10 +4517,10 @@ function renderMurid(){
   const w=document.getElementById("mWarn");
   const dup=cekDuplikat();
   w.innerHTML=
-    (belum.length?`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+    (belum.length?`<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86">
         <b>${belum.length} murid di log kelas belum punya ID.</b>
         <button class="btn small editonly" onclick="bikinIdMurid()">🆔 Buatkan ID sekarang</button></div>`:"")+
-    (dup.length?`<div class="filterchip" style="background:#FDECEC;border-color:#E5B4B4;display:block">
+    (dup.length?`<div class="filterchip" style="background:#F6E1E3;border-color:#DCB2B6;display:block">
         <b>${dup.length} pasang nama sangat mirip</b> — mungkin satu orang yang namanya salah ketik.
         Periksa dulu; yang benar-benar sama tinggal digabung.
         <div style="margin-top:6px">${dup.slice(0,8).map(d=>`<div class="belirow">
@@ -4480,7 +4531,7 @@ function renderMurid(){
           <button class="btn small editonly" onclick="gabungMurid('${d.a.id}','${d.b.id}')">🔗 Gabungkan</button>
         </div>`).join("")}
         ${dup.length>8?`<div class="hint">… dan ${dup.length-8} pasang lagi</div>`:""}</div></div>`:"")+
-    (Object.keys(U.murid||{}).length?"":`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+    (Object.keys(U.murid||{}).length?"":`<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86">
         <b>Registry masih kosong.</b> <button class="btn small editonly" onclick="bikinIdMurid()">🆔 Buat ID murid dari log kelas</button></div>`)+
     `<div class="hint" style="margin:4px 0 2px">
       <label style="cursor:pointer"><input type="checkbox" ${AUTO_ID?"checked":""} onchange="setAutoId(this.checked)"
@@ -4510,11 +4561,11 @@ function renderMurid(){
   document.getElementById("mKpis").innerHTML=`
     <div class="kpi hi"><div class="v">${tot}</div><div class="l">Total Murid</div></div>
     <div class="kpi"><div class="v" style="font-size:12px">${mLabel()}</div><div class="l">Periode Ditampilkan</div></div>
-    <div class="kpi"><div class="v" style="color:#1B6B47">${aktif}</div><div class="l">Aktif</div></div>
+    <div class="kpi"><div class="v" style="color:#1C6047">${aktif}</div><div class="l">Aktif</div></div>
     <div class="kpi"><div class="v">${baru}</div><div class="l">Baru Periode Ini</div></div>
     <div class="kpi"><div class="v">${R.reduce((a,r)=>a+topupTotal(r.id),0)}</div><div class="l">Total Top Up</div></div>
     <div class="kpi"><div class="v" style="font-size:13px">${rp(belanja)}</div><div class="l">Total Belanja</div></div>
-    <div class="kpi"><div class="v" style="color:${punyaBeli<tot?"#A9761B":"#1B6B47"}">${punyaBeli}/${tot}</div><div class="l">Ada Data Beli</div></div>`;
+    <div class="kpi"><div class="v" style="color:${punyaBeli<tot?"#8A5F14":"#1C6047"}">${punyaBeli}/${tot}</div><div class="l">Ada Data Beli</div></div>`;
 
   // saring
   const q=(document.getElementById("mCari").value||"").toLowerCase().trim();
@@ -4580,7 +4631,7 @@ function exportMurid(){
 /* ---------- blok profil + riwayat pembelian di halaman detail murid ---------- */
 function blokMurid(nama){
   const id=midOf(nama);
-  if(!id)return `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+  if(!id)return `<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86">
       <b>Murid ini belum punya ID.</b>
       <button class="btn small editonly" onclick="bikinIdMurid()">🆔 Buatkan ID</button></div>`;
   const r=rekapMurid(id), m=r.m, L=r.beliList||beliMurid(id);
@@ -4609,7 +4660,7 @@ function blokMurid(nama){
       <div class="kpi"><div class="v">${beliPerProgram(id).length||"—"}</div><div class="l">Program Dibeli</div></div>
       <div class="kpi"><div class="v" style="font-size:13px">${r.belanja?rp(r.belanja):"—"}</div><div class="l">Total Belanja</div></div>
       <div class="kpi"><div class="v" style="font-size:12px">${r.beli1?fmtD_(r.beli1):"—"}</div><div class="l">Beli Pertama</div></div>
-      <div class="kpi"><div class="v" style="color:${topupTotal(id)?"#0E5F8A":""}">${topupTotal(id)||"—"}${r.topupJam?`<span style="font-size:11px"> · ${r.topupJam}j</span>`:""}</div><div class="l">Top Up · semua program</div></div>
+      <div class="kpi"><div class="v" style="color:${topupTotal(id)?"#1F6088":""}">${topupTotal(id)||"—"}${r.topupJam?`<span style="font-size:11px"> · ${r.topupJam}j</span>`:""}</div><div class="l">Top Up · semua program</div></div>
       <div class="kpi"><div class="v">${jarak==null?"—":jarak+" hr"}</div><div class="l">Jarak Antar Beli</div></div>
       <div class="kpi"><div class="v">${r.selisih==null?"—":r.selisih+" hr"}</div><div class="l">Sejak Kelas Terakhir</div></div>
     </div>
@@ -4621,14 +4672,14 @@ function blokMurid(nama){
       <div style="margin:9px 0 2px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <b style="font-size:12px">${g.prog}</b>
         <span class="chip">${g.n}× beli</span>
-        <span class="chip" style="background:#E6F4EC;color:#1B6B47">${rp(g.rp)}</span>
+        <span class="chip" style="background:#DCEBE3;color:#1C6047">${rp(g.rp)}</span>
         <span class="hint" style="margin:0">awal ${fmtD_(g.awal)}${g.n>1?" · terakhir "+fmtD_(g.akhir):""}</span>
       </div>`+
       g.items.slice().reverse().map(o=>`<div class="belirow">
         <span class="tg">${fmtD_(o.tgl)}</span>
         <span class="pr">${o.produk||"—"} ${labelTipe(o)}
-          <span class="chip"${+o.jam>0?"":' style="background:#FFF3CD;color:#8A5309" title="Jam paket belum diisi — dianggap paket bawaan, klik ✎ untuk koreksi"'}>${+o.jam>0?o.jam:(MEET.jamDefault||JAM_PAKET_BAWAAN)} jam${+o.jam>0?"":"?"}</span>
-          ${+o.dipakai>0?`<span class="chip" style="background:#EFEDF9">${o.dipakai}j terpakai sebelum log</span>`:""}
+          <span class="chip"${+o.jam>0?"":' style="background:#F4EAD4;color:#7A5310" title="Jam paket belum diisi — dianggap paket bawaan, klik ✎ untuk koreksi"'}>${+o.jam>0?o.jam:(MEET.jamDefault||JAM_PAKET_BAWAAN)} jam${+o.jam>0?"":"?"}</span>
+          ${+o.dipakai>0?`<span class="chip" style="background:#E3EAE9">${o.dipakai}j terpakai sebelum log</span>`:""}
           <span class="sub" style="color:var(--ink-soft);font-size:10.5px">${o.sumber||""}${o.metode?" · "+o.metode:""} · ${o.oid}</span></span>
         <span class="rp">${rp(+o.nominal||0)}</span>
         <button class="btn ghost small editonly" onclick="editBeli(du('${eu(o.oid)}'))" title="Ubah jam paket, program, atau jenis">✎</button>
@@ -4786,7 +4837,7 @@ function cekMuridBaru(){
   const persis=midOf(v);
   if(persis){
     cbCtx.id=persis;cbCtx.nm=namaMid(persis);
-    e.innerHTML=`<div class="filterchip" style="background:#E6F4EC;border-color:#9CCBB2">
+    e.innerHTML=`<div class="filterchip" style="background:#DCEBE3;border-color:#A6C4B4">
       Murid sudah terdaftar: <b>${namaMid(persis)}</b> <span class="mid">${persis}</span> —
       pembelian ini akan masuk ke riwayatnya.</div>`;
     cbSegarkanRiwayat();return;
@@ -4798,13 +4849,13 @@ function cekMuridBaru(){
     if(p2>sc){sc=p2;best={id,nm:m.nm,p:p2};}
   });
   e.innerHTML=(best&&best.p>=80)
-    ? `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B;display:block">
+    ? `<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86;display:block">
         <b>Mirip dengan murid yang sudah ada:</b> ${best.nm} <span class="mid">${best.id}</span> · ${best.p}% mirip.
         <div style="margin-top:5px">
           <button class="btn small" onclick="pakaiMuridAda(du('${eu(best.id)}'))">Pakai ${best.nm}</button>
           <button class="btn ghost small" onclick="document.getElementById('cbMuridInfo').innerHTML='';">Tetap murid baru</button>
         </div></div>`
-    : `<div class="filterchip" style="background:#E8F1F6;border-color:#9CC4D8">
+    : `<div class="filterchip" style="background:#DEEAF2;border-color:#A8C2D4">
         Murid baru — nomor induk <b>${idBerikut()}</b> dibuatkan otomatis saat disimpan.</div>`;
   cbSegarkanRiwayat();
 }
@@ -4815,9 +4866,9 @@ function pakaiMuridAda(id){
 function cbSegarkanRiwayat(){
   const G=cbCtx.id?beliPerProgram(cbCtx.id):[];
   document.getElementById("cbRiwayat").innerHTML=G.length
-    ? `<div class="filterchip" style="display:block;background:#F6F5FD">
+    ? `<div class="filterchip" style="display:block;background:#F2F5F4">
         <b>Riwayat murid ini:</b> ${G.map(g=>`${g.prog} ${g.n}× (${rp(g.rp)})`).join(" · ")}</div>`
-    : (cbCtx.id?`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+    : (cbCtx.id?`<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86">
         Belum ada riwayat pembelian — catatan pertama akan otomatis jadi <b>pembelian awal</b>.</div>`:"");
   const G2=cbCtx.id?beliPerProgram(cbCtx.id):[];
   const sudah=G2.map(g=>g.prog), lain=DATA.langs.filter(l=>!sudah.includes(l));
@@ -4852,9 +4903,9 @@ function bukaCatatBeli(id){
   document.getElementById("cbSub").textContent=baru
     ? "Murid baru atau yang sudah ada — ketik namanya di bawah" : (id+" · "+m.nm);
   document.getElementById("cbRiwayat").innerHTML=G.length
-    ? `<div class="filterchip" style="display:block;background:#F6F5FD">
+    ? `<div class="filterchip" style="display:block;background:#F2F5F4">
         <b>Riwayat murid ini:</b> ${G.map(g=>`${g.prog} ${g.n}× (${rp(g.rp)})`).join(" · ")}</div>`
-    : (baru?"":`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+    : (baru?"":`<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86">
         Belum ada riwayat pembelian — catatan pertama akan otomatis jadi <b>pembelian awal</b>.</div>`);
   const sudah=G.map(g=>g.prog);
   const lain=DATA.langs.filter(l=>!sudah.includes(l));
@@ -4898,7 +4949,7 @@ function hitungCB(){
   if(!prog){e.innerHTML=`<div class="hint">Isi programnya dulu supaya nomor top up bisa dihitung.</div>`;return;}
   if(jenis==="topup"){
     if(!g){
-      e.innerHTML=`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+      e.innerHTML=`<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86">
         Murid ini <b>belum pernah beli program ${prog}</b>. Kalau ini memang pembelian pertamanya di ${prog},
         ganti jenisnya jadi <b>Pembelian awal</b>. Kalau pembelian lamanya belum sempat dicatat, silakan lanjut —
         nomornya akan menyesuaikan sendiri setelah data lama dimasukkan.</div>`;
@@ -4907,17 +4958,17 @@ function hitungCB(){
     // nomor top up dihitung dari posisi tanggal, bukan sekadar jumlah data
     const ke=g.items.filter(o=>String(o.tgl)<=tgl).length;
     const sisipan=g.items.some(o=>String(o.tgl)>tgl);
-    e.innerHTML=`<div class="filterchip" style="background:#E8F1F6;border-color:#9CC4D8">
+    e.innerHTML=`<div class="filterchip" style="background:#DEEAF2;border-color:#A8C2D4">
       Akan tercatat sebagai <b>Top up ke-${ke}</b> di program <b>${prog}</b>
       <span style="font-weight:600;color:var(--ink-soft)">· sebelumnya ${g.n}× beli, terakhir ${fmtD_(g.akhir)}</span>
-      ${sisipan?`<br><span style="color:#8A5309">Ada pembelian yang tanggalnya lebih baru — nomor top up yang lain otomatis digeser.</span>`:""}
+      ${sisipan?`<br><span style="color:#7A5310">Ada pembelian yang tanggalnya lebih baru — nomor top up yang lain otomatis digeser.</span>`:""}
       </div>`;
   }else{
     e.innerHTML=g
-      ? `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+      ? `<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86">
           Murid ini <b>sudah pernah beli ${prog}</b> (${g.n}×). Kalau ini lanjutan paketnya, pilih jenis <b>Top up</b>.
           Kalau memang paket terpisah, silakan lanjut sebagai pembelian awal.</div>`
-      : `<div class="filterchip" style="background:#E6F4EC;border-color:#9CCBB2">
+      : `<div class="filterchip" style="background:#DCEBE3;border-color:#A6C4B4">
           Tercatat sebagai <b>pembelian awal</b> di program <b>${prog}</b>.</div>`;
   }
 }
@@ -4943,7 +4994,7 @@ function simpanCB(){
   if(!nominal&&!confirm("Nominalnya kosong.\n\nTetap catat tanpa nilai rupiah?"))return;
   const oid="MAN-"+id+"-"+tgl.replace(/-/g,"")+"-"+Math.random().toString(36).slice(2,6);
   mulaiMassal();
-  simpanBeli(oid,{mid:id,tgl,produk:produk||("Kelas "+prog),nominal,jam,
+  simpanBeli(oid,{mid:id,nm:namaMid(id),tgl,produk:produk||("Kelas "+prog),nominal,jam,
     metode:CB_METODE[sumber]||sumber,sumber:sumber==="woocommerce"?"woocommerce":"manual",
     prog,tipe:jenis==="topup"?"topup":"awal",note});
   segarkanTipeBeli(id);
@@ -5030,7 +5081,7 @@ function beliPerProgram(id){
 }
 function labelTipe(o){
   if(o.tipe==="awal"||!(+o.ke>0))return `<span class="mtag aktif">pembelian awal</span>`;
-  return `<span class="mtag" style="background:#E8F1F6;color:#0E5F8A">top up ke-${+o.ke}</span>`;
+  return `<span class="mtag" style="background:#DEEAF2;color:#1F6088">top up ke-${+o.ke}</span>`;
 }
 /* hitung ulang seluruh murid — dipakai sekali setelah impor besar */
 function segarkanSemuaTipe(diam){
@@ -5220,7 +5271,7 @@ function prosesImpor(simpan){
     if(!cocok.length)return toast("Tidak ada baris baru yang cocok");
     mulaiMassal();
     cocok.forEach(x=>{
-      simpanBeli(x.oid,{mid:x.mid,tgl:x.tgl,produk:x.produk,nominal:x.nominal,jam:0,
+      simpanBeli(x.oid,{mid:x.mid,nm:namaMid(x.mid),tgl:x.tgl,produk:x.produk,nominal:x.nominal,jam:0,
         metode:x.metode,sumber:"woocommerce",prog:progOf(x.produk),tipe:"awal",ke:0});
       const m=U.murid[x.mid];
       if(m){if(!m.email&&x.email)m.email=x.email;if(!m.wa&&x.hp)m.wa=waNorm(x.hp);simpanMurid(x.mid,m);}
@@ -5236,7 +5287,7 @@ function prosesImpor(simpan){
     <div class="mini-kpis" style="margin:10px 0">
       <div class="kpi hi"><div class="v">${cocok.length}</div><div class="l">Siap Disimpan</div></div>
       <div class="kpi"><div class="v">${ada.length}</div><div class="l">Sudah Ada (dilewati)</div></div>
-      <div class="kpi"><div class="v" style="color:${gagal.length?"#A9761B":"#1B6B47"}">${gagal.length}</div><div class="l">Belum Ketemu Murid</div></div>
+      <div class="kpi"><div class="v" style="color:${gagal.length?"#8A5F14":"#1C6047"}">${gagal.length}</div><div class="l">Belum Ketemu Murid</div></div>
     </div>
     ${cocok.length?`<button class="btn" onclick="prosesImpor(true)">💾 Simpan ${cocok.length} pembelian</button>`:""}
     <div class="hint" style="margin-top:8px">Yang "belum ketemu murid" tidak disimpan — biasanya pembeli kelas reguler,
@@ -5464,7 +5515,7 @@ function slipPDFBlob(){
   const _pc=paidList(t); const paidAt=_pc.length?fmtD_(String(_pc[_pc.length-1].at).slice(0,10)):"";
   const now=new Date(), p2=n=>String(n).padStart(2,"0");
   const cetak=p2(now.getDate())+"/"+p2(now.getMonth()+1)+"/"+now.getFullYear();
-  const UNGU=[.357,.247,.851], ABU=[.35,.35,.35], MERAH=[.68,.18,.31];
+  const UNGU=[.059,.361,.388], ABU=[.35,.35,.35], MERAH=[.627,.188,.239];
   const L=PDF_M, R=PDF_W-PDF_M;
   const P=pdfDoc();
 
@@ -5491,7 +5542,7 @@ function slipPDFBlob(){
   P.y-=18;
 
   if(!sudah){
-    P.kotak(L,P.y-26,R-L,32,[.984,.894,.922],MERAH,1.2);
+    P.kotak(L,P.y-26,R-L,32,[.965,.882,.890],MERAH,1.2);
     P.txt((L+R)/2,P.y-2,"BELUM DIBAYAR  ·  UNTUK DIKONFIRMASI TUTOR",{size:10,bold:true,align:"center",color:MERAH});
     P.txt((L+R)/2,P.y-13,"Mohon dicek: tanggal, jam, nama murid, dan jumlah sesi. Kalau ada yang tidak sesuai,",{size:7.8,align:"center",color:MERAH});
     P.txt((L+R)/2,P.y-21,"balas ke admin sebelum pembayaran diproses.",{size:7.8,align:"center",color:MERAH});
@@ -5526,7 +5577,7 @@ function slipPDFBlob(){
     });
   }
   function kepala(){
-    P.kotak(L,P.y-11,R-L,15,[.918,.898,.984],null);
+    P.kotak(L,P.y-11,R-L,15,[.863,.918,.918],null);
     baris(kolom.map(k=>k[0]),P.y-6.5,true);
     P.y-=15;
     P.garis(L,P.y,R,P.y,.6,[.6,.6,.6]);
@@ -5553,12 +5604,12 @@ function slipPDFBlob(){
   }
   isiBaris.forEach((r,i)=>{
     if(P.ruang(30)){kop();P.txt(L,P.y,"(lanjutan) "+t+" - "+slipPeriodLabel(),{size:9,bold:true});P.y-=16;kepala();}
-    if(i%2)P.kotak(L,P.y-11,R-L,14,[.972,.968,.99],null);
+    if(i%2)P.kotak(L,P.y-11,R-L,14,[.960,.973,.972],null);
     baris(r,P.y-6.5);
     P.y-=14;
   });
   P.garis(L,P.y,R,P.y,.6,[.6,.6,.6]);
-  P.kotak(L,P.y-13,R-L,16,[.957,.945,.988],null);
+  P.kotak(L,P.y-13,R-L,16,[.925,.949,.949],null);
   const totBaris=lengkap
     ? ["","TOTAL - "+rows.length+" sesi","","","",(Math.round(jam*100)/100).toLocaleString("id-ID"),"","Rp "+gaji.toLocaleString("id-ID")]
     : ["","TOTAL - "+isiBaris.length+" murid/kelas","",String(rows.length),(Math.round(jam*100)/100).toLocaleString("id-ID"),"","Rp "+gaji.toLocaleString("id-ID")];
@@ -5585,9 +5636,9 @@ function slipPDFBlob(){
 
   if(sudah){
     const bx=R-150;
-    P.kotak(bx,P.y-30,150,44,null,[.106,.42,.278],2);
-    P.txt(bx+75,P.y-4,"PAID",{size:22,bold:true,align:"center",color:[.106,.42,.278]});
-    P.txt(bx+75,P.y-15,(paidAt||cetak)+"  ·  PT JELAJAH BAHASA DUNIA",{size:6.8,align:"center",color:[.106,.42,.278]});
+    P.kotak(bx,P.y-30,150,44,null,[.110,.376,.278],2);
+    P.txt(bx+75,P.y-4,"PAID",{size:22,bold:true,align:"center",color:[.110,.376,.278]});
+    P.txt(bx+75,P.y-15,(paidAt||cetak)+"  ·  PT JELAJAH BAHASA DUNIA",{size:6.8,align:"center",color:[.110,.376,.278]});
   }
   return pdfRakit(P.selesai());
 }
@@ -5672,8 +5723,8 @@ function renderShareRow(){
   e.innerHTML=`
     <div style="width:100%;display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:5px">
       <span style="font-weight:800;font-size:12px">Kirim slip (PDF) ke ${slipCtx.tutor}</span>
-      <span style="font-size:11px;color:${adaWA?"#5D5680":"var(--red)"}">WA: <b>${nWA}</b></span>
-      <span style="font-size:11px;color:${adaEm?"#5D5680":"var(--red)"}">Email: <b>${adaEm?k.email:"belum diisi"}</b></span>
+      <span style="font-size:11px;color:${adaWA?"#5B6E77":"var(--red)"}">WA: <b>${nWA}</b></span>
+      <span style="font-size:11px;color:${adaEm?"#5B6E77":"var(--red)"}">Email: <b>${adaEm?k.email:"belum diisi"}</b></span>
       <button class="btn small ghost editonly" onclick="editKontak(du('${eu(t)}'))">✏️ Ubah kontak</button>
     </div>
     <button class="btn small" onclick="kirimSlip('wa-app')" title="Buka aplikasi WhatsApp biasa yang terpasang (WhatsApp Desktop di Windows/macOS, atau app di HP)">📲 WhatsApp${adaWA?"":" (isi nomor)"}</button>
@@ -5725,10 +5776,10 @@ function pratinjauSlipRange(){
   const jam=rows.reduce((s2,c)=>s2+durasi(c.start,c.end),0);
   const lunas=rows.length>0&&rows.every(c=>paidCover(slipCtx.tutor,c.date));
   e.innerHTML=rows.length
-    ? `<div class="filterchip" style="background:#E6F4EC;border-color:#9CCBB2">
+    ? `<div class="filterchip" style="background:#DCEBE3;border-color:#A6C4B4">
         ${fmtD_(x)} – ${fmtD_(y)}: <b>${rows.length} sesi</b> · ${Math.round(jam*100)/100} jam ·
         <b>${rp(gaji)}</b> · ${lunas?"sudah dibayar (cap PAID otomatis nyala)":"belum dibayar (slip draf konfirmasi)"}</div>`
-    : `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+    : `<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86">
         Tidak ada kelas Selesai di ${fmtD_(x)} – ${fmtD_(y)} — slipnya akan kosong.</div>`;
 }
 function terapkanSlipRange(){slipScope(true);}
@@ -5763,7 +5814,7 @@ function slipScope(pakaiRentang){
       const W=rekapMinggu(t,wa,wb);
       document.getElementById("slWeeks").innerHTML=W.length
         ? `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-            <span style="font-size:11px;font-weight:700;color:#5D5680">${mingguan(t)?"Minggu (Sen–Min):":"Pintasan mingguan:"}</span>`+
+            <span style="font-size:11px;font-weight:700;color:#5B6E77">${mingguan(t)?"Minggu (Sen–Min):":"Pintasan mingguan:"}</span>`+
           W.map(w=>`<button class="btn ${w.lunas?"ghost":"small"} small"
              onclick="isiSlipRange('${w.from}','${w.to}')" title="${w.n} sesi · ${rp(w.gaji)}${w.lunas?" · sudah dibayar":""}">
              ${labelMinggu(w.from,w.to)} · ${rp(w.gaji)}${w.lunas?" ✓":""}</button>`).join("")+`</div>`
@@ -5993,9 +6044,9 @@ function svgBars(items,color,fmt){
     const x=P+i*bw, y=H-h;
     s+=`<rect x="${x+bw*0.15}" y="${y}" width="${bw*0.7}" height="${h}" rx="3" fill="${color}"/>`;
     if(items.length<=16||i%Math.ceil(items.length/12)===0)
-      s+=`<text x="${x+bw/2}" y="${H+14}" font-size="10" text-anchor="middle" fill="#5D5680">${it.l}</text>`;
+      s+=`<text x="${x+bw/2}" y="${H+14}" font-size="10" text-anchor="middle" fill="#5B6E77">${it.l}</text>`;
     if(items.length<=16&&it.v)
-      s+=`<text x="${x+bw/2}" y="${y-4}" font-size="9.5" text-anchor="middle" fill="#132A2E" font-weight="700">${fmt?fmt(it.v):it.v}</text>`;
+      s+=`<text x="${x+bw/2}" y="${y-4}" font-size="9.5" text-anchor="middle" fill="#12212A" font-weight="700">${fmt?fmt(it.v):it.v}</text>`;
   });
   s+=`</svg>`;return s;
 }
@@ -6070,7 +6121,7 @@ function renderExport(){
         ${new Set(cs.map(c=>c.tutor)).size} tutor ·
         ${new Set(cs.map(c=>normName(c.cls||"").toLowerCase()).filter(Boolean)).size} murid ·
         gaji ${rp(gaji)} · ${js.n} transaksi penjualan · ${ts.n} transaksi top up.</p>`
-    : `<p class="note" style="margin:0;color:#8A5309">Tidak ada data sama sekali di rentang ini — filenya akan berisi header saja.</p>`;
+    : `<p class="note" style="margin:0;color:#7A5310">Tidak ada data sama sekali di rentang ini — filenya akan berisi header saja.</p>`;
 }
 /* --- penulis CSV --- */
 const csvEsc=v=>'"'+String(v===null||v===undefined?"":v).replace(/"/g,'""')+'"';
@@ -6384,10 +6435,10 @@ function svgGaris(items,warna,fmt){
       `" fill="none" stroke="${warna}" stroke-width="2.2" stroke-linejoin="round"/>`;
   const akhir=pts[pts.length-1];
   s2+=`<circle cx="${akhir[0].toFixed(1)}" cy="${akhir[1].toFixed(1)}" r="3.6" fill="${warna}"/>`;
-  s2+=`<text x="${P}" y="${y(max)-4}" font-size="10" fill="#5D5680">${fmt(max)}</text>`;
+  s2+=`<text x="${P}" y="${y(max)-4}" font-size="10" fill="#5B6E77">${fmt(max)}</text>`;
   items.forEach((it,i)=>{
     if(items.length<=16||i%Math.ceil(items.length/10)===0||i===items.length-1)
-      s2+=`<text x="${(P+i*dx).toFixed(1)}" y="${H+12}" font-size="9.5" text-anchor="middle" fill="#5D5680">${it.l}</text>`;
+      s2+=`<text x="${(P+i*dx).toFixed(1)}" y="${H+12}" font-size="9.5" text-anchor="middle" fill="#5B6E77">${it.l}</text>`;
   });
   s2+=`<text x="${W-6}" y="${H+26}" font-size="10.5" font-weight="700" text-anchor="end" fill="${warna}">${fmt(items[items.length-1].v)}</text></svg>`;
   return s2;
@@ -6572,10 +6623,10 @@ function renderJualDetail(){
     <div class="jdet-h">
       <span class="t">${fmtD_(d)}</span>
       <span class="chip">${tuHari} top up</span>
-      ${bh.n?`<span class="chip" style="background:#EBE8FC;color:#5B3FD9">${bh.n} pembelian · ${rp(bh.rp)}</span>`:""}
-      <span class="chip" style="background:#E8F1F6;color:#0E5F8A">${n==null?"penjualan belum diisi":n+" transaksi"}</span>
-      ${jualRp(d)?`<span class="chip" style="background:#E6F4EC;color:#1B6B47">${rp(jualRp(d))}</span>`:""}
-      ${rasio!=null?`<span class="chip" style="background:#E6F4EC;color:#1B6B47">rasio ${rasio}%</span>`:""}
+      ${bh.n?`<span class="chip" style="background:#DCEAEA;color:#0F5C63">${bh.n} pembelian · ${rp(bh.rp)}</span>`:""}
+      <span class="chip" style="background:#DEEAF2;color:#1F6088">${n==null?"penjualan belum diisi":n+" transaksi"}</span>
+      ${jualRp(d)?`<span class="chip" style="background:#DCEBE3;color:#1C6047">${rp(jualRp(d))}</span>`:""}
+      ${rasio!=null?`<span class="chip" style="background:#DCEBE3;color:#1C6047">rasio ${rasio}%</span>`:""}
       <span style="flex:1"></span>
       <button class="btn ghost small" onclick="tutupHariJual()">✕ Tutup</button>
     </div>
@@ -6592,12 +6643,20 @@ function renderJualDetail(){
       <b style="font-size:12px">Pembelian hari ini</b>
       ${bh.items.map((o,i)=>`<div class="turow2">
         <span class="no">${i+1}.</span>
-        <span class="nm">${o.mid?`<span class="link" onclick="openMuridId('${o.mid}')">${namaMid(o.mid)}</span>
-          <span class="mid" style="font-size:10px">${o.mid}</span>`:"(murid belum tersambung)"}</span>
+        <span class="nm">${o.mid
+          ? (muridHilang(o)
+              ? `<span style="color:var(--red)">${namaBeli(o)}</span>
+                 <span class="mid" style="font-size:10px">${o.mid}</span>
+                 <button class="btn ghost small editonly" onclick="pulihkanMurid(du('${eu(o.oid)}'))" title="Data muridnya hilang — pulihkan dari catatan ini">⟲ pulihkan</button>`
+              : `<span class="link" onclick="openMuridId('${o.mid}')">${namaMid(o.mid)}</span>
+                 <span class="mid" style="font-size:10px">${o.mid}</span>`)
+          : "(murid belum tersambung)"}</span>
         <span class="mtag ${o._tu?"kelar":"aktif"}">${o._tu?"top up":"pembelian awal"}</span>
         <span class="chip">${progBeli(o)}</span>
         <span class="mt">${o.produk||""}</span>
         <span class="rp" style="margin-left:auto;font-weight:800">${rp(+o.nominal||0)}</span>
+        <button class="btn ghost small editonly" onclick="editBeli(du('${eu(o.oid)}'))" title="Ubah pembelian">✎</button>
+        <button class="btn ghost small editonly" onclick="hapusBeli(du('${eu(o.oid)}'))" title="Hapus pembelian">✕</button>
       </div>`).join("")}
     </div>`:""}
     ${list.length?`<b style="font-size:12px">Catatan paket top up</b>`:""}
@@ -6666,12 +6725,12 @@ function svgBars2(items,c1,c2,l1,l2){
       s+=`<rect x="${x+bw*(0.13+k*0.4)}" y="${y}" width="${bw*0.34}" height="${h}" rx="2" fill="${c}"/>`;
     });
     if(items.length<=16||i%Math.ceil(items.length/12)===0)
-      s+=`<text x="${x+bw/2}" y="${H+14}" font-size="10" text-anchor="middle" fill="#5D5680">${it.l}</text>`;
+      s+=`<text x="${x+bw/2}" y="${H+14}" font-size="10" text-anchor="middle" fill="#5B6E77">${it.l}</text>`;
   });
   s+=`<rect x="${P}" y="${H+27}" width="9" height="9" rx="2" fill="${c1}"/>`+
-     `<text x="${P+13}" y="${H+35}" font-size="10" fill="#5D5680">${l1}</text>`+
+     `<text x="${P+13}" y="${H+35}" font-size="10" fill="#5B6E77">${l1}</text>`+
      `<rect x="${P+130}" y="${H+27}" width="9" height="9" rx="2" fill="${c2}"/>`+
-     `<text x="${P+143}" y="${H+35}" font-size="10" fill="#5D5680">${l2}</text></svg>`;
+     `<text x="${P+143}" y="${H+35}" font-size="10" fill="#5B6E77">${l2}</text></svg>`;
   return s;
 }
 /* --- render --- */
@@ -6693,7 +6752,7 @@ function renderJual(){
   const tuDipakai=Math.max(ts.n,BH.tot.topup);
   const rasio=js.n?tuDipakai/js.n:null;
   const baru=js.n-ts.n;
-  const warna=rasio==null?"var(--ink-soft)":rasio>=.4?"#1B6B47":rasio>=.2?"#A9761B":"var(--red)";
+  const warna=rasio==null?"var(--ink-soft)":rasio>=.4?"#1C6047":rasio>=.2?"#8A5F14":"var(--red)";
 
   // berapa hari dalam periode yang sudah lewat (data mestinya sudah ada)
   const hariLewat=(()=>{const t=todayStr();let n=0,d=new Date(a+"T00:00:00"),e=new Date((b<t?b:t)+"T00:00:00");
@@ -6703,19 +6762,19 @@ function renderJual(){
     <div class="kpi hi"><div class="v" style="color:${warna}">${rasio==null?"—":Math.round(rasio*1000)/10+"%"}</div><div class="l">Rasio Top Up</div></div>
     <div class="kpi"><div class="v">${js.n.toLocaleString("id-ID")}</div><div class="l">Transaksi Penjualan</div>
       <div class="sub" style="font-size:10px;color:var(--ink-soft)">isian harian</div></div>
-    <div class="kpi"><div class="v" style="color:${BH.tot.n?"#5B3FD9":"var(--ink-soft)"}">${BH.tot.n.toLocaleString("id-ID")}</div>
+    <div class="kpi"><div class="v" style="color:${BH.tot.n?"#0F5C63":"var(--ink-soft)"}">${BH.tot.n.toLocaleString("id-ID")}</div>
       <div class="l">Pembelian Tersambung</div>
       <div class="sub" style="font-size:10px;color:var(--ink-soft)">${BH.tot.murid.size} murid · ${js.n?Math.round(BH.tot.n/js.n*100):0}% dari total</div></div>
-    <div class="kpi"><div class="v" style="color:#0E5F8A">${BH.tot.topup.toLocaleString("id-ID")}</div>
+    <div class="kpi"><div class="v" style="color:#1F6088">${BH.tot.topup.toLocaleString("id-ID")}</div>
       <div class="l">Top Up dari Riwayat</div>
       <div class="sub" style="font-size:10px;color:var(--ink-soft)">${BH.tot.awal} pembelian awal</div></div>
-    <div class="kpi"><div class="v" style="font-size:13px;color:#1B6B47">${js.rp?rp(js.rp):"—"}</div><div class="l">Nominal Penjualan</div></div>
+    <div class="kpi"><div class="v" style="font-size:13px;color:#1C6047">${js.rp?rp(js.rp):"—"}</div><div class="l">Nominal Penjualan</div></div>
     <div class="kpi"><div class="v" style="font-size:13px">${js.n&&js.rp?rp(Math.round(js.rp/js.n)):"—"}</div><div class="l">Rata per Transaksi</div></div>
-    <div class="kpi"><div class="v" style="color:#0E5F8A">${tuDipakai.toLocaleString("id-ID")}</div><div class="l">Transaksi Top Up</div>
+    <div class="kpi"><div class="v" style="color:#1F6088">${tuDipakai.toLocaleString("id-ID")}</div><div class="l">Transaksi Top Up</div>
       <div class="sub" style="font-size:10px;color:var(--ink-soft)">catatan paket ${ts.n} · riwayat ${BH.tot.topup}</div></div>
-    <div class="kpi"><div class="v" style="color:${baru<0?"var(--red)":"#132A2E"}">${baru.toLocaleString("id-ID")}</div><div class="l">Sisa (non top up)</div></div>
+    <div class="kpi"><div class="v" style="color:${baru<0?"var(--red)":"#12212A"}">${baru.toLocaleString("id-ID")}</div><div class="l">Sisa (non top up)</div></div>
     <div class="kpi"><div class="v">${ts.murid}</div><div class="l">Murid Top Up</div></div>
-    <div class="kpi"><div class="v" style="color:${js.hari>=hariLewat?"#1B6B47":"#A9761B"}">${js.hari}/${hariLewat}</div><div class="l">Hari Terisi</div></div>`;
+    <div class="kpi"><div class="v" style="color:${js.hari>=hariLewat?"#1C6047":"#8A5F14"}">${js.hari}/${hariLewat}</div><div class="l">Hari Terisi</div></div>`;
 
   const kurang=hariLewat-js.hari;
   document.getElementById("jRingkas").innerHTML=`
@@ -6730,7 +6789,7 @@ function renderJual(){
       (${BH.tot.murid.size} murid · ${rp(BH.tot.rp)}). ${js.n>BH.tot.n
         ? `Sisa <b>${js.n-BH.tot.n}</b> belum punya identitas murid — impor pembeliannya di tab Data Murid supaya bisa dilacak per orang.`
         : `Semuanya sudah tersambung.`}</p>`:""}
-    ${kurang>0?`<p class="note" style="margin:0 0 4px;color:#8A5309"><b>${kurang} hari</b> yang sudah lewat belum diisi angka penjualannya —
+    ${kurang>0?`<p class="note" style="margin:0 0 4px;color:#7A5310"><b>${kurang} hari</b> yang sudah lewat belum diisi angka penjualannya —
         selama masih kosong, rasionya kelihatan lebih tinggi dari yang sebenarnya.</p>`:""}`;
 
   // grid isian harian
@@ -6752,7 +6811,7 @@ function renderJual(){
   const akum=days.filter(x=>x<=hariIni).map(x=>{jalan+=jualRp(x);
     return {l:+x.slice(8)+"/"+ +x.slice(5,7),v:jalan};});
   document.getElementById("chAkum").innerHTML=js.rp
-    ? svgGaris(akum,"#1B6B47",v=>rp(v))
+    ? svgGaris(akum,"#1C6047",v=>rp(v))
     : `<div class="empty">Nominal rupiah belum diisi di periode ini.</div>`;
 
   // rekap seluruh periode
@@ -6772,7 +6831,7 @@ function renderJual(){
         <span class="r">${o.n?Math.round(o.tu/o.n*1000)/10+"%":"—"}</span>
       </div>`).join("")+
       (()=>{const T=RP.reduce((a,o)=>({n:a.n+o.n,rp:a.rp+o.rp,tu:a.tu+o.tu}),{n:0,rp:0,tu:0});
-        return `<div class="mrow" style="grid-template-columns:150px 78px 1fr 74px 74px;font-weight:800;background:#FAF9FE">
+        return `<div class="mrow" style="grid-template-columns:150px 78px 1fr 74px 74px;font-weight:800;background:#F7F9F8">
           <span>TOTAL ${RP.length} periode</span><span class="r">${T.n.toLocaleString("id-ID")}</span>
           <span class="r">${T.rp?rp(T.rp):"—"}</span><span class="r">${T.tu}</span>
           <span class="r">${T.n?Math.round(T.tu/T.n*1000)/10+"%":"—"}</span></div>`;})()+
@@ -6782,7 +6841,7 @@ function renderJual(){
   // grafik harian
   document.getElementById("chJualDay").innerHTML=
     (js.n||ts.n)?svgBars2(days.map(x=>({l:+x.slice(8),a:jualN(x)||0,b:tpd[x]||0})),
-      "#5B3FD9","#0E5F8A","Transaksi penjualan","Transaksi top up")
+      "#0F5C63","#1F6088","Transaksi penjualan","Transaksi top up")
     :`<div class="empty">Belum ada angka penjualan di periode ini.</div>`;
 
   // rasio per bulan (semua bulan yang penjualannya sudah diisi)
@@ -6792,7 +6851,7 @@ function renderJual(){
     if(!t.tgl)return;const k=periodKeyOf(t.tgl);if(mo[k])mo[k].t++;}));
   const mItems=Object.keys(mo).filter(k=>mo[k].j>0).sort().slice(-18)
     .map(k=>({l:monthShort(k),v:Math.round(mo[k].t/mo[k].j*1000)/10}));
-  document.getElementById("chJualRasio").innerHTML=mItems.length?svgBars(mItems,"#1B6B47",v=>v+"%")
+  document.getElementById("chJualRasio").innerHTML=mItems.length?svgBars(mItems,"#1C6047",v=>v+"%")
     :`<div class="empty">Isi dulu jumlah transaksi penjualan hariannya.</div>`;
 }
 function renderStats(){
@@ -6833,9 +6892,9 @@ function renderStats(){
     <div class="kpi"><div class="v">${tutorAktif}</div><div class="l">Tutor Aktif</div></div>
     <div class="kpi"><div class="v">${cr}%</div><div class="l">Completion Rate</div></div>
     <div class="kpi"><div class="v">${(Math.round(cs.length/hariAktif*10)/10).toLocaleString("id-ID")}</div><div class="l">Kelas / Hari</div></div>
-    <div class="kpi" title="Murid yang punya catatan top up bertanggal di periode ini"><div class="v" style="color:#0E5F8A">${tuMuridP.size}</div><div class="l">Murid Top Up · periode ini</div></div>
-    <div class="kpi" title="Jumlah transaksi top up bertanggal di periode ini"><div class="v" style="color:#0E5F8A">${tuTrxP}</div><div class="l">Transaksi Top Up</div></div>
-    <div class="kpi" title="Berapa persen murid aktif periode ini yang tercatat pernah top up (kumulatif, bukan hanya periode ini)"><div class="v" style="color:${everRate==null?"var(--ink-soft)":everRate>=.4?"#1B6B47":everRate>=.2?"#A9761B":"var(--red)"}">${everRate==null?"—":Math.round(everRate*100)+"%"}</div><div class="l">Rasio Loyalitas</div></div>`;
+    <div class="kpi" title="Murid yang punya catatan top up bertanggal di periode ini"><div class="v" style="color:#1F6088">${tuMuridP.size}</div><div class="l">Murid Top Up · periode ini</div></div>
+    <div class="kpi" title="Jumlah transaksi top up bertanggal di periode ini"><div class="v" style="color:#1F6088">${tuTrxP}</div><div class="l">Transaksi Top Up</div></div>
+    <div class="kpi" title="Berapa persen murid aktif periode ini yang tercatat pernah top up (kumulatif, bukan hanya periode ini)"><div class="v" style="color:${everRate==null?"var(--ink-soft)":everRate>=.4?"#1C6047":everRate>=.2?"#8A5F14":"var(--red)"}">${everRate==null?"—":Math.round(everRate*100)+"%"}</div><div class="l">Rasio Loyalitas</div></div>`;
 
   // ringkasan + grafik top up
   document.getElementById("tuRingkas").innerHTML=`
@@ -6852,7 +6911,7 @@ function renderStats(){
   const tuItems=Object.keys(tuBulan).sort().slice(-18).map(k=>({
     l:["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"][+k.slice(5)-1]+" "+k.slice(2,4),
     v:tuBulan[k]}));
-  document.getElementById("chTuTren").innerHTML=tuItems.length?svgBars(tuItems,"#0E5F8A")
+  document.getElementById("chTuTren").innerHTML=tuItems.length?svgBars(tuItems,"#1F6088")
     :`<div class="empty">Belum ada catatan top up bertanggal.</div>`;
 
   const dist={1:0,2:0,3:0,4:0};
@@ -6877,7 +6936,7 @@ function renderStats(){
     else{k=c.date.slice(0,7);l=["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"][+k.slice(5)-1]+" "+k.slice(2,4);}
     grp[k]=grp[k]||{l,v:0};grp[k].v++;});
   const gitems=Object.keys(grp).sort().map(k=>grp[k]).slice(-24);
-  document.getElementById("chGrowth").innerHTML=svgBars(gitems,"#5B3FD9");
+  document.getElementById("chGrowth").innerHTML=svgBars(gitems,"#0F5C63");
 
   // --- per hari dalam periode ---
   const[a,b]=periodRange(key);
@@ -6888,8 +6947,8 @@ function renderStats(){
   }
   const perDay={},gajiDay={};
   cs.forEach(c=>{perDay[c.date]=(perDay[c.date]||0)+1;gajiDay[c.date]=(gajiDay[c.date]||0)+feeOf(c,now);});
-  document.getElementById("chDaily").innerHTML=svgBars(days.map(x=>({l:+x.slice(8),v:perDay[x]||0})),"#5B3FD9");
-  document.getElementById("chGaji").innerHTML=svgBars(days.map(x=>({l:+x.slice(8),v:gajiDay[x]||0})),"#0E8FB5",v=>Math.round(v/1000)+"rb");
+  document.getElementById("chDaily").innerHTML=svgBars(days.map(x=>({l:+x.slice(8),v:perDay[x]||0})),"#0F5C63");
+  document.getElementById("chGaji").innerHTML=svgBars(days.map(x=>({l:+x.slice(8),v:gajiDay[x]||0})),"#1F6088",v=>Math.round(v/1000)+"rb");
 
   // --- murid paling rajin (klik nama utk riwayat) ---
   const rajin={};
@@ -7280,7 +7339,7 @@ function renderDetail(){
       const blRp=bl.reduce((a,c)=>a+feeOf(c,now),0), sdRp=sd.reduce((a,c)=>a+feeOf(c,now),0);
       return `<div class="rangepay">
         <div><b>${dFrom}</b> s/d <b>${dTo}</b> — ${inR.length} sesi Selesai
-          ${sd.length?`· <span style="color:#1B6B47">${sd.length} sesi (${rp(sdRp)}) sudah dibayar</span>`:""}
+          ${sd.length?`· <span style="color:#1C6047">${sd.length} sesi (${rp(sdRp)}) sudah dibayar</span>`:""}
           ${bl.length?`· <span style="color:var(--red)">${bl.length} sesi (${rp(blRp)}) belum</span>`:""}</div>
         ${bl.length?`<button class="btn small" onclick="payRange(du('${eu(name)}'))">Tandai rentang ini dibayar</button>`:""}
       </div>`;})():""}
@@ -7424,7 +7483,7 @@ function renderDetail(){
         <div class="legend"><span><i class="k1"></i>vakum ${VAKUM_KUNING}–${VAKUM_MERAH} hari / jadwal masih jauh</span><span><i class="k4"></i>lebih dari ${VAKUM_MERAH} hari</span><span><i class="kp"></i>ditunda beruntun</span><span><i class="k2"></i>belum pernah jalan</span><span><i class="kc"></i>sedang cuti</span></div></div>`:"")+
      (pulihN?`<div class="followbox ok">✓ ${pulihN} murid sudah jalan lagi — jadwal berikutnya sudah ada dalam ${JADWAL_DEKAT} hari, jadi warnanya kembali normal.</div>`:"")+
      (ditangani.length?`<div class="followbox ok">✓ ${ditangani.length} murid sudah ada catatan status.</div>`:"")+
-     (selesaiN?`<div class="followbox" style="background:#F1FAF4;border-color:#C8E6D6;color:#14603E">
+     (selesaiN?`<div class="followbox" style="background:#EEF5F1;border-color:#C8E6D6;color:#154C39">
         🎓 ${selesaiN} murid paketnya sudah selesai — ${showKelar?"sedang ditampilkan":"disembunyikan"} dari daftar di bawah,
         tapi tetap dihitung pada total murid.
         <button class="btn ghost small" style="margin-left:6px" onclick="toggleKelar()">${showKelar?"Sembunyikan":"Tampilkan"}</button>
@@ -7495,7 +7554,7 @@ function renderDetail(){
       html+=`<div class="card"><h2>Top Up Paket${tl.length?` · ${tl.length}×`:""}</h2>`+
         (_mid&&tl.length?`<p class="note" style="margin:0 0 8px">Catatan top up di bawah ini <b>tidak diganti oleh impor</b> —
           ini catatan paket yang mengatur hitungan pertemuan, terpisah dari catatan rupiah di Riwayat Pembelian.
-          ${_blmCocok?`<b style="color:#8A5309">${_blmCocok} catatan belum ketemu pembelian yang cocok</b> — mungkin transaksinya lewat transfer bank atau belum diimpor.`
+          ${_blmCocok?`<b style="color:#7A5310">${_blmCocok} catatan belum ketemu pembelian yang cocok</b> — mungkin transaksinya lewat transfer bank atau belum diimpor.`
             :`Semuanya sudah cocok dengan riwayat pembelian.`}</p>`:"")+
         (tl.length?`<div>`+tl.map(t=>{const c=_cari(t);return `<div class="turow">
             <div style="flex:1;min-width:0">
