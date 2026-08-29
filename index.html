@@ -1985,6 +1985,16 @@ async function fullSync(){
     U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{},sub:{},wk:{},tid:{},tstat:{}};sisaJual=[];
     (all.rates||[]).forEach(r=>{
       const id=String(r.id||""), val=+r.rate;
+      if(/^N:T-\d+$/.test(id)&&String(r.lang||"")==="v1"){                     // nomor induk tutor
+        const tid=id.slice(2), nm=String(r.tutor||"");
+        if(tid&&nm)U.tid[nm]=tid;
+        return;}
+      if(id.slice(0,2)==="B:"&&/^v1~\{/.test(String(r.lang||""))){              // riwayat pembelian
+        const oid=id.slice(2), raw=String(r.lang||"");
+        try{const o=JSON.parse(raw.slice(3));
+          if(oid){o.mid=String(r.tutor||"");o.nominal=val||0;U.beli[oid]=o;}
+        }catch(e){}
+        return;}
       if(id.slice(0,2)==="N:"){U.newTag[id.slice(2)]=r.lang||"nama";return;}   // penanda nama baru
       if(id.slice(0,2)==="G:"){                                                 // riwayat pindah tutor
         const p=String(r.lang||"").split("~");
@@ -2007,10 +2017,6 @@ async function fullSync(){
         const nm=id.slice(2), st=String(r.lang||"").trim();
         if(nm&&TSTAT[st])U.tstat[nm]=st;
         return;}
-      if(id.slice(0,2)==="N:"){                                                 // nomor induk tutor
-        const tid=id.slice(2), nm=String(r.tutor||"");
-        if(tid&&nm)U.tid[nm]=tid;
-        return;}
       if(id.slice(0,2)==="W:"){                                                 // tutor dibayar mingguan
         const nm=id.slice(2);
         if(nm&&val)U.wk[nm]=1;
@@ -2027,15 +2033,6 @@ async function fullSync(){
         const i=raw.indexOf("~");
         if(i>0&&raw.slice(0,i)==="v1"){
           try{const o=JSON.parse(raw.slice(i+1));if(mid&&o&&o.nm)U.murid[mid]=o;}catch(e){}
-        }
-        return;}
-      if(id.slice(0,2)==="B:"){                                                 // riwayat pembelian
-        const oid=id.slice(2), raw=String(r.lang||"");
-        const i=raw.indexOf("~");
-        if(i>0&&raw.slice(0,i)==="v1"){
-          try{const o=JSON.parse(raw.slice(i+1));
-            if(oid){o.mid=String(r.tutor||"");o.nominal=val||0;U.beli[oid]=o;}
-          }catch(e){}
         }
         return;}
       if(id.slice(0,2)==="K:"){                                                 // kontak tutor (WA & email)
