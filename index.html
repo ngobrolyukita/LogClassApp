@@ -538,7 +538,9 @@
           <option value="id">Urut: ID</option>
         </select>
         <button class="btn ghost small" onclick="exportMurid()">📦 Export CSV</button>
-        <button class="btn ghost small editonly" onclick="bukaImporBeli()">📥 Import Pembelian</button>
+        <button class="btn small editonly" onclick="tambahMuridManual()">👤 Tambah Murid</button>
+      <button class="btn small editonly" onclick="bukaCatatBeliBaru()">➕ Catat Pembelian</button>
+      <button class="btn ghost small editonly" onclick="bukaImporBeli()">📥 Import Pembelian</button>
       </div>
       <div id="mChip"></div>
       <div id="mList"></div>
@@ -552,6 +554,13 @@
         <button class="btn ghost small" onclick="tutupOv('beliOv')">✕</button>
       </div>
       <div class="sheet-body">
+        <div class="field" id="cbMuridBox" style="display:none;margin-bottom:9px">
+          <label>Nama murid <small style="font-weight:600;color:var(--ink-soft)">— ketik, saran muncul otomatis</small></label>
+          <input type="text" id="cbMurid" list="dlCbMurid" autocomplete="off" oninput="cekMuridBaru()"
+            placeholder="Nama lengkap murid" style="width:100%;padding:9px;font-size:13px">
+          <datalist id="dlCbMurid"></datalist>
+          <div id="cbMuridInfo" style="margin-top:6px"></div>
+        </div>
         <div id="cbRiwayat"></div>
         <div class="field"><label>Jenis</label>
           <select id="cbJenis" onchange="hitungCB()" style="width:100%;padding:9px;font-size:13px">
@@ -895,8 +904,11 @@
 <div class="sheetov" id="detailOv" onclick="if(event.target===this)closeDetail()">
   <div class="sheet">
     <div class="sheet-head">
-      <div><div class="ttl" id="dTitle"></div><div class="sub" id="dSub"></div></div>
-      <button class="btn ghost small" onclick="closeDetail()">✕ Tutup</button>
+      <div style="flex:1;min-width:0"><div class="ttl" id="dTitle"></div><div class="sub" id="dSub"></div></div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+        <button class="btn ghost small" id="dBack" onclick="kembaliDetail()" style="display:none"></button>
+        <button class="btn ghost small" onclick="closeDetail()">✕ Tutup</button>
+      </div>
     </div>
     <div class="sheet-body" id="dBody"></div>
   </div>
@@ -1174,6 +1186,35 @@ function hitungGT(){
 /* Kunci gulir hanya kalau ada panel yang benar-benar terlihat.
    Panel yang sudah di-display:none (mis. saat tampilan slip dibuka) tidak dihitung —
    ini yang dulu bikin halaman slip ikut terkunci dan tidak bisa digulir. */
+/* Tumpukan panel. Membuka panel baru di atas panel lain (mis. Catat Pembelian
+   dari halaman murid) menyembunyikan yang lama; menutupnya mengembalikan yang lama,
+   bukan melempar ke daftar. */
+let OVSTACK=[];
+function judulOv(id){
+  const e=document.getElementById(id);
+  const t=e&&e.querySelector(".ttl");
+  return t?t.textContent.trim():"";
+}
+function pasangBackOv(id){
+  const e=document.getElementById(id); if(!e)return;
+  const head=e.querySelector(".sheet-head"); if(!head)return;
+  let b=head.querySelector(".ov-back");
+  const bawah=OVSTACK[OVSTACK.length-1];
+  if(!bawah){if(b)b.remove();return;}
+  if(!b){
+    b=document.createElement("button");
+    b.className="btn ghost small ov-back";
+    b.style.marginRight="6px";
+    b.onclick=()=>tutupOv(id);
+    const kanan=head.lastElementChild;
+    if(kanan&&kanan.tagName!=="DIV")head.insertBefore(b,kanan);
+    else if(kanan)kanan.insertBefore(b,kanan.firstChild);
+    else head.appendChild(b);
+  }
+  const nm=judulOv(bawah)||"sebelumnya";
+  b.textContent="← "+(nm.length>20?nm.slice(0,20)+"…":nm);
+  b.title="Kembali ke "+nm;
+}
 function kunciLatar(){
   const adaTampil=[...document.querySelectorAll(".sheetov.on")]
     .some(el=>el.style.display!=="none"&&getComputedStyle(el).display!=="none");
@@ -1181,8 +1222,22 @@ function kunciLatar(){
     document.getElementById("printArea").style.display==="block":false;
   document.body.classList.toggle("terkunci",adaTampil&&!slipTampil);
 }
-function bukaOv(id){document.getElementById(id).classList.add("on");kunciLatar();}
-function tutupOv(id){document.getElementById(id).classList.remove("on");kunciLatar();}
+function bukaOv(id){
+  const lain=[...document.querySelectorAll(".sheetov.on")].map(x=>x.id).filter(x=>x!==id);
+  lain.forEach(x=>{document.getElementById(x).classList.remove("on");OVSTACK.push(x);});
+  document.getElementById(id).classList.add("on");
+  pasangBackOv(id);
+  kunciLatar();
+}
+function tutupOv(id){
+  document.getElementById(id).classList.remove("on");
+  const balik=OVSTACK.pop();
+  if(balik){
+    document.getElementById(balik).classList.add("on");
+    pasangBackOv(balik);
+  }
+  kunciLatar();
+}
 function tutupGT(){gtCtx=null;tutupOv("gtOv");}
 function keMasterTutor(){
   tutupGT();closeDetail();bukaTab("master");
@@ -1519,6 +1574,7 @@ const MKEY="ny_meet_v1";
 const RE_REG=/(^|\s)([ABC][12])[.\s]?\d?(\s|$)|HSK\s*\d|reguler|regular|conversation\s*club/i;
 // Nama kohort yang memuat bulan (mis. "A1.2 JULY") = angkatan, dihitung sejak awal.
 const RE_BLN=/\b(JAN|FEB|MAR|APR|MAY|MEI|JUN|JUNE|JUL|JULY|AUG|AGU|SEP|OCT|OKT|NOV|DEC|DES)\w*\b/i;
+let MEETCAP={};
 let MEET={on:false,since:"2026-07-26",tReg:0,tPriv:0}, MEETN={}, MEETE={}, MEETB={}, MEETS={}, MEETSISA={};
 function isReg(c){return RE_REG.test(c.cls||"");}
 function isPriv(c){return !!(c.cls||"").trim()&&!isReg(c);}
@@ -1552,23 +1608,38 @@ function jamTeks(h){
    Murid sering top up sebelum paketnya habis — kalau resetnya mengikuti tanggal,
    sisa pertemuan paket lama hangus dari catatan padahal masih dipakai.
    Jadi: paket berjalan sampai jamnya terpakai, baru paket top up berikutnya dibuka. */
+/* Paket private/semi-private umumnya 10 jam. Kalau pembelian tidak mencantumkan jam
+   (impor WooCommerce tidak membawanya), angka bawaan inilah yang dipakai sampai
+   dikoreksi manual di riwayat pembelian murid. */
+function jamPaket(o,c){
+  if(o&&+o.jam>0)return +o.jam;
+  if(c&&isReg(c))return +MEET.tReg||0;
+  return +MEET.jamDefault||JAM_PAKET_BAWAAN;
+}
+const JAM_PAKET_BAWAAN=10;
+/* Log kelas baru dimulai 26 Juli 2026. Paket yang dibeli sebelum itu sudah terpakai
+   sebagian tanpa jejak di log, jadi jamnya bisa dikoreksi lewat kolom "sudah terpakai". */
 function paketMurid(nm,c){
-  const tu=tuList(nm).filter(t=>t.tgl).sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl)));
-  const awal=(()=>{
-    // jam paket awal: dari pembelian pertama kalau ada, kalau tidak dari target umum
-    const id=midOf(nm);
-    if(id){
-      const g=beliPerProgram(id);
-      const cocok=g.find(x=>!c||!c.lang||x.prog===c.lang)||g[0];
-      if(cocok&&+cocok.items[0].jam>0)return +cocok.items[0].jam;
+  const id=midOf(nm);
+  const tuRec=tuList(nm).filter(t=>t.tgl).sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl)));
+  let awal=0, terpakai=0, tu=tuRec.map(t=>({tgl:t.tgl,jam:+t.jam>0?+t.jam:(+MEET.jamDefault||JAM_PAKET_BAWAAN)}));
+  if(id){
+    const g=beliPerProgram(id);
+    const cocok=g.find(x=>!c||!c.lang||x.prog===c.lang)||g[0];
+    if(cocok&&cocok.items.length){
+      awal=jamPaket(cocok.items[0],c);
+      terpakai=+cocok.items[0].dipakai||0;
+      // paket lanjutan diambil dari riwayat pembelian, lebih dipercaya daripada catatan manual
+      const lanjut=cocok.items.slice(1).map(o=>({tgl:o.tgl,jam:jamPaket(o,c)}));
+      if(lanjut.length>=tu.length)tu=lanjut;
     }
-    return c&&isReg(c)?(+MEET.tReg||0):(+MEET.tPriv||0);
-  })();
-  return {awal,tu};
+  }
+  if(!awal)awal=c&&isReg(c)?(+MEET.tReg||0):(+MEET.jamDefault||JAM_PAKET_BAWAAN);
+  return {awal,tu,terpakai};
 }
 let MEET_DIAG={total:0,selesai:0,gagal:0,pesan:""};
 function buildMeet(){
-  MEETN={};MEETE={};MEETB={};MEETS={};MEETSISA={};if(!MEET.on)return;
+  MEETN={};MEETE={};MEETB={};MEETS={};MEETSISA={};MEETCAP={};if(!MEET.on)return;
   const now=new Date();
   const src=classes.filter(c=>c.cls&&c.date>=MEET.since&&statusOf(c,now)==="Selesai")
     .sort((a,b)=>a.date===b.date?(a.start<b.start?-1:1):(a.date<b.date?-1:1));
@@ -1581,7 +1652,10 @@ function buildMeet(){
     let o=st[k0];
     if(!o){
       const P=paketMurid(nm,c);
-      o=st[k0]={n:0,era:0,sisa:P.awal>0?P.awal:Infinity,tu:P.tu,idx:0};
+      // jam yang sudah terpakai sebelum log dimulai ikut dihitung, supaya
+      // "Jam ke-" mencerminkan total jam belajar sebenarnya, bukan hanya yang tercatat
+      o=st[k0]={n:P.terpakai||0,era:0,sisa:P.awal>0?Math.max(0,P.awal-(P.terpakai||0)):Infinity,
+        tu:P.tu,idx:0,cap:P.awal,pakai:P.terpakai||0};
     }
     const b=meetBobot(c);
     // paket habis DAN sudah ada top up yang dicatat sampai tanggal ini -> buka paket berikutnya
@@ -1596,6 +1670,7 @@ function buildMeet(){
     if(o.sisa!==Infinity)o.sisa=Math.round((o.sisa-b)*100)/100;
     MEETN[c.id]=o.n;MEETB[c.id]=b;MEETE[c.id]=o.era;
     MEETSISA[c.id]=o.sisa===Infinity?null:Math.max(0,o.sisa);
+    MEETCAP[c.id]=o.cap||0;
     tot[k0]=o.n;
    }catch(err){MEET_DIAG.gagal++;MEET_DIAG.pesan=String(err&&err.message||err);}
   });
@@ -1604,6 +1679,8 @@ function buildMeet(){
 /* Target: kalau paketnya berasal dari top up dan jumlah jamnya dicatat,
    jam itulah targetnya (1 jam = 1 pertemuan). Kalau tidak, pakai target umum. */
 function meetTarget(c){
+  const cap=MEETCAP[c&&c.id];
+  if(cap>0)return cap;
   if(isClub(c))return 0;                 // conversation club tidak punya target
   const era=MEETE[c.id]||0;
   if(era){
@@ -1619,17 +1696,16 @@ function meetBadge(c){
   const sisa=MEETSISA[c.id];
   const b=MEETB[c.id]||1, mulai=Math.round(((MEETS[c.id]||0)+.5)*100)/100;
   const lewat=t&&n>t;
-  const span=b===1?("Pertemuan ke-"+fmtP(n)):("Mencakup pertemuan ke-"+fmtP(mulai)+" s/d "+fmtP(n));
-  const judul=span+(t?" dari "+fmtP(t):"")
-    +" · sesi "+jamTeks(durasi(c.start,c.end))+" = "+fmtP(b)+" pertemuan"
+  /* Yang ditampilkan adalah JAM BELAJAR yang sudah dijalani pada paket berjalan,
+     bukan nomor pertemuan — karena satu sesi tidak selalu 1 jam. */
+  const span=b===1?("Jam belajar ke-"+fmtP(n)):("Jam belajar ke-"+fmtP(mulai)+" s/d "+fmtP(n));
+  const judul=span+(t?" dari "+fmtP(t)+" jam paket":"")
+    +" · sesi ini "+jamTeks(durasi(c.start,c.end))
     +(e?" · paket top up ke-"+e:" · paket awal")
-    +(lewat?" · SUDAH LEWAT TARGET":"");
-  // paket dan nomor top up selalu ditampilkan, supaya jelas sesi ini masuk paket yang mana
-  const judul2=judul+(sisa!=null?" · sisa paket "+fmtP(sisa)+" pertemuan":"")
-    +(e?" · paket top up ke-"+e:" · paket awal");
-  return `<span class="pert${sel?" full":""}${lewat?" over":""}" title="${judul2}">P${fmtP(n)}${t?"/"+fmtP(t):""}${b!==1?` <small>(${fmtP(b)}p)</small>`:""}</span>`
-    +`<span class="tup${e?"":" awal"}" title="${e?"Paket hasil top up ke-"+e:"Masih paket awal, belum pernah top up"}">${e?"TU"+e:"TU0"}</span>`
-    +(sisa!=null&&sisa<=1.0001?`<span class="tup" style="background:#8A5309" title="Sisa paket tinggal ${fmtP(sisa)} pertemuan — waktunya ditawari top up">sisa ${fmtP(sisa)}</span>`:"");
+    +(sisa!=null?" · sisa "+fmtP(sisa)+" jam":"")
+    +(lewat?" · SUDAH LEWAT JAM PAKET":"");
+  return `<span class="pert${sel?" full":""}${lewat?" over":""}" title="${judul}">Jam ${fmtP(n)}${t?"/"+fmtP(t):""}</span>`
+    +(sisa!=null&&sisa<=1.0001?`<span class="tup" style="background:#8A5309" title="Sisa paket tinggal ${fmtP(sisa)} jam — waktunya ditawari top up">sisa ${fmtP(sisa)}j</span>`:"");
 }
 function saveMeet(){lset(MKEY,MEET);buildMeet();renderAll();}
 function renderMeetBar(){
@@ -1643,8 +1719,8 @@ function renderMeetBar(){
     <input type="date" value="${MEET.since}" onchange="setMeetSince(this.value)">
     <span>target reguler</span>
     <input class="num" type="number" min="0" value="${MEET.tReg||""}" placeholder="—" onchange="setMeetTarget('reg',this.value)">
-    <span>target private</span>
-    <input class="num" type="number" min="0" value="${MEET.tPriv||""}" placeholder="—" onchange="setMeetTarget('priv',this.value)">
+    <span>jam paket private</span>
+    <input class="num" type="number" min="0" value="${MEET.jamDefault||JAM_PAKET_BAWAAN}" placeholder="10" onchange="setMeetTarget('jam',this.value)">
     ${n===0?`<span style="color:var(--red);font-weight:800">Tidak ada sesi yang bernomor.</span>
       <span style="opacity:.85">Dari ${MEET_DIAG.total.toLocaleString("id-ID")} kelas, ${MEET_DIAG.selesai.toLocaleString("id-ID")} berstatus Selesai sejak ${fmtD_(MEET.since)}.
       ${MEET_DIAG.gagal?`<b style="color:var(--red)">${MEET_DIAG.gagal} sesi gagal dihitung: ${MEET_DIAG.pesan}</b>`
@@ -1657,7 +1733,10 @@ function renderMeetBar(){
 function toggleMeet(){MEET.on=!MEET.on;saveMeet();
   toast(MEET.on?"Nomor pertemuan ditampilkan (dihitung sejak "+MEET.since+")":"Nomor pertemuan disembunyikan");}
 function setMeetSince(v){MEET.since=v;saveMeet();}
-function setMeetTarget(w,v){if(w==="reg")MEET.tReg=+v||0;else MEET.tPriv=+v||0;saveMeet();}
+function setMeetTarget(w,v){
+  if(w==="jam"){MEET.jamDefault=Math.max(0,+v||0)||JAM_PAKET_BAWAAN;saveMeet();return;}
+  if(w==="reg")MEET.tReg=+v||0;else MEET.tPriv=+v||0;saveMeet();
+}
 
 /* ---------- undo ---------- */
 const WHOKEY="ny_user_v1";
@@ -3543,7 +3622,8 @@ function pushBELI(oid,o){
   if(!o){push({action:"delrate",ids:["B:"+oid]});return;}
   const {mid,nominal,...sisa}=o;
   push({action:"setrate",rows:[{id:"B:"+oid,tutor:mid||"",cls:String(o.produk||"").slice(0,80),
-    rate:+nominal||0,lang:"v1~"+JSON.stringify(Object.assign({},sisa,{produk:o.produk||""}))}]});
+    rate:+nominal||0,lang:"v1~"+JSON.stringify(Object.assign({},sisa,
+      {produk:o.produk||"",prog:o.prog||"",jam:+o.jam||0,dipakai:+o.dipakai||0}))}]});
 }
 function beliMurid(id){
   return Object.entries(U.beli||{}).filter(([,o])=>o.mid===id)
@@ -3570,6 +3650,50 @@ function simpanBeli(oid,o){
   const m=U.murid[o.mid];
   if(m&&o.tgl&&(!m.beli1||o.tgl<m.beli1)){m.beli1=o.tgl;simpanMurid(o.mid,m);}
   cacheAll();
+}
+/* Riwayat pembelian bisa dikoreksi: jam paket, program, jenis (awal/top up),
+   dan jam yang sudah terpakai sebelum log kelas dimulai. */
+function editBeli(oid){
+  if(!guard())return;
+  const o=(U.beli||{})[oid]; if(!o)return toast("Data pembelian tidak ditemukan");
+  const G=beliPerProgram(o.mid);
+  const sebelumLog=String(o.tgl||"")<MEET.since;
+  tanyaForm({
+    judul:"Ubah Pembelian",
+    sub:(o.produk||"—")+" · "+fmtD_(o.tgl),
+    pesan:sebelumLog
+      ? "Pembelian ini terjadi sebelum log kelas dimulai ("+fmtD_(MEET.since)+"), jadi sebagian jamnya sudah terpakai tanpa jejak di log. Isi perkiraannya di kolom terakhir supaya sisa jam dan waktu top up berikutnya terhitung benar."
+      : "",
+    fields:[
+      {label:"Tanggal",nilai:o.tgl,tipe:"date"},
+      {label:"Program",nilai:progBeli(o),pilihan:[...new Set([...DATA.langs,...G.map(g=>g.prog)])]},
+      {label:"Jenis",nilai:(o.tipe==="topup"||o.tipe==="ulang")?"top up":"awal",pilihan:["awal","top up"],
+        hint:"— program berbeda dihitung awal, bukan top up"},
+      {label:"Jam paket",nilai:+o.jam>0?o.jam:"",tipe:"number",
+        hint:"— kosongkan untuk memakai bawaan "+(MEET.jamDefault||JAM_PAKET_BAWAAN)+" jam"},
+      {label:"Nominal (Rp)",nilai:+o.nominal||"",tipe:"number"},
+      {label:"Jam sudah terpakai sebelum "+fmtD_(MEET.since),nilai:+o.dipakai||"",tipe:"number",
+        hint:"— hanya untuk pembelian lama"}
+    ],
+    tombol:"Simpan perubahan",
+    ok:(v)=>simpanEditBeli(oid,v)
+  });
+}
+function simpanEditBeli(oid,[tgl,prog,jenis,jam,nominal,dipakai]){
+  const o=(U.beli||{})[oid]; if(!o)return;
+  const t=jParseTgl(tgl)||normDate(tgl);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(t))return toast("Tanggalnya belum benar");
+  o.tgl=t;
+  o.prog=progBaku(normName(prog))||progBeli(o);
+  o.tipe=/top/i.test(jenis)?"topup":"awal";
+  o.jam=+String(jam).replace(/[^\d.]/g,"")||0;
+  o.nominal=+String(nominal).replace(/\D/g,"")||0;
+  o.dipakai=+String(dipakai).replace(/[^\d.]/g,"")||0;
+  pushBELI(oid,o);
+  segarkanTipeBeli(o.mid);
+  cacheAll();lupakanRekap();buildMeet();
+  renderAll();if(detailCtx)renderDetail();
+  toast("Pembelian diperbarui · "+o.prog+" · "+(o.jam||(MEET.jamDefault||JAM_PAKET_BAWAAN))+" jam");
 }
 function hapusBeli(oid){
   if(!guard())return;
@@ -4491,10 +4615,12 @@ function blokMurid(nama){
       g.items.slice().reverse().map(o=>`<div class="belirow">
         <span class="tg">${fmtD_(o.tgl)}</span>
         <span class="pr">${o.produk||"—"} ${labelTipe(o)}
-          ${o.jam?`<span class="chip">${o.jam} jam</span>`:""}
+          <span class="chip"${+o.jam>0?"":' style="background:#FFF3CD;color:#8A5309" title="Jam paket belum diisi — dianggap paket bawaan, klik ✎ untuk koreksi"'}>${+o.jam>0?o.jam:(MEET.jamDefault||JAM_PAKET_BAWAAN)} jam${+o.jam>0?"":"?"}</span>
+          ${+o.dipakai>0?`<span class="chip" style="background:#EFEDF9">${o.dipakai}j terpakai sebelum log</span>`:""}
           <span class="sub" style="color:var(--ink-soft);font-size:10.5px">${o.sumber||""}${o.metode?" · "+o.metode:""} · ${o.oid}</span></span>
         <span class="rp">${rp(+o.nominal||0)}</span>
-        <button class="btn ghost small editonly" onclick="hapusBeli(du('${eu(o.oid)}'))" title="Hapus">✕</button>
+        <button class="btn ghost small editonly" onclick="editBeli(du('${eu(o.oid)}'))" title="Ubah jam paket, program, atau jenis">✎</button>
+          <button class="btn ghost small editonly" onclick="hapusBeli(du('${eu(o.oid)}'))" title="Hapus">✕</button>
       </div>`).join("")).join("")
       :`<div class="empty" style="padding:10px">Belum ada data pembelian.
         ${canEdit()?"Catat manual, atau impor dari WooCommerce lewat tab Data Murid.":""}</div>`}
@@ -4591,47 +4717,160 @@ function progBaku(v){const x=String(v||"").trim();return PROG_LAMA[x]||x;}
    Sekarang satu form. Kalau jenisnya "top up", sistem membuat DUA catatan sekaligus —
    catatan pembelian (nilai rupiah) dan catatan top up paket (yang mereset hitungan
    pertemuan). Dua-duanya tetap tersimpan terpisah supaya data lama tim tidak terganggu. */
-let cbCtx=null;
-function bukaCatatBeli(id){
+/* ---- catat pembelian tanpa memilih murid dulu ----
+   Dipakai kalau muridnya belum ada di sistem: nomor induknya dibuatkan otomatis
+   saat disimpan. Alternatif dari impor CSV untuk transaksi satuan. */
+/* Daftarkan murid tanpa harus lewat pembelian — nomor induknya dibuatkan otomatis. */
+function tambahMuridManual(){
   if(!guard())return;
-  const m=(U.murid||{})[id]; if(!m)return toast("Murid tidak ditemukan");
-  cbCtx={id,nm:m.nm};
-  const G=beliPerProgram(id);
-  document.getElementById("cbSub").textContent=id+" · "+m.nm;
+  tanyaForm({
+    judul:"Tambah Murid Baru",
+    sub:"Nomor induk "+idBerikut()+" dibuatkan otomatis",
+    pesan:"Kalau namanya mirip dengan murid yang sudah ada, sistem memberi tahu sebelum disimpan.",
+    fields:[
+      {label:"Nama murid",nilai:"",pilihan:Object.values(U.murid||{}).map(m=>m.nm),
+        hint:"— ketik nama baru; daftar di bawah untuk mengecek yang sudah ada"},
+      {label:"Email",nilai:"",tipe:"email"},
+      {label:"Nomor WhatsApp",nilai:"",ph:"0815..."},
+      {label:"Catatan",nilai:""}
+    ],
+    tombol:"Daftarkan",
+    ok:(v)=>simpanMuridManual(v)
+  });
+}
+function simpanMuridManual([nm,email,wa,catatan]){
+  const nama=normName(nm||"");
+  if(!nama)return toast("Nama muridnya kosong");
+  const ada=midOf(nama);
+  if(ada)return toast(nama+" sudah terdaftar sebagai "+ada);
+  const k=nkey(nama);let best=null,sc=0;
+  Object.entries(U.murid||{}).forEach(([id,m])=>{const p2=miripPersen(k,nkey(m.nm));if(p2>sc){sc=p2;best={id,nm:m.nm,p:p2};}});
+  if(best&&best.p>=85&&!confirm("Namanya mirip dengan murid yang sudah ada:\n\n"+
+    best.nm+" ("+best.id+") · "+best.p+"% mirip\n\nTetap daftarkan sebagai murid baru?"))return;
+  const id=idBerikut(), m=muridBaru(nama);
+  m.email=String(email||"").trim();m.wa=waNorm(wa);m.catatan=String(catatan||"").trim();
+  m.daftar=todayStr();
+  U.murid=U.murid||{};U.murid[id]=m;pushMURID(id,m);
+  cacheAll();lupakanIndex();lupakanRekap();renderMurid();
+  toast(nama+" terdaftar dengan nomor "+id);
+  openStudent(nama);
+}
+function bukaCatatBeliBaru(){
+  if(!guard())return;
+  bukaCatatBeli(null);
+}
+function isiSaranMurid(){
+  const el=document.getElementById("dlCbMurid"); if(!el)return;
+  el.innerHTML=Object.entries(U.murid||{})
+    .sort((a,b)=>a[1].nm.localeCompare(b[1].nm,"id"))
+    .map(([id,m])=>`<option value="${String(m.nm).replace(/"/g,"&quot;")}">${id}${m.email?" · "+m.email:""}</option>`).join("");
+}
+/* peringatan kalau namanya sudah ada atau sangat mirip — supaya tidak lahir murid kembar */
+function cekMuridBaru(){
+  const e=document.getElementById("cbMuridInfo"); if(!e)return;
+  const v=normName(document.getElementById("cbMurid").value||"");
+  cbCtx.id=null;cbCtx.nm=v;
+  if(!v){e.innerHTML="";cbSegarkanRiwayat();return;}
+  const persis=midOf(v);
+  if(persis){
+    cbCtx.id=persis;cbCtx.nm=namaMid(persis);
+    e.innerHTML=`<div class="filterchip" style="background:#E6F4EC;border-color:#9CCBB2">
+      Murid sudah terdaftar: <b>${namaMid(persis)}</b> <span class="mid">${persis}</span> —
+      pembelian ini akan masuk ke riwayatnya.</div>`;
+    cbSegarkanRiwayat();return;
+  }
+  // cari yang mirip
+  const k=nkey(v);let best=null,sc=0;
+  if(k.length>=4)Object.entries(U.murid||{}).forEach(([id,m])=>{
+    const p2=miripPersen(k,nkey(m.nm));
+    if(p2>sc){sc=p2;best={id,nm:m.nm,p:p2};}
+  });
+  e.innerHTML=(best&&best.p>=80)
+    ? `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B;display:block">
+        <b>Mirip dengan murid yang sudah ada:</b> ${best.nm} <span class="mid">${best.id}</span> · ${best.p}% mirip.
+        <div style="margin-top:5px">
+          <button class="btn small" onclick="pakaiMuridAda(du('${eu(best.id)}'))">Pakai ${best.nm}</button>
+          <button class="btn ghost small" onclick="document.getElementById('cbMuridInfo').innerHTML='';">Tetap murid baru</button>
+        </div></div>`
+    : `<div class="filterchip" style="background:#E8F1F6;border-color:#9CC4D8">
+        Murid baru — nomor induk <b>${idBerikut()}</b> dibuatkan otomatis saat disimpan.</div>`;
+  cbSegarkanRiwayat();
+}
+function pakaiMuridAda(id){
+  document.getElementById("cbMurid").value=namaMid(id);
+  cekMuridBaru();
+}
+function cbSegarkanRiwayat(){
+  const G=cbCtx.id?beliPerProgram(cbCtx.id):[];
   document.getElementById("cbRiwayat").innerHTML=G.length
     ? `<div class="filterchip" style="display:block;background:#F6F5FD">
         <b>Riwayat murid ini:</b> ${G.map(g=>`${g.prog} ${g.n}× (${rp(g.rp)})`).join(" · ")}</div>`
-    : `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
-        Belum ada riwayat pembelian — catatan pertama akan otomatis jadi <b>pembelian awal</b>.</div>`;
-  // program: yang sudah pernah dibeli dulu, baru bahasa lain
+    : (cbCtx.id?`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+        Belum ada riwayat pembelian — catatan pertama akan otomatis jadi <b>pembelian awal</b>.</div>`:"");
+  const G2=cbCtx.id?beliPerProgram(cbCtx.id):[];
+  const sudah=G2.map(g=>g.prog), lain=DATA.langs.filter(l=>!sudah.includes(l));
+  document.getElementById("dlCbProg").innerHTML=
+    sudah.map(x=>`<option value="${x}">sudah pernah — tinggal top up</option>`).join("")+
+    lain.map(x=>`<option value="${x}">program baru</option>`).join("");
+  if(!cbCtx.id)document.getElementById("cbJenis").value="awal";
+  hitungCB();
+}
+/* murid baru didaftarkan saat pembelian disimpan */
+function pastikanMurid(){
+  if(cbCtx.id)return cbCtx.id;
+  const nm=normName(document.getElementById("cbMurid").value||"");
+  if(!nm)return "";
+  const ada=midOf(nm); if(ada)return ada;
+  const id=idBerikut(), m=muridBaru(nm);
+  U.murid=U.murid||{};U.murid[id]=m;pushMURID(id,m);lupakanIndex();
+  toast("Murid baru "+nm+" terdaftar dengan nomor "+id);
+  return id;
+}
+let cbCtx=null;
+function bukaCatatBeli(id){
+  if(!guard())return;
+  const baru=!id;
+  const m=baru?null:(U.murid||{})[id];
+  if(!baru&&!m)return toast("Murid tidak ditemukan");
+  cbCtx={id:baru?null:id,nm:baru?"":m.nm};
+  document.getElementById("cbMuridBox").style.display=baru?"":"none";
+  if(baru){isiSaranMurid();document.getElementById("cbMurid").value="";
+    document.getElementById("cbMuridInfo").innerHTML="";}
+  const G=baru?[]:beliPerProgram(id);
+  document.getElementById("cbSub").textContent=baru
+    ? "Murid baru atau yang sudah ada — ketik namanya di bawah" : (id+" · "+m.nm);
+  document.getElementById("cbRiwayat").innerHTML=G.length
+    ? `<div class="filterchip" style="display:block;background:#F6F5FD">
+        <b>Riwayat murid ini:</b> ${G.map(g=>`${g.prog} ${g.n}× (${rp(g.rp)})`).join(" · ")}</div>`
+    : (baru?"":`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+        Belum ada riwayat pembelian — catatan pertama akan otomatis jadi <b>pembelian awal</b>.</div>`);
   const sudah=G.map(g=>g.prog);
   const lain=DATA.langs.filter(l=>!sudah.includes(l));
   document.getElementById("dlCbProg").innerHTML=
     sudah.map(x=>`<option value="${x}">sudah pernah — tinggal top up</option>`).join("")+
     lain.map(x=>`<option value="${x}">program baru</option>`).join("");
-  // produk: yang pernah dibeli murid ini dulu, lalu produk terlaris dari seluruh data
-  const produkMurid=[...new Set(beliMurid(id).map(o=>o.produk).filter(Boolean))];
+  const produkMurid=baru?[]:[...new Set(beliMurid(id).map(o=>o.produk).filter(Boolean))];
   const hit={};
   Object.values(U.beli||{}).forEach(o=>{if(o.produk)hit[o.produk]=(hit[o.produk]||0)+1;});
   const produkUmum=Object.keys(hit).sort((a,b)=>hit[b]-hit[a]).filter(x=>!produkMurid.includes(x)).slice(0,60);
   document.getElementById("dlCbProduk").innerHTML=
     produkMurid.map(x=>`<option value="${String(x).replace(/"/g,"&quot;")}">pernah dibeli murid ini</option>`).join("")+
     produkUmum.map(x=>`<option value="${String(x).replace(/"/g,"&quot;")}"></option>`).join("");
-  // bawaan: kalau sudah punya program, anggap top up di program terakhir
   const akhir=G.length?G[G.length-1]:null;
   document.getElementById("cbJenis").value=akhir?"topup":"awal";
   document.getElementById("cbProg").value=akhir?akhir.prog:"";
   document.getElementById("cbTgl").value=todayStr();
   ["cbProduk","cbRp","cbJam","cbNote"].forEach(k=>document.getElementById(k).value="");
   document.getElementById("cbSumber").value="bank";
-
   bukaOv("beliOv");
   hitungCB();
+  if(baru)setTimeout(()=>{const el=document.getElementById("cbMurid");if(el)el.focus();},80);
 }
+
 function cbProgramSekarang(){
   const v=progBaku(normName(document.getElementById("cbProg").value||""));
   if(!v)return "";
-  const semua=[...new Set([...DATA.langs,...beliPerProgram(cbCtx.id).map(g=>g.prog)])];
+  const semua=[...new Set([...DATA.langs,...(cbCtx.id?beliPerProgram(cbCtx.id).map(g=>g.prog):[])])];
   const cocok=semua.find(x=>x.toLowerCase()===v.toLowerCase());
   return cocok||v;
 }
@@ -4639,7 +4878,7 @@ function hitungCB(){
   if(!cbCtx)return;
   const jenis=document.getElementById("cbJenis").value;
   const prog=cbProgramSekarang();
-  const G=beliPerProgram(cbCtx.id);
+  const G=cbCtx.id?beliPerProgram(cbCtx.id):[];
   const g=G.find(x=>x.prog===prog);
   const tgl=document.getElementById("cbTgl").value||todayStr();
   const e=document.getElementById("cbInfo");
@@ -4673,7 +4912,12 @@ function hitungCB(){
 const CB_METODE={woocommerce:"WooCommerce",bank:"Transfer Bank",tunai:"Tunai",lainnya:"Lainnya"};
 function simpanCB(){
   if(!cbCtx||!guard())return;
-  const id=cbCtx.id, nm=cbCtx.nm;
+  const perluBaru=document.getElementById("cbMuridBox").style.display!=="none";
+  if(perluBaru&&!normName(document.getElementById("cbMurid").value||""))
+    return toast("Isi dulu nama muridnya");
+  const id=perluBaru?pastikanMurid():cbCtx.id;
+  if(!id)return toast("Muridnya belum bisa ditentukan");
+  const nm=namaMid(id);
   const jenis=document.getElementById("cbJenis").value;
   const prog=cbProgramSekarang();
   const tgl=document.getElementById("cbTgl").value;
@@ -6774,8 +7018,29 @@ function toggleKelar(){showKelar=!showKelar;if(detailCtx)renderDetail();}
 let detailCtx=null, dSort={key:"date",dir:-1}, dPeriod="all", dFrom="", dTo="";
 /* Panel drill menutupi seluruh layar, jadi kalau tidak ditutup dulu,
    halaman profil terbuka di BELAKANGNYA dan kelihatan seperti tidak bisa diklik. */
+/* ---- riwayat penelusuran ----
+   Membuka murid dari halaman tutor (atau sebaliknya) dulu menimpa halaman sebelumnya,
+   jadi menutupnya melempar ke daftar — bukan ke tempat kamu datang.
+   Sekarang halaman yang ditinggalkan disimpan, dan tombol Kembali mengembalikannya. */
+let NAV=[];
+function dorongNav(){
+  if(detailCtx)NAV.push({type:detailCtx.type,name:detailCtx.name});
+  if(NAV.length>12)NAV.shift();
+}
+function kembaliDetail(){
+  const s2=NAV.pop();
+  if(!s2)return closeDetail();
+  detailCtx={type:s2.type,name:s2.name};
+  dSort={key:"date",dir:-1};dPeriod="all";dStat="all";dStudAll=false;
+  renderDetail();
+}
+function labelNav(){
+  const s2=NAV[NAV.length-1];
+  return s2?("← "+(s2.name.length>18?s2.name.slice(0,18)+"…":s2.name)):"";
+}
 function openTutor(name){
   closeDrill();
+  if(detailCtx&&!(detailCtx.type==="tutor"&&detailCtx.name===name))dorongNav();
   dSort={key:"date",dir:-1};dPeriod="all";dStat="all";dStudAll=false;
   detailCtx={type:"tutor",name};renderDetail();
 }
@@ -6801,8 +7066,9 @@ function openMuridId(id){
   openStudent(m.nm);
 }
 function openStudent(name){
-  closeDrill();dSort={key:"date",dir:-1};dPeriod="all";dStat="all";detailCtx={type:"student",name};renderDetail();}
-function closeDetail(){detailCtx=null;tutupOv("detailOv");}
+  closeDrill();
+  if(detailCtx&&!(detailCtx.type==="student"&&detailCtx.name===name))dorongNav();dSort={key:"date",dir:-1};dPeriod="all";dStat="all";detailCtx={type:"student",name};renderDetail();}
+function closeDetail(){detailCtx=null;NAV=[];OVSTACK=[];tutupOv("detailOv");}
 function sortDetail(key){
   if(dSort.key===key)dSort.dir*=-1;else dSort={key,dir:key==="date"?-1:1};
   renderDetail();
@@ -6907,6 +7173,12 @@ function renderDetail(){
     <button class="btn ghost small" onclick="dRangeQuick(14)">14 hari</button>
     <button class="btn ghost small" onclick="dRangeQuick(30)">30 hari</button>
   </div>`;
+  const _bk=document.getElementById("dBack");
+  if(_bk){
+    _bk.style.display=NAV.length?"":"none";
+    _bk.textContent=labelNav();
+    _bk.title=NAV.length?("Kembali ke "+NAV[NAV.length-1].name):"";
+  }
   document.getElementById("dTitle").innerHTML=name+(U.newTag[name]?
     ` <span class="st unpaid" style="font-size:10px">BARU</span> <button class="btn ghost small" onclick="ackNew(du('${eu(name)}'))">✓ Sudah dicek</button>`:"");
   if(type==="tutor"){
