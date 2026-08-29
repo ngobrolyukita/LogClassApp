@@ -2624,6 +2624,13 @@ function renderTutorCards(){
      di periode ini. Versi lama membandingkan top up seumur hidup dengan murid periode ini,
      jadi angkanya tidak bisa dibandingkan antar periode. */
   const tuRateP=allMurid.size?allTUmP/allMurid.size:null;
+  /* Rasio transaksi: jumlah transaksi top up dibagi jumlah transaksi penjualan pada
+     periode / rentang yang sedang dipilih. Angka penjualannya berasal dari isian harian
+     di tab Statistik, jadi memakai sumber yang sama persis — tidak ada dua versi angka. */
+  const _ra=payMode==="range"&&pFrom?pFrom:pa, _rb=payMode==="range"&&pTo?pTo:pb;
+  const trxJual=jualSum(_ra,_rb).n;
+  const trxTU=topupSum(_ra,_rb).n;
+  const rasioTrx=trxJual?trxTU/trxJual:null;
   const cStat=hitungTstat(Object.keys(stat).filter(t=>okLang(t)));
 
   const sortBy=(document.getElementById("tSort")||{}).value||"gaji";
@@ -2661,7 +2668,7 @@ function renderTutorCards(){
     <div class="kpi${sel("batal")||sel("rendah")}" onclick="drillG('comp')"><div class="v" style="color:${allDue?(allDone/allDue>=.95?"#1B6B47":allDone/allDue>=.85?"#A9761B":"var(--red)"):"var(--ink-soft)"}">${allDue?Math.round(allDone/allDue*100)+"%":"—"}</div><div class="l">Completion · ${allBatal} batal</div></div>
     <div class="kpi${sel("pasif")}" onclick="drillG('murid')"><div class="v">${allMurid.size}</div><div class="l">Murid · ${allAktif.size} aktif</div></div>
     <div class="kpi${sel("kelar")}" onclick="drillG('selesai')"><div class="v" style="color:#1B6B47">${allKelar.size}</div><div class="l">Paket Selesai · retensi ${retensiAll==null?"—":Math.round(retensiAll*100)+"%"}</div></div>
-    <div class="kpi${sel("topup")}" onclick="drillG('topup')" title="${allTUr} transaksi top up bertanggal di ${payMode==="range"?"rentang "+pFrom+" – "+pTo:"periode ini"} dari ${allMurid.size} murid yang diajar di ${payMode==="range"?"rentang":"periode"} ini. Naik-turunnya bisa dibandingkan antar periode karena keduanya memakai rentang yang sama."><div class="v" style="color:${tuRateP==null?"var(--ink-soft)":tuRateP>=.25?"#1B6B47":tuRateP>=.1?"#A9761B":"var(--red)"}">${tuRateP==null?"—":Math.round(tuRateP*1000)/10+"%"}</div><div class="l">Rasio Top Up ${payMode==="range"?"Rentang":"Periode"} · ${allTUr} trx</div></div>
+    <div class="kpi${sel("topup")}" onclick="drillG('topup')" title="${trxTU} transaksi top up dibagi ${trxJual} transaksi penjualan pada ${payMode==="range"?"rentang "+pFrom+" – "+pTo:periodLabel(key)}.${trxJual?"":" Jumlah transaksi penjualannya belum diisi — isi di tab Statistik, card Rasio Top Up."}"><div class="v" style="color:${rasioTrx==null?"var(--ink-soft)":rasioTrx>=.25?"#1B6B47":rasioTrx>=.15?"#A9761B":"var(--red)"}">${rasioTrx==null?"—":Math.round(rasioTrx*1000)/10+"%"}</div><div class="l">Rasio Transaksi Top Up · ${trxTU}/${trxJual||"?"}</div></div>
     ${Object.entries(TSTAT).map(([k,d])=>{
       const n=cStat[k]||0;
       return `<div class="kpi${tStatFilter.has(k)?" on":""}" onclick="toggleTStat('${k}')"
@@ -2714,7 +2721,9 @@ function renderTutorCards(){
       <div class="row klik" onclick="drill('selesai','${eu(t)}')" title="Berapa persen murid tutor ini yang paketnya belum selesai — makin tinggi makin bagus retensinya.">
         <span>Retensi Murid</span><b style="color:${retensiOf(t)==null?"var(--ink-soft)":retensiOf(t)>=.9?"#1B6B47":retensiOf(t)>=.75?"#A9761B":"var(--red)"}">${retensiOf(t)==null?"—":Math.round(retensiOf(t)*100)+"%"}</b></div>
       <div class="row klik" onclick="drill('topup','${eu(t)}')" title="${tuMuridOf(t)} dari ${muridOf(t)} murid tercatat pernah top up · ${tuTrxOf(t)} transaksi seluruhnya · ${tuTrxROf(t)} bertanggal di ${payMode==="range"?"rentang ini":"periode ini"}">
-        <span>Top Up Murid</span><b>${tuMuridOf(t)?`<span style="color:#0E5F8A">🔁 ${tuMuridOf(t)}</span> <small style="font-weight:700;color:var(--ink-soft)">(${tuTrxOf(t)}× · ${Math.round(tuRateOf(t)*100)}%)</small>`:"—"}</b></div>
+        <span>Top Up Murid</span><b>${tuMuridOf(t)?`<span style="color:#0E5F8A">🔁 ${tuMuridOf(t)}</span> <small style="font-weight:700;color:var(--ink-soft)">${tuTrxOf(t)}×</small>`:"—"}</b></div>
+      <div class="row klik" onclick="drill('topup','${eu(t)}')" title="${tuMuridOf(t)} dari ${muridOf(t)} murid tutor ini tercatat top up — makin tinggi makin loyal muridnya. Dihitung dari murid yang diajar di ${payMode==="range"?"rentang":"periode"} ini.">
+        <span>Rasio Murid Top Up</span><b style="color:${tuRateOf(t)==null?"var(--ink-soft)":tuRateOf(t)>=.4?"#1B6B47":tuRateOf(t)>=.2?"#A9761B":"var(--red)"}">${tuRateOf(t)==null?"—":Math.round(tuRateOf(t)*1000)/10+"%"}<small style="font-weight:700;color:var(--ink-soft)"> ${tuMuridOf(t)}/${muridOf(t)}</small></b></div>
       <div class="row klik" onclick="drill('comp','${eu(t)}')" title="${stat[t]?stat[t].done+" jalan dari "+stat[t].due+" terjadwal · "+stat[t].batal+" postponed":""}">
         <span>Completion</span><b style="color:${compWarna(t)}">${compTxt(t)}${batalOf(t)?` <small style="font-weight:700;color:var(--ink-soft)">(${batalOf(t)} batal)</small>`:""}</b></div>
       ${payMode==="range"?`<div class="row klik" onclick="drill('sesi','${eu(t)}')"><span>Gaji di rentang</span><b>${rp(r.gaji)}</b></div>`:""}
