@@ -144,6 +144,7 @@
   .meetbar input{width:112px;padding:5px 7px;font-size:12px;border:1px solid var(--line);border-radius:7px}
   .meetbar input.num{width:58px}
   .pert.over{background:#FDECEC!important;border-color:#E5B4B4!important;color:#9B2C2C!important}
+  .tup.awal{background:#EFEDF9!important;color:#5D5680!important}
   .pert small{font-weight:600;opacity:.75;font-size:9px}
   .cls-fee{text-align:right;min-width:90px}
   .cls-fee .f{font-weight:800;font-size:12.5px;font-variant-numeric:tabular-nums}
@@ -519,6 +520,7 @@
           <input type="date" id="mTo" onchange="setMRange('b',this.value)"></span>
         <button class="btn ghost small" onclick="setMPeriod('all')">Semua waktu</button>
       </div>
+      <div id="simpanWarn"></div>
       <div id="mWarn"></div>
       <div class="mini-kpis" id="mKpis"></div>
       <div class="langbar" id="mLangBar"></div>
@@ -1460,7 +1462,37 @@ function listPeriods(){
 function inPay(c,key){const[a,b]=periodRange(key);return c.date>=a&&c.date<=b;}
 
 /* ---------- storage lokal (cache + antrian) ---------- */
-function lset(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+/* Dulu kegagalan menyimpan ditelan diam-diam. Waktu penyimpanan browser penuh,
+   app tetap terlihat normal tapi tidak ada yang tersimpan — begitu ditutup, data hilang.
+   Sekarang kegagalannya dilaporkan dan dicatat supaya ketahuan sebelum data hilang. */
+let SIMPAN_GAGAL=0, _peringatanSimpan=0;
+function lset(k,v){
+  try{localStorage.setItem(k,JSON.stringify(v));if(k===RKEY)SIMPAN_GAGAL=0;return true;}
+  catch(e){
+    SIMPAN_GAGAL++;
+    if(Date.now()-_peringatanSimpan>20000){
+      _peringatanSimpan=Date.now();
+      toast("⚠ Penyimpanan browser penuh — data belum tersimpan lokal. Jangan tutup app sebelum sinkron selesai.");
+      try{renderSimpanWarn();}catch(x){}
+    }
+    return false;
+  }
+}
+/* Sisa antrean + status penyimpanan ditampilkan supaya tidak menutup app terlalu cepat */
+function renderSimpanWarn(){
+  const e=document.getElementById("simpanWarn"); if(!e)return;
+  const q=queue.length;
+  if(!SIMPAN_GAGAL&&!q){e.innerHTML="";return;}
+  e.innerHTML=`<div class="filterchip" style="display:block;background:${q?"#FFF3CD":"#FDECEC"};
+      border-color:${q?"#E5C97B":"#E5B4B4"}">
+    ${q?`<b>${q} perubahan belum terkirim ke Google Sheet.</b> Biarkan app terbuka sampai angkanya nol —
+        kalau ditutup sekarang, perubahan itu belum aman.
+        <button class="btn small" onclick="flush()">Kirim sekarang</button>`:""}
+    ${SIMPAN_GAGAL?`<div style="margin-top:${q?"6px":"0"}"><b>Penyimpanan browser penuh.</b>
+        Data tetap dikirim ke Google Sheet, tapi salinan lokalnya tidak tersimpan —
+        jadi setelah app ditutup, data akan ditarik ulang dari Sheet saat dibuka lagi.
+        Kalau ini sering terjadi, hapus data lama lewat ⚙️ Pengaturan.</div>`:""}</div>`;
+}
 function lget(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}}
 /* Menyimpan cache = JSON.stringify seluruh data. Kalau dipanggil di dalam
    perulangan 500 murid, itu 500 kali stringify — inilah yang bikin app membeku.
@@ -1468,8 +1500,9 @@ function lget(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;
 let _tunda=0, _kotor=false;
 function cacheAll(){
   if(typeof REKAP!=="undefined")REKAP=null;      // data berubah -> rekap dihitung ulang
-  if(_tunda){_kotor=true;return;}
-  lset(CKEY,classes);lset(RKEY,U);lset(PKEY,paid);lset(QKEY,queue);
+  if(_tunda){_kotor=true;return true;}
+  const a=lset(CKEY,classes),b=lset(RKEY,U),c=lset(PKEY,paid),d=lset(QKEY,queue);
+  return a&&b&&c&&d;
 }
 function mulaiMassal(){_tunda++;}
 function selesaiMassal(){
@@ -1484,7 +1517,7 @@ const MKEY="ny_meet_v1";
 const RE_REG=/(^|\s)([ABC][12])[.\s]?\d?(\s|$)|HSK\s*\d|reguler|regular|conversation\s*club/i;
 // Nama kohort yang memuat bulan (mis. "A1.2 JULY") = angkatan, dihitung sejak awal.
 const RE_BLN=/\b(JAN|FEB|MAR|APR|MAY|MEI|JUN|JUNE|JUL|JULY|AUG|AGU|SEP|OCT|OKT|NOV|DEC|DES)\w*\b/i;
-let MEET={on:false,since:"2026-07-26",tReg:0,tPriv:0}, MEETN={}, MEETE={}, MEETB={}, MEETS={};
+let MEET={on:false,since:"2026-07-26",tReg:0,tPriv:0}, MEETN={}, MEETE={}, MEETB={}, MEETS={}, MEETSISA={};
 function isReg(c){return RE_REG.test(c.cls||"");}
 function isPriv(c){return !!(c.cls||"").trim()&&!isReg(c);}
 function isClub(c){return /conversation\s*club/i.test(c.cls||"");}
@@ -1513,21 +1546,52 @@ function jamTeks(h){
   const m=Math.round(h*60), j=Math.floor(m/60), sisa=m%60;
   return (j?j+" jam":"")+(j&&sisa?" ":"")+(sisa?sisa+" menit":"")||"0 menit";
 }
+/* Hitungan pertemuan mulai lagi dari P1 saat JAM PAKET HABIS, bukan saat tanggal top up.
+   Murid sering top up sebelum paketnya habis — kalau resetnya mengikuti tanggal,
+   sisa pertemuan paket lama hangus dari catatan padahal masih dipakai.
+   Jadi: paket berjalan sampai jamnya terpakai, baru paket top up berikutnya dibuka. */
+function paketMurid(nm,c){
+  const tu=tuList(nm).filter(t=>t.tgl).sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl)));
+  const awal=(()=>{
+    // jam paket awal: dari pembelian pertama kalau ada, kalau tidak dari target umum
+    const id=midOf(nm);
+    if(id){
+      const g=beliPerProgram(id);
+      const cocok=g.find(x=>!c||!c.lang||x.prog===c.lang)||g[0];
+      if(cocok&&+cocok.items[0].jam>0)return +cocok.items[0].jam;
+    }
+    return c&&isReg(c)?(+MEET.tReg||0):(+MEET.tPriv||0);
+  })();
+  return {awal,tu};
+}
 function buildMeet(){
-  MEETN={};MEETE={};MEETB={};MEETS={};if(!MEET.on)return;
+  MEETN={};MEETE={};MEETB={};MEETS={};MEETSISA={};if(!MEET.on)return;
   const now=new Date();
   const src=classes.filter(c=>c.cls&&c.date>=MEET.since&&statusOf(c,now)==="Selesai")
     .sort((a,b)=>a.date===b.date?(a.start<b.start?-1:1):(a.date<b.date?-1:1));
-  const n={},tot={};
+  const st={},tot={};
   src.forEach(c=>{
     const k0=meetKey(c);if(!k0)return;
-    // tiap top up memulai hitungan baru dari pertemuan 1
-    const era=tuEra((c.cls||"").trim(),c.date);
-    const k=era?k0+"|#"+era:k0;
+    const nm=(c.cls||"").trim();
+    let o=st[k0];
+    if(!o){
+      const P=paketMurid(nm,c);
+      o=st[k0]={n:0,era:0,sisa:P.awal>0?P.awal:Infinity,tu:P.tu,idx:0};
+    }
     const b=meetBobot(c);
-    MEETS[c.id]=Math.round((n[k]||0)*100)/100;           // akumulasi SEBELUM sesi ini
-    n[k]=Math.round(((n[k]||0)+b)*100)/100;
-    MEETN[c.id]=n[k];MEETB[c.id]=b;MEETE[c.id]=era;tot[k]=n[k];});
+    // paket habis DAN sudah ada top up yang dicatat sampai tanggal ini -> buka paket berikutnya
+    while(o.sisa<=0.0001&&o.idx<o.tu.length&&String(o.tu[o.idx].tgl)<=c.date){
+      const t=o.tu[o.idx++];
+      o.era=+t.ke||o.era+1;
+      o.sisa=(+t.jam>0)?+t.jam:Infinity;
+      o.n=0;                                            // hitungan mulai lagi dari nol
+    }
+    MEETS[c.id]=Math.round(o.n*100)/100;                // akumulasi SEBELUM sesi ini
+    o.n=Math.round((o.n+b)*100)/100;
+    if(o.sisa!==Infinity)o.sisa=Math.round((o.sisa-b)*100)/100;
+    MEETN[c.id]=o.n;MEETB[c.id]=b;MEETE[c.id]=o.era;
+    MEETSISA[c.id]=o.sisa===Infinity?null:Math.max(0,o.sisa);
+    tot[k0]=o.n;});
   MEETN._tot=tot;
 }
 /* Target: kalau paketnya berasal dari top up dan jumlah jamnya dicatat,
@@ -1545,6 +1609,7 @@ function meetBadge(c){
   if(!MEET.on)return "";
   const n=MEETN[c.id];if(n==null)return "";
   const t=meetTarget(c), sel=t&&n>=t, e=MEETE[c.id]||0;
+  const sisa=MEETSISA[c.id];
   const b=MEETB[c.id]||1, mulai=Math.round(((MEETS[c.id]||0)+.5)*100)/100;
   const lewat=t&&n>t;
   const span=b===1?("Pertemuan ke-"+fmtP(n)):("Mencakup pertemuan ke-"+fmtP(mulai)+" s/d "+fmtP(n));
@@ -1552,8 +1617,12 @@ function meetBadge(c){
     +" · sesi "+jamTeks(durasi(c.start,c.end))+" = "+fmtP(b)+" pertemuan"
     +(e?" · paket top up ke-"+e:" · paket awal")
     +(lewat?" · SUDAH LEWAT TARGET":"");
-  return `<span class="pert${sel?" full":""}${lewat?" over":""}" title="${judul}">P${fmtP(n)}${t?"/"+fmtP(t):""}${b!==1?` <small>(${fmtP(b)}p)</small>`:""}</span>`
-    +(e?`<span class="tup" title="Sedang menjalani paket hasil top up ke-${e}">TU${e}</span>`:"");
+  // paket dan nomor top up selalu ditampilkan, supaya jelas sesi ini masuk paket yang mana
+  const judul2=judul+(sisa!=null?" · sisa paket "+fmtP(sisa)+" pertemuan":"")
+    +(e?" · paket top up ke-"+e:" · paket awal");
+  return `<span class="pert${sel?" full":""}${lewat?" over":""}" title="${judul2}">P${fmtP(n)}${t?"/"+fmtP(t):""}${b!==1?` <small>(${fmtP(b)}p)</small>`:""}</span>`
+    +`<span class="tup${e?"":" awal"}" title="${e?"Paket hasil top up ke-"+e:"Masih paket awal, belum pernah top up"}">${e?"TU"+e:"TU0"}</span>`
+    +(sisa!=null&&sisa<=1.0001?`<span class="tup" style="background:#8A5309" title="Sisa paket tinggal ${fmtP(sisa)} pertemuan — waktunya ditawari top up">sisa ${fmtP(sisa)}</span>`:"");
 }
 function saveMeet(){lset(MKEY,MEET);buildMeet();renderAll();}
 function renderMeetBar(){
@@ -1570,6 +1639,7 @@ function renderMeetBar(){
     <span>target private</span>
     <input class="num" type="number" min="0" value="${MEET.tPriv||""}" placeholder="—" onchange="setMeetTarget('priv',this.value)">
     <span style="opacity:.85">· ${n.toLocaleString("id-ID")} sesi bernomor · <b>1 jam = 1 pertemuan</b>, tiap 30 menit = 0,5
+      · hitungan mulai lagi dari P1 saat <b>jam paket habis</b>, bukan saat tanggal top up
       · target otomatis ikut jumlah jam top up kalau sudah dicatat · Conversation Club dihitung per bulan, tanpa target</span>`
     :`<span>Aktifkan kalau riwayat sebelum ${MEET.since} sudah lengkap — kalau belum, nomornya akan salah.</span>`);
 }
@@ -4246,6 +4316,7 @@ function rekapMuridLambat(id){
 function semuaRekap(){return Object.values(bangunRekap());}
 function renderMurid(){
   const box=document.getElementById("mList"); if(!box)return;
+  renderSimpanWarn();
   isiMPeriod();
   const belum=muridBelumPunyaId();
   const w=document.getElementById("mWarn");
@@ -4760,12 +4831,24 @@ function simpanImpor(){
       if(ubah)simpanMurid(x.mid,m);}
   });
   [...new Set(cocok.map(x=>x.mid))].forEach(segarkanTipeBeli);
-  selesaiMassal();cacheAll();lupakanIndex();
+  selesaiMassal();
+  const tersimpan=cacheAll();
+  lupakanIndex();
   const sisa=IMPOR.filter(x=>x.status==="belum ketemu murid").length;
   IMPOR=null;
   renderMurid();if(detailCtx)renderDetail();
-  toast(cocok.length+" pembelian tersimpan"+(sisa?" · "+sisa+" baris belum dicocokkan":""));
   tutupImpor();
+  if(CFG.url){
+    flush();
+    toast(cocok.length+" pembelian tersimpan"+(sisa?" · "+sisa+" belum dicocokkan":"")+
+      " — sedang dikirim ke Google Sheet, jangan tutup app dulu");
+  }else if(tersimpan===false){
+    alert("PERINGATAN\n\n"+cocok.length+" pembelian sudah masuk, TAPI penyimpanan browser penuh "+
+      "dan Google Sheet belum tersambung.\n\nData ini akan hilang begitu app ditutup.\n\n"+
+      "Sambungkan dulu ke Google Sheet lewat ⚙️ Pengaturan, lalu impor ulang.");
+  }else{
+    toast(cocok.length+" pembelian tersimpan"+(sisa?" · "+sisa+" belum dicocokkan":""));
+  }
 }
 /* Baca file CSV langsung — jauh lebih mudah daripada menempel 600 KB teks,
    apalagi di HP yang sering memotong tempelan sepanjang itu. */
@@ -4879,6 +4962,8 @@ function prosesImpor(simpan){
     });
     [...new Set(cocok.map(x=>x.mid))].forEach(segarkanTipeBeli);
     selesaiMassal();cacheAll();lupakanIndex();renderMurid();if(detailCtx)renderDetail();
+    if(CFG.url){flush();
+      toast(cocok.length+" pembelian tersimpan — sedang dikirim ke Google Sheet, jangan tutup app dulu");}
     toast(cocok.length+" pembelian tersimpan");
     return tutupImpor();
   }
@@ -7406,6 +7491,11 @@ function boot(){
   document.getElementById("cfgUrl").value=CFG.url;
   document.getElementById("cfgToken").value=CFG.token;
   init();refreshTutorList();renderAll();jadwalAutoId();
+  /* Cegah tab ditutup saat masih ada perubahan yang belum sampai ke Google Sheet —
+     ini penyebab data hilang setelah impor besar. */
+  window.addEventListener("beforeunload",e=>{
+    if(queue.length){e.preventDefault();e.returnValue="";return "";}
+  });
   if(CFG.url){fullSync();}
   else{
     setSync("","Mode lokal (belum terhubung)");
