@@ -584,9 +584,11 @@
           </select></div>
         <div class="field" style="margin-top:8px"><label>Catatan</label>
           <input type="text" id="cbNote" placeholder="mis. lanjut paket 20 jam" style="width:100%;padding:9px;font-size:13px"></div>
-        <label class="hint" id="cbResetBox" style="display:flex;gap:7px;align-items:center;margin-top:9px;cursor:pointer">
-          <input type="checkbox" id="cbReset" checked style="vertical-align:-2px">
-          <span>Reset hitungan pertemuan — mulai lagi dari <b>P1</b> setelah tanggal ini</span></label>
+        <div class="hint" id="cbResetBox" style="margin-top:9px">
+          <b>Tanggal top up tidak mereset hitungan pertemuan.</b>
+          Pertemuan baru kembali ke <b>P1</b> setelah jam paket sebelumnya habis —
+          jadi kalau murid top up di P8 sementara paketnya 10 jam, hitungan tetap jalan sampai P10 dulu.
+          <b>Jumlah jam paket</b> di atas yang menentukan kapan itu terjadi, jadi usahakan diisi.</div>
       </div>
       <div class="sheet-foot">
         <button class="btn" onclick="simpanCB()">Catat</button>
@@ -1564,13 +1566,16 @@ function paketMurid(nm,c){
   })();
   return {awal,tu};
 }
+let MEET_DIAG={total:0,selesai:0,gagal:0,pesan:""};
 function buildMeet(){
   MEETN={};MEETE={};MEETB={};MEETS={};MEETSISA={};if(!MEET.on)return;
   const now=new Date();
   const src=classes.filter(c=>c.cls&&c.date>=MEET.since&&statusOf(c,now)==="Selesai")
     .sort((a,b)=>a.date===b.date?(a.start<b.start?-1:1):(a.date<b.date?-1:1));
   const st={},tot={};
+  MEET_DIAG={total:classes.length,selesai:src.length,gagal:0,pesan:""};
   src.forEach(c=>{
+   try{
     const k0=meetKey(c);if(!k0)return;
     const nm=(c.cls||"").trim();
     let o=st[k0];
@@ -1591,7 +1596,9 @@ function buildMeet(){
     if(o.sisa!==Infinity)o.sisa=Math.round((o.sisa-b)*100)/100;
     MEETN[c.id]=o.n;MEETB[c.id]=b;MEETE[c.id]=o.era;
     MEETSISA[c.id]=o.sisa===Infinity?null:Math.max(0,o.sisa);
-    tot[k0]=o.n;});
+    tot[k0]=o.n;
+   }catch(err){MEET_DIAG.gagal++;MEET_DIAG.pesan=String(err&&err.message||err);}
+  });
   MEETN._tot=tot;
 }
 /* Target: kalau paketnya berasal dari top up dan jumlah jamnya dicatat,
@@ -1638,6 +1645,10 @@ function renderMeetBar(){
     <input class="num" type="number" min="0" value="${MEET.tReg||""}" placeholder="—" onchange="setMeetTarget('reg',this.value)">
     <span>target private</span>
     <input class="num" type="number" min="0" value="${MEET.tPriv||""}" placeholder="—" onchange="setMeetTarget('priv',this.value)">
+    ${n===0?`<span style="color:var(--red);font-weight:800">Tidak ada sesi yang bernomor.</span>
+      <span style="opacity:.85">Dari ${MEET_DIAG.total.toLocaleString("id-ID")} kelas, ${MEET_DIAG.selesai.toLocaleString("id-ID")} berstatus Selesai sejak ${fmtD_(MEET.since)}.
+      ${MEET_DIAG.gagal?`<b style="color:var(--red)">${MEET_DIAG.gagal} sesi gagal dihitung: ${MEET_DIAG.pesan}</b>`
+        :MEET_DIAG.selesai===0?`Cek tanggal "hitung sejak" — mungkin terlalu baru.`:``}</span>`:""}
     <span style="opacity:.85">· ${n.toLocaleString("id-ID")} sesi bernomor · <b>1 jam = 1 pertemuan</b>, tiap 30 menit = 0,5
       · hitungan mulai lagi dari P1 saat <b>jam paket habis</b>, bukan saat tanggal top up
       · target otomatis ikut jumlah jam top up kalau sudah dicatat · Conversation Club dihitung per bulan, tanpa target</span>`
@@ -4613,7 +4624,7 @@ function bukaCatatBeli(id){
   document.getElementById("cbTgl").value=todayStr();
   ["cbProduk","cbRp","cbJam","cbNote"].forEach(k=>document.getElementById(k).value="");
   document.getElementById("cbSumber").value="bank";
-  document.getElementById("cbReset").checked=true;
+
   bukaOv("beliOv");
   hitungCB();
 }
@@ -4682,7 +4693,7 @@ function simpanCB(){
   segarkanTipeBeli(id);
   // top up juga mereset hitungan pertemuan, jadi catatan paketnya dibuat sekalian
   let tuKe=0;
-  if(jenis==="topup"&&document.getElementById("cbReset").checked){
+  if(jenis==="topup"){
     const ada=tuList(nm);
     tuKe=ada.filter(t=>String(t.tgl)<=tgl).length+1;
     if(!ada.some(t=>t.tgl===tgl)){
@@ -4697,7 +4708,8 @@ function simpanCB(){
   tutupOv("beliOv");cbCtx=null;
   renderAll();if(detailCtx)renderDetail();
   toast(jenis==="topup"
-    ? "Top up "+prog+" tercatat"+(nominal?" · "+rp(nominal):"")+(tuKe?" · hitungan pertemuan mulai lagi dari P1":"")
+    ? "Top up "+prog+" tercatat"+(nominal?" · "+rp(nominal):"")+
+      (jam>0?" · pertemuan kembali ke P1 setelah paket sebelumnya habis":" · jam paket kosong, sisa pertemuan tidak bisa dihitung")
     : "Pembelian awal "+prog+" tercatat"+(nominal?" · "+rp(nominal):""));
 }
 /* ---- cocokkan catatan top up lama tim dengan riwayat pembelian hasil impor ---- */
