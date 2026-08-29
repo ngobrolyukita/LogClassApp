@@ -7215,12 +7215,29 @@ function renderDetail(){
       ${paidList(name).map(p=>`<div class="paidchip">${p.rentang?p.from+" → "+p.to:"Periode penuh "+periodLabel(p.key)}
         <button onclick="delPaidId(du('${eu(p.id)}'))" title="Batalkan">✕</button></div>`).join("")}
     </div>`:""}
-  <div class="mini-kpis">
-    <div class="kpi hi"><div class="v">${done.length}</div><div class="l">Kelas Selesai</div></div>
-    <div class="kpi"><div class="v">${(Math.round(jam*100)/100).toLocaleString("id-ID")}</div><div class="l">Jam</div></div>
-    <div class="kpi"><div class="v" style="font-size:13px">${rp(gaji)}</div><div class="l">${type==="tutor"?"Gaji Tutor":"Fee Tutor"}</div></div>
+  ${(()=>{
+    /* Log kelas baru dimulai 26 Juli 2026. Untuk murid, jam yang sudah dijalani
+       sebelum itu diambil dari kolom "sudah terpakai" di riwayat pembelian dan
+       dihitung 1 jam = 1 pertemuan. Fee tutor SENGAJA tidak ikut ditambah —
+       yang dibayarkan hanya sesi yang benar-benar tercatat di log. */
+    const _mid=(type==="student"&&!isReg({cls:name}))?midOf(name):"";
+    const _pra=_mid?beliMurid(_mid).reduce((a,o)=>a+(+o.dipakai||0),0):0;
+    const _semua=dPeriod==="all";
+    const _ikut=_pra>0&&_semua;
+    const _sesi=done.length+(_ikut?_pra:0);
+    const _jam=jam+(_ikut?_pra:0);
+    const _ket=_ikut?`<div class="sub" style="font-size:10px;color:var(--ink-soft)">${done.length} di log · ${fmtP(_pra)} sebelum log</div>`:"";
+    return `<div class="mini-kpis">
+    <div class="kpi hi"><div class="v">${fmtP(_sesi)}</div><div class="l">Kelas Selesai</div>${_ket}</div>
+    <div class="kpi"><div class="v">${fmtP(Math.round(_jam*100)/100)}</div><div class="l">Jam</div>${_ket}</div>
+    <div class="kpi"><div class="v" style="font-size:13px">${rp(gaji)}</div><div class="l">${type==="tutor"?"Gaji Tutor":"Fee Tutor"}</div>
+      ${_ikut?`<div class="sub" style="font-size:10px;color:var(--ink-soft)">hanya yang tercatat di log</div>`:""}</div>
     <div class="kpi"><div class="v">${rows.filter(c=>c.ov==="Postponed").length}</div><div class="l">Postponed</div></div>
   </div>
+  ${_pra>0&&!_semua?`<div class="hint" style="margin:-4px 0 6px">${fmtP(_pra)} jam sebelum log tidak ikut dihitung karena periodenya disaring — pilih <b>Semua waktu</b> untuk memasukkannya.</div>`:""}
+  ${_ikut?`<div class="hint" style="margin:-4px 0 6px">Termasuk <b>${fmtP(_pra)} jam sebelum log kelas dimulai (${fmtD_(MEET.since)})</b>, dihitung 1 jam = 1 pertemuan.
+    Angkanya bisa dikoreksi lewat tombol ✎ di riwayat pembelian. Fee tutor tidak ikut ditambah.</div>`:""}`;
+  })()}
   <div class="chips">${langs.map(l=>`<span class="chip">${l}</span>`).join("")}</div>
   ${type==="student"&&!isReg({cls:name})?blokMurid(name):""}`;
 
