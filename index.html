@@ -3460,7 +3460,7 @@ function muridIndex(){
     (m.al||[]).forEach(a=>{if(a&&!MIDX[a])MIDX[a]=id;}));
   return MIDX;
 }
-function lupakanIndex(){MIDX=null;REKAP=null;_hitNama=null;DUP=null;DUPT=null;}
+function lupakanIndex(){MIDX=null;REKAP=null;_hitNama=null;DUP=null;DUPT=null;IDX_KONTAK=null;}
 function midOf(nm){const i=muridIndex();return i[nkey(nm)]||i[nkey(pecahNama(nm).utama)]||"";}
 function muridOf(nm){const id=midOf(nm);return id?Object.assign({id},U.murid[id]):null;}
 function namaMid(id){const m=(U.murid||{})[id];return m?m.nm:id;}
@@ -5134,12 +5134,34 @@ function terimaSaranImpor(){
 }
 function simpanImpor(){
   if(!IMPOR)return toast("Periksa dulu isinya");
-  const cocok=IMPOR.filter(x=>x.status==="cocok"&&x.mid);
-  if(!cocok.length)return toast("Tidak ada baris yang siap disimpan");
+  const perluBaru=IMPOR.filter(x=>x.status==="murid baru"&&x.nama);
   mulaiMassal();
+  /* Murid baru didaftarkan lebih dulu supaya pembeliannya punya nomor induk.
+     Dikelompokkan per orang (email > nomor HP > nama) agar satu pembeli yang
+     memesan beberapa kali tidak menjadi beberapa murid. */
+  const kunciBaru={}, dibuat=[];
+  perluBaru.forEach(x=>{
+    const e=String(x.email||"").toLowerCase().trim(), w=waNorm(x.hp||"");
+    const k=e||(w.length>=9?w:"nm:"+nkey(x.nama));
+    if(!kunciBaru[k]){
+      const sudah=cocokkanPembeli(x.nama,x.email,x.hp);
+      if(sudah.mid)kunciBaru[k]=sudah.mid;
+      else{
+        const id=idBerikut(), m=muridBaru(x.nama);
+        m.email=e;m.wa=w;m.daftar=x.tgl||todayStr();m.beli1=x.tgl||"";
+        U.murid=U.murid||{};U.murid[id]=m;pushMURID(id,m);
+        lupakanIndex();
+        kunciBaru[k]=id;dibuat.push({id,nm:x.nama});
+      }
+    }
+    x.mid=kunciBaru[k];x.status="cocok";
+  });
+  const cocok=IMPOR.filter(x=>x.status==="cocok"&&x.mid);
+  if(!cocok.length){selesaiMassal();return toast("Tidak ada baris yang siap disimpan");}
   cocok.forEach(x=>{
-    simpanBeli(x.oid,{mid:x.mid,tgl:x.tgl,produk:x.produk,nominal:x.nominal,jam:0,
-      metode:x.metode,sumber:"woocommerce",prog:progOf(x.produk),tipe:"awal",ke:0});
+    simpanBeli(x.oid,{mid:x.mid,nm:namaMid(x.mid),tgl:x.tgl,produk:x.produk,nominal:x.nominal,jam:0,
+      metode:x.metode,sumber:"woocommerce",prog:progOf(x.produk),tipe:"awal",ke:0,
+      email:x.email||"",hp:waNorm(x.hp||"")});
     const m=U.murid[x.mid];
     if(m){let ubah=false;
       if(!m.email&&x.email){m.email=x.email;ubah=true;}
@@ -5149,21 +5171,24 @@ function simpanImpor(){
   [...new Set(cocok.map(x=>x.mid))].forEach(segarkanTipeBeli);
   selesaiMassal();
   const tersimpan=cacheAll();
-  lupakanIndex();
+  lupakanIndex();lupakanKontak();lupakanRekap();
   const sisa=IMPOR.filter(x=>x.status==="belum ketemu murid").length;
+  const nBaru=dibuat.length;
   IMPOR=null;
   renderMurid();if(detailCtx)renderDetail();
   tutupImpor();
   if(CFG.url){
     flush();
-    toast(cocok.length+" pembelian tersimpan"+(sisa?" · "+sisa+" belum dicocokkan":"")+
+    toast(cocok.length+" pembelian tersimpan"+(nBaru?" · "+nBaru+" murid baru didaftarkan":"")+
+      (sisa?" · "+sisa+" belum dicocokkan":"")+
       " — sedang dikirim ke Google Sheet, jangan tutup app dulu");
   }else if(tersimpan===false){
     alert("PERINGATAN\n\n"+cocok.length+" pembelian sudah masuk, TAPI penyimpanan browser penuh "+
       "dan Google Sheet belum tersambung.\n\nData ini akan hilang begitu app ditutup.\n\n"+
       "Sambungkan dulu ke Google Sheet lewat ⚙️ Pengaturan, lalu impor ulang.");
   }else{
-    toast(cocok.length+" pembelian tersimpan"+(sisa?" · "+sisa+" belum dicocokkan":""));
+    toast(cocok.length+" pembelian tersimpan"+(nBaru?" · "+nBaru+" murid baru didaftarkan":"")+
+      (sisa?" · "+sisa+" belum dicocokkan":""));
   }
 }
 /* Baca file CSV langsung — jauh lebih mudah daripada menempel 600 KB teks,
@@ -5218,6 +5243,62 @@ function kolIdx(head,kandidat){
   }
   return -1;
 }
+/* ================= PENCOCOKAN PEMBELI =================
+   Urutannya sengaja: email dan nomor HP lebih dipercaya daripada nama, karena
+   nama sering salah ketik sementara email dan nomor hampir selalu persis.
+     1. email sama            -> pasti orang yang sama
+     2. nomor HP sama         -> pasti orang yang sama
+     3. nama persis sama      -> orang yang sama (top up / beli program lain)
+     4. nama mirip + kontak cocok -> orang yang sama, ejaannya saja yang beda
+     5. nama mirip, kontak beda   -> BUKAN typo, ini orang lain
+   Yang tidak ketemu sama sekali dianggap murid baru dan didaftarkan otomatis. */
+let IDX_KONTAK=null;
+function indeksKontak(){
+  if(IDX_KONTAK)return IDX_KONTAK;
+  IDX_KONTAK={email:{},wa:{}};
+  Object.entries(U.murid||{}).forEach(([id,m])=>{
+    const e=String(m.email||"").toLowerCase().trim();
+    const w=waNorm(m.wa||"");
+    if(e&&!IDX_KONTAK.email[e])IDX_KONTAK.email[e]=id;
+    if(w&&w.length>=9&&!IDX_KONTAK.wa[w])IDX_KONTAK.wa[w]=id;
+  });
+  // kontak juga diambil dari riwayat pembelian, supaya impor kedua langsung nyambung
+  Object.values(U.beli||{}).forEach(o=>{
+    if(!o.mid||!U.murid[o.mid])return;
+    const e=String(o.email||"").toLowerCase().trim();
+    const w=waNorm(o.hp||"");
+    if(e&&!IDX_KONTAK.email[e])IDX_KONTAK.email[e]=o.mid;
+    if(w&&w.length>=9&&!IDX_KONTAK.wa[w])IDX_KONTAK.wa[w]=o.mid;
+  });
+  return IDX_KONTAK;
+}
+function lupakanKontak(){IDX_KONTAK=null;}
+function cocokkanPembeli(nama,email,hp){
+  const IX=indeksKontak();
+  const e=String(email||"").toLowerCase().trim(), w=waNorm(hp||"");
+  if(e&&IX.email[e])return {mid:IX.email[e],cara:"email",yakin:true};
+  if(w&&w.length>=9&&IX.wa[w])return {mid:IX.wa[w],cara:"nomor HP",yakin:true};
+  const persis=midOf(nama);
+  if(persis)return {mid:persis,cara:"nama sama",yakin:true};
+  // nama mirip: hanya diterima kalau kontaknya juga cocok
+  const k=nkey(nama);
+  let best=null,sc=0;
+  if(k.length>=4)Object.entries(U.murid||{}).forEach(([id,m])=>{
+    const p2=miripPersen(k,nkey(m.nm));
+    if(p2>sc){sc=p2;best={id,nm:m.nm,p:p2};}
+  });
+  if(best&&best.p>=80){
+    const m=U.murid[best.id];
+    const eSama=e&&String(m.email||"").toLowerCase().trim()===e;
+    const wSama=w&&waNorm(m.wa||"")===w;
+    if(eSama||wSama)return {mid:best.id,cara:"nama mirip + kontak cocok",yakin:true};
+    const adaKontakDuaBelah=(e||w)&&(m.email||m.wa);
+    if(adaKontakDuaBelah)
+      return {mid:"",saran:best,cara:"nama mirip tapi kontaknya beda",yakin:false,beda:true};
+    return {mid:"",saran:best,cara:"nama mirip",yakin:false};
+  }
+  return {mid:"",cara:"belum dikenal",yakin:false};
+}
 function prosesImpor(simpan){
   if(IMPOR&&IMPOR.length&&simpan)return simpanImpor();
   const teks=document.getElementById("imporTeks").value.trim();
@@ -5246,25 +5327,18 @@ function prosesImpor(simpan){
       : (iNm>=0?ambil(r,iNm):"")).replace(/\s+/g," ").trim();
     const tgl=(jParseTgl(ambil(r,iTgl).slice(0,10))||ambil(r,iTgl).slice(0,10));
     const total=+ambil(r,iTot).replace(/[^\d]/g,"")||0;
-    const id=midOf(nama);
-    hasil.push({oid,tgl,nama,email:ambil(r,iEm),hp:ambil(r,iHp),produk:ambil(r,iPr),
-      nominal:total,metode:ambil(r,iMet),mid:id,
-      status:U.beli[oid]?"sudah ada":(id?"cocok":"belum ketemu murid")});
-  });
-  hasil.forEach(x=>{
-    if(x.mid)return;
-    // tebak murid terdekat supaya tinggal disetujui, bukan diketik ulang
-    let best=null,sc=0;
-    const k=nkey(x.nama);
-    if(k.length>=4)Object.entries(U.murid||{}).forEach(([id,m])=>{
-      const p2=miripPersen(k,nkey(m.nm));
-      if(p2>sc){sc=p2;best={id,nm:m.nm,p:p2};}
-    });
-    if(best&&best.p>=80)x.saran=best;
+    const email=ambil(r,iEm), hp=ambil(r,iHp);
+    const c=nama?cocokkanPembeli(nama,email,hp):{mid:"",cara:"nama kosong"};
+    hasil.push({oid,tgl,nama,email,hp,produk:ambil(r,iPr),
+      nominal:total,metode:ambil(r,iMet),mid:c.mid,cara:c.cara,saran:c.saran,beda:c.beda,
+      status:U.beli[oid]?"sudah ada"
+        :(c.mid?"cocok"
+        :((nama&&!c.beda)?"murid baru":"belum ketemu murid"))});
   });
   IMPOR=hasil;
   const cocok=hasil.filter(x=>x.status==="cocok");
   const ada=hasil.filter(x=>x.status==="sudah ada");
+  const baru=hasil.filter(x=>x.status==="murid baru");
   const gagal=hasil.filter(x=>x.status==="belum ketemu murid");
   if(simpan)return simpanImpor();
   if(false){
@@ -5285,26 +5359,33 @@ function prosesImpor(simpan){
   }
   document.getElementById("imporHasil").innerHTML=`
     <div class="mini-kpis" style="margin:10px 0">
-      <div class="kpi hi"><div class="v">${cocok.length}</div><div class="l">Siap Disimpan</div></div>
+      <div class="kpi hi"><div class="v">${cocok.length}</div><div class="l">Murid Lama</div></div>
+      <div class="kpi"><div class="v" style="color:#1F6088">${baru.length}</div><div class="l">Murid Baru · didaftarkan</div></div>
       <div class="kpi"><div class="v">${ada.length}</div><div class="l">Sudah Ada (dilewati)</div></div>
-      <div class="kpi"><div class="v" style="color:${gagal.length?"#8A5F14":"#1C6047"}">${gagal.length}</div><div class="l">Belum Ketemu Murid</div></div>
+      <div class="kpi"><div class="v" style="color:${gagal.length?"#8A5F14":"#1C6047"}">${gagal.length}</div><div class="l">Perlu Dicek</div></div>
     </div>
-    ${cocok.length?`<button class="btn" onclick="prosesImpor(true)">💾 Simpan ${cocok.length} pembelian</button>`:""}
-    <div class="hint" style="margin-top:8px">Yang "belum ketemu murid" tidak disimpan — biasanya pembeli kelas reguler,
-      murid baru yang belum ada di log kelas, atau yang membeli atas nama orang lain.
-      Kalau ada yang seharusnya cocok, buka murid itu lalu tambahkan namanya sebagai alias lewat ✏️ Kontak.</div>
+    ${(cocok.length+baru.length)?`<button class="btn" onclick="prosesImpor(true)">💾 Simpan ${cocok.length+baru.length} pembelian${baru.length?` + daftarkan ${new Set(baru.map(x=>(x.email||"").toLowerCase()||waNorm(x.hp)||nkey(x.nama))).size} murid baru`:""}</button>`:""}
+    ${baru.length?`<div class="hint" style="margin-top:8px">
+      <b>${baru.length} pembelian dari pembeli yang belum terdaftar</b> — muridnya dibuatkan otomatis
+      lengkap dengan nomor induk, email, dan nomor HP, lalu pembeliannya langsung masuk ke riwayatnya.
+      Pembeli yang sama (email atau nomor HP sama) tetap jadi satu murid walau memesan beberapa kali.</div>`:""}
+    <div class="hint" style="margin-top:8px">Pencocokannya berurutan: <b>email</b> → <b>nomor HP</b> → <b>nama persis</b> →
+      nama mirip yang kontaknya juga cocok. Nama mirip tapi kontaknya berbeda <b>tidak</b> dianggap salah ketik —
+      itu diperlakukan sebagai orang lain, dan ditaruh di daftar "Perlu Dicek" di bawah.</div>
     ${gagal.length?`<div class="row-actions" style="margin-top:9px">
-        <b style="font-size:12px">Belum ketemu muridnya (${gagal.length})</b>
+        <b style="font-size:12px">Perlu dicek dulu (${gagal.length})</b>
         ${gagal.filter(x=>x.saran).length?`<button class="btn small" onclick="terimaSaranImpor()">
           ✓ Terima ${gagal.filter(x=>x.saran).length} saran sekaligus</button>`:""}
       </div>
-      <div class="hint" style="margin:0 0 5px">Ketik nama murid yang benar di kotak, atau terima saran yang muncul.
-        Nama yang kamu isi otomatis disimpan sebagai alias, jadi impor berikutnya langsung cocok.</div>
+      <div class="hint" style="margin:0 0 5px">Baris ini namanya mirip murid lama tapi kontaknya berbeda, atau nama pembelinya kosong.
+        Ketik nama murid yang benar, atau terima saran kalau memang orang yang sama.
+        Nama yang kamu isi disimpan sebagai alias, jadi impor berikutnya langsung cocok.</div>
       <div class="scroll" style="max-height:300px">
       ${gagal.slice(0,120).map((x,i)=>`<div class="belirow">
         <span class="tg">${x.tgl}</span>
         <span class="pr"><b>${x.nama}</b>
-          <span style="color:var(--ink-soft);font-size:10.5px">${x.email||""} · ${x.produk||""}</span>
+          <span style="color:var(--ink-soft);font-size:10.5px">${x.email||""}${x.hp?" · "+x.hp:""} · ${x.produk||""}</span>
+          ${x.beda?`<div style="font-size:10.5px;color:#8A5F14">mirip <b>${x.saran.nm}</b> (${x.saran.p}%) tapi email/nomornya beda — kemungkinan orang lain</div>`:""}
           <div style="margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <input type="text" list="dlMurid" placeholder="murid…" value="${x.saran?String(x.saran.nm).replace(/"/g,"&quot;"):""}"
               onchange="setImporMurid(${hasil.indexOf(x)},this.value)"
