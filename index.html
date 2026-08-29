@@ -543,6 +543,56 @@
     </div>
   </div>
 
+  <div class="sheetov center" id="beliOv">
+    <div class="sheet">
+      <div class="sheet-head">
+        <div><div class="ttl">🧾 Catat Pembelian / Top Up</div><div class="sub" id="cbSub"></div></div>
+        <button class="btn ghost small" onclick="tutupOv('beliOv')">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div id="cbRiwayat"></div>
+        <div class="field"><label>Jenis</label>
+          <select id="cbJenis" onchange="hitungCB()" style="width:100%;padding:9px;font-size:13px">
+            <option value="awal">Pembelian awal — program baru untuk murid ini</option>
+            <option value="topup">Top up — lanjutan program yang sudah berjalan</option>
+          </select></div>
+        <div class="field" style="margin-top:8px"><label>Program / bahasa</label>
+          <input type="text" id="cbProg" list="dlCbProg" autocomplete="off" oninput="hitungCB()" onchange="hitungCB()"
+            placeholder="mis. Spanish" style="width:100%;padding:9px;font-size:13px">
+          <datalist id="dlCbProg"></datalist></div>
+        <div id="cbInfo" style="margin:8px 0"></div>
+        <div class="field"><label>Tanggal</label>
+          <input type="date" id="cbTgl" onchange="hitungCB()" style="width:100%;padding:9px;font-size:13px"></div>
+        <div class="field" style="margin-top:8px"><label>Produk / paket
+          <small style="font-weight:600;color:var(--ink-soft)">— pilih dari daftar supaya tidak salah ketik</small></label>
+          <input type="text" id="cbProduk" list="dlCbProduk" autocomplete="off" oninput="hitungCB()"
+            placeholder="mis. Kelas Privat Bahasa Spanyol" style="width:100%;padding:9px;font-size:13px">
+          <datalist id="dlCbProduk"></datalist></div>
+        <div class="field" style="margin-top:8px"><label>Nominal (Rp)</label>
+          <input type="number" id="cbRp" min="0" step="1000" placeholder="1900000" style="width:100%;padding:9px;font-size:13px"></div>
+        <div class="field" style="margin-top:8px"><label>Jumlah jam paket
+          <small style="font-weight:600;color:var(--ink-soft)">— dipakai untuk menghitung sisa pertemuan</small></label>
+          <input type="number" id="cbJam" min="0" step="0.5" placeholder="10" style="width:100%;padding:9px;font-size:13px"></div>
+        <div class="field" style="margin-top:8px"><label>Sumber pembayaran</label>
+          <select id="cbSumber" style="width:100%;padding:9px;font-size:13px">
+            <option value="woocommerce">WooCommerce (website)</option>
+            <option value="bank">Transfer Bank</option>
+            <option value="tunai">Tunai</option>
+            <option value="lainnya">Lainnya</option>
+          </select></div>
+        <div class="field" style="margin-top:8px"><label>Catatan</label>
+          <input type="text" id="cbNote" placeholder="mis. lanjut paket 20 jam" style="width:100%;padding:9px;font-size:13px"></div>
+        <label class="hint" id="cbResetBox" style="display:flex;gap:7px;align-items:center;margin-top:9px;cursor:pointer">
+          <input type="checkbox" id="cbReset" checked style="vertical-align:-2px">
+          <span>Reset hitungan pertemuan — mulai lagi dari <b>P1</b> setelah tanggal ini</span></label>
+      </div>
+      <div class="sheet-foot">
+        <button class="btn" onclick="simpanCB()">Catat</button>
+        <button class="btn ghost" onclick="tutupOv('beliOv')">Batal</button>
+      </div>
+    </div>
+  </div>
+
   <div class="sheetov center" id="askOv">
     <div class="sheet mini">
       <div class="sheet-head">
@@ -4350,7 +4400,7 @@ function blokMurid(nama){
     </div>
     <div class="row-actions" style="margin:0 0 4px">
       <b style="font-size:12px">Riwayat Pembelian</b>
-      <button class="btn ghost small editonly" onclick="tambahBeli('${id}')">+ Catat pembelian</button>
+      <button class="btn ghost small editonly" onclick="bukaCatatBeli('${id}')">+ Catat pembelian</button>
     </div>
     ${L.length?beliPerProgram(id).map(g=>`
       <div style="margin:9px 0 2px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -4438,23 +4488,172 @@ function simpanBeliManual(id,[tgl,produk,nominal,jam,metode,prog]){
    dihitung sebagai pembelian awal; pembelian berikutnya di program yang sama baru dihitung
    top up. Jadi murid yang sudah lama belajar Jerman lalu membeli Spanyol tidak dianggap
    top up Spanyol — itu murid baru untuk program tersebut. */
+/* Nama program memakai istilah yang sama dengan daftar bahasa di app (DATA.langs).
+   Kalau berbeda — misalnya "Spanyol" dari nama produk vs "Spanish" dari log kelas —
+   satu murid akan terlihat punya dua program terpisah dan hitungan top up-nya pecah. */
 const PROG=[
-  ["Inggris Bisnis",       /bisnis\s*bahasa\s*inggris|business\s*english|english\s*business/i],
-  ["Inggris Conversation", /conversation\s*club|percakapan\s*bahasa\s*inggris|convo/i],
-  ["Inggris Prep",         /prep|toefl|ielts/i],
-  ["Inggris",              /bahasa\s*inggris|english/i],
-  ["Jerman",               /jerman|german|deutsch/i],
-  ["Spanyol",              /spanyol|spanish|espa[nñ]ol/i],
+  ["Mandarin Business",    /(mandarin|chinese).*(bisnis|business)|(bisnis|business).*(mandarin|chinese)/i],
+  ["Professional English", /bisnis\s*bahasa\s*inggris|business\s*english|english\s*business|professional\s*english/i],
+  ["English Prep",         /prep|toefl|ielts|persiapan\s*abroad/i],
+  ["German",               /jerman|german|deutsch/i],
+  ["Spanish",              /spanyol|spanish|espa[nñ]ol/i],
   ["Mandarin",             /mandarin|chinese|hsk|chuji/i],
-  ["Indonesia",            /bahasa\s*indonesia|indonesian/i],
+  ["Bahasa Indonesia",     /bahasa\s*indonesia|indonesian|\bbipa\b/i],
+  ["English",              /bahasa\s*inggris|english|conversation|percakapan|convo/i],
 ];
+/* istilah lama yang mungkin sudah terlanjur tersimpan */
+const PROG_LAMA={"Inggris":"English","Inggris Bisnis":"Professional English",
+  "Inggris Conversation":"English","Inggris Prep":"English Prep","Jerman":"German",
+  "Spanyol":"Spanish","Indonesia":"Bahasa Indonesia"};
+function progBaku(v){const x=String(v||"").trim();return PROG_LAMA[x]||x;}
+/* ================= CATAT PEMBELIAN / TOP UP (satu form) =================
+   Dulu pembelian dan top up dicatat di dua tempat berbeda, padahal satu kejadian yang sama:
+   murid bayar, lalu hitungan pertemuannya mulai lagi dari P1.
+   Sekarang satu form. Kalau jenisnya "top up", sistem membuat DUA catatan sekaligus —
+   catatan pembelian (nilai rupiah) dan catatan top up paket (yang mereset hitungan
+   pertemuan). Dua-duanya tetap tersimpan terpisah supaya data lama tim tidak terganggu. */
+let cbCtx=null;
+function bukaCatatBeli(id){
+  if(!guard())return;
+  const m=(U.murid||{})[id]; if(!m)return toast("Murid tidak ditemukan");
+  cbCtx={id,nm:m.nm};
+  const G=beliPerProgram(id);
+  document.getElementById("cbSub").textContent=id+" · "+m.nm;
+  document.getElementById("cbRiwayat").innerHTML=G.length
+    ? `<div class="filterchip" style="display:block;background:#F6F5FD">
+        <b>Riwayat murid ini:</b> ${G.map(g=>`${g.prog} ${g.n}× (${rp(g.rp)})`).join(" · ")}</div>`
+    : `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+        Belum ada riwayat pembelian — catatan pertama akan otomatis jadi <b>pembelian awal</b>.</div>`;
+  // program: yang sudah pernah dibeli dulu, baru bahasa lain
+  const sudah=G.map(g=>g.prog);
+  const lain=DATA.langs.filter(l=>!sudah.includes(l));
+  document.getElementById("dlCbProg").innerHTML=
+    sudah.map(x=>`<option value="${x}">sudah pernah — tinggal top up</option>`).join("")+
+    lain.map(x=>`<option value="${x}">program baru</option>`).join("");
+  // produk: yang pernah dibeli murid ini dulu, lalu produk terlaris dari seluruh data
+  const produkMurid=[...new Set(beliMurid(id).map(o=>o.produk).filter(Boolean))];
+  const hit={};
+  Object.values(U.beli||{}).forEach(o=>{if(o.produk)hit[o.produk]=(hit[o.produk]||0)+1;});
+  const produkUmum=Object.keys(hit).sort((a,b)=>hit[b]-hit[a]).filter(x=>!produkMurid.includes(x)).slice(0,60);
+  document.getElementById("dlCbProduk").innerHTML=
+    produkMurid.map(x=>`<option value="${String(x).replace(/"/g,"&quot;")}">pernah dibeli murid ini</option>`).join("")+
+    produkUmum.map(x=>`<option value="${String(x).replace(/"/g,"&quot;")}"></option>`).join("");
+  // bawaan: kalau sudah punya program, anggap top up di program terakhir
+  const akhir=G.length?G[G.length-1]:null;
+  document.getElementById("cbJenis").value=akhir?"topup":"awal";
+  document.getElementById("cbProg").value=akhir?akhir.prog:"";
+  document.getElementById("cbTgl").value=todayStr();
+  ["cbProduk","cbRp","cbJam","cbNote"].forEach(k=>document.getElementById(k).value="");
+  document.getElementById("cbSumber").value="bank";
+  document.getElementById("cbReset").checked=true;
+  bukaOv("beliOv");
+  hitungCB();
+}
+function cbProgramSekarang(){
+  const v=progBaku(normName(document.getElementById("cbProg").value||""));
+  if(!v)return "";
+  const semua=[...new Set([...DATA.langs,...beliPerProgram(cbCtx.id).map(g=>g.prog)])];
+  const cocok=semua.find(x=>x.toLowerCase()===v.toLowerCase());
+  return cocok||v;
+}
+function hitungCB(){
+  if(!cbCtx)return;
+  const jenis=document.getElementById("cbJenis").value;
+  const prog=cbProgramSekarang();
+  const G=beliPerProgram(cbCtx.id);
+  const g=G.find(x=>x.prog===prog);
+  const tgl=document.getElementById("cbTgl").value||todayStr();
+  const e=document.getElementById("cbInfo");
+  document.getElementById("cbResetBox").style.display=jenis==="topup"?"flex":"none";
+  if(!prog){e.innerHTML=`<div class="hint">Isi programnya dulu supaya nomor top up bisa dihitung.</div>`;return;}
+  if(jenis==="topup"){
+    if(!g){
+      e.innerHTML=`<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+        Murid ini <b>belum pernah beli program ${prog}</b>. Kalau ini memang pembelian pertamanya di ${prog},
+        ganti jenisnya jadi <b>Pembelian awal</b>. Kalau pembelian lamanya belum sempat dicatat, silakan lanjut —
+        nomornya akan menyesuaikan sendiri setelah data lama dimasukkan.</div>`;
+      return;
+    }
+    // nomor top up dihitung dari posisi tanggal, bukan sekadar jumlah data
+    const ke=g.items.filter(o=>String(o.tgl)<=tgl).length;
+    const sisipan=g.items.some(o=>String(o.tgl)>tgl);
+    e.innerHTML=`<div class="filterchip" style="background:#E8F1F6;border-color:#9CC4D8">
+      Akan tercatat sebagai <b>Top up ke-${ke}</b> di program <b>${prog}</b>
+      <span style="font-weight:600;color:var(--ink-soft)">· sebelumnya ${g.n}× beli, terakhir ${fmtD_(g.akhir)}</span>
+      ${sisipan?`<br><span style="color:#8A5309">Ada pembelian yang tanggalnya lebih baru — nomor top up yang lain otomatis digeser.</span>`:""}
+      </div>`;
+  }else{
+    e.innerHTML=g
+      ? `<div class="filterchip" style="background:#FFF3CD;border-color:#E5C97B">
+          Murid ini <b>sudah pernah beli ${prog}</b> (${g.n}×). Kalau ini lanjutan paketnya, pilih jenis <b>Top up</b>.
+          Kalau memang paket terpisah, silakan lanjut sebagai pembelian awal.</div>`
+      : `<div class="filterchip" style="background:#E6F4EC;border-color:#9CCBB2">
+          Tercatat sebagai <b>pembelian awal</b> di program <b>${prog}</b>.</div>`;
+  }
+}
+const CB_METODE={woocommerce:"WooCommerce",bank:"Transfer Bank",tunai:"Tunai",lainnya:"Lainnya"};
+function simpanCB(){
+  if(!cbCtx||!guard())return;
+  const id=cbCtx.id, nm=cbCtx.nm;
+  const jenis=document.getElementById("cbJenis").value;
+  const prog=cbProgramSekarang();
+  const tgl=document.getElementById("cbTgl").value;
+  const produk=(document.getElementById("cbProduk").value||"").trim();
+  const nominal=+String(document.getElementById("cbRp").value||"").replace(/\D/g,"")||0;
+  const jam=+String(document.getElementById("cbJam").value||"").replace(/[^\d.]/g,"")||0;
+  const sumber=document.getElementById("cbSumber").value;
+  const note=(document.getElementById("cbNote").value||"").trim().replace(/~/g,"-");
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(tgl))return toast("Tanggalnya belum benar");
+  if(!prog)return toast("Isi dulu programnya");
+  if(!nominal&&!confirm("Nominalnya kosong.\n\nTetap catat tanpa nilai rupiah?"))return;
+  const oid="MAN-"+id+"-"+tgl.replace(/-/g,"")+"-"+Math.random().toString(36).slice(2,6);
+  mulaiMassal();
+  simpanBeli(oid,{mid:id,tgl,produk:produk||("Kelas "+prog),nominal,jam,
+    metode:CB_METODE[sumber]||sumber,sumber:sumber==="woocommerce"?"woocommerce":"manual",
+    prog,tipe:jenis==="topup"?"topup":"awal",note});
+  segarkanTipeBeli(id);
+  // top up juga mereset hitungan pertemuan, jadi catatan paketnya dibuat sekalian
+  let tuKe=0;
+  if(jenis==="topup"&&document.getElementById("cbReset").checked){
+    const ada=tuList(nm);
+    tuKe=ada.filter(t=>String(t.tgl)<=tgl).length+1;
+    if(!ada.some(t=>t.tgl===tgl)){
+      const seq=ada.reduce((m,t)=>Math.max(m,+t.seq||0),0)+1;
+      const rec={ke:tuKe,tgl,jam,note:note||("dari pembelian "+prog),by:meName(),
+        at:new Date().toISOString(),seq};
+      U.topup=U.topup||{};(U.topup[nm]=U.topup[nm]||[]).push(rec);
+      pushTU(nm,seq,rec);
+    }
+  }
+  selesaiMassal();cacheAll();lupakanRekap();
+  tutupOv("beliOv");cbCtx=null;
+  renderAll();if(detailCtx)renderDetail();
+  toast(jenis==="topup"
+    ? "Top up "+prog+" tercatat"+(nominal?" · "+rp(nominal):"")+(tuKe?" · hitungan pertemuan mulai lagi dari P1":"")
+    : "Pembelian awal "+prog+" tercatat"+(nominal?" · "+rp(nominal):""));
+}
+/* ---- cocokkan catatan top up lama tim dengan riwayat pembelian hasil impor ---- */
+function cocokTUBeli(id,nm){
+  const tu=tuList(nm), beli=beliMurid(id).filter(o=>o.tipe==="topup"||+o.ke>0);
+  const dipakai=new Set();
+  return tu.map(t=>{
+    let cocok=null,jarak=1e9;
+    beli.forEach((o,i)=>{
+      if(dipakai.has(i)||!t.tgl||!o.tgl)return;
+      const d=Math.abs((new Date(o.tgl)-new Date(t.tgl))/86400000);
+      if(d<jarak&&d<=14){jarak=d;cocok={i,o,d};}
+    });
+    if(cocok)dipakai.add(cocok.i);
+    return {t,beli:cocok?cocok.o:null,jarak:cocok?Math.round(cocok.d):null};
+  });
+}
 function progOf(teks){
   const t=String(teks||"");
   for(const [k,re] of PROG)if(re.test(t))return k;
   return "Lainnya";
 }
 /* program sebuah pembelian: yang tersimpan dulu, kalau kosong ditebak dari nama produk */
-function progBeli(o){return o.prog||progOf(o.produk);}
+function progBeli(o){return progBaku(o.prog)||progOf(o.produk);}
 /* susun ulang tipe & urutan top up — dihitung per program, bukan per murid */
 function segarkanTipeBeli(id){
   const L=beliMurid(id);
@@ -6821,22 +7020,34 @@ function renderDetail(){
     // ---- riwayat top up ----
     {
       const tl=tuList(name), lastKe=tl.length?Math.max(...tl.map(t=>+t.ke||0)):0;
+      const _mid=midOf(name), _cocok=_mid?cocokTUBeli(_mid,name):[];
+      const _cari=t=>(_cocok.find(x=>x.t.seq===t.seq)||{});
+      const _blmCocok=_cocok.filter(x=>!x.beli).length;
       html+=`<div class="card"><h2>Top Up Paket${tl.length?` · ${tl.length}×`:""}</h2>`+
-        (tl.length?`<div>`+tl.map(t=>`<div class="turow">
+        (_mid&&tl.length?`<p class="note" style="margin:0 0 8px">Catatan top up di bawah ini <b>tidak diganti oleh impor</b> —
+          ini catatan paket yang mengatur hitungan pertemuan, terpisah dari catatan rupiah di Riwayat Pembelian.
+          ${_blmCocok?`<b style="color:#8A5309">${_blmCocok} catatan belum ketemu pembelian yang cocok</b> — mungkin transaksinya lewat transfer bank atau belum diimpor.`
+            :`Semuanya sudah cocok dengan riwayat pembelian.`}</p>`:"")+
+        (tl.length?`<div>`+tl.map(t=>{const c=_cari(t);return `<div class="turow">
             <div style="flex:1;min-width:0">
               <b>Top up ke-${t.ke}</b>${t.jam?` · ${t.jam} jam`:""}
-              <div class="meta">${t.tgl?fmtD_(t.tgl):"—"}${t.note?" · "+t.note:""}</div>
+              ${_mid?(c.beli
+                ? `<span class="mtag aktif" title="Cocok dengan pembelian ${fmtD_(c.beli.tgl)} · ${rp(+c.beli.nominal||0)}${c.jarak?" · beda "+c.jarak+" hari":""}">✓ ada pembeliannya</span>`
+                : `<span class="mtag cuti" title="Belum ada pembelian bernilai rupiah yang cocok dengan tanggal ini">belum ada pembeliannya</span>`):""}
+              <div class="meta">${t.tgl?fmtD_(t.tgl):"—"}${t.note?" · "+t.note:""}${c.beli?` · ${rp(+c.beli.nominal||0)} · ${c.beli.produk||""}`:""}</div>
               <div class="meta">${t.by?"dicatat "+t.by:""}${t.at?" · "+new Date(t.at).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""}</div>
             </div>
             ${canEdit()?`<button title="Hapus catatan top up" onclick="hapusTU('${eu(name)}',${t.seq})">✕</button>`:""}
-          </div>`).join("")+`</div>`
+          </div>`;}).join("")+`</div>`
           :`<p class="note" style="margin:0">Belum pernah top up — masih paket pertama.</p>`)+
         (canEdit()?`<div class="tuform">
           <label>Tanggal<input type="date" id="tuTgl" value="${todayStr()}"></label>
           <label>Top up ke<input class="s" type="number" min="1" step="1" id="tuKe" value="${lastKe+1}"></label>
           <label>Jumlah jam<input class="s" type="number" min="0" step="0.5" id="tuJam" placeholder="—"></label>
           <label style="flex:1;min-width:140px">Catatan<input type="text" id="tuNote" placeholder="mis. lanjut paket 20 jam"></label>
-          <button class="btn small" onclick="simpanTU('${eu(name)}')">+ Catat top up</button>
+          <button class="btn small" onclick="simpanTU('${eu(name)}')">+ Catat paket saja</button>
+          ${midOf(name)?`<button class="btn small" onclick="bukaCatatBeli(du('${eu(midOf(name))}'))"
+            title="Catat sekaligus nilai rupiahnya — nomor top up dihitung otomatis">🧾 Catat top up + pembelian</button>`:""}
         </div>
         <p class="note" style="margin:6px 0 0">Setelah tanggal top up, nomor pertemuan mulai lagi dari
           <b>P1</b> dengan tanda <span class="tup">TU${lastKe+1}</span>.
