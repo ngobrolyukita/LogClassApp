@@ -1349,6 +1349,17 @@ function tuEra(nm,tgl){
 function tuJam(nm){return tuList(nm).reduce((a,t)=>a+(+t.jam||0),0);}
 /* ringkasan top up per nama murid (huruf kecil) — dipakai KPI loyalitas.
    { n:total transaksi seumur hidup, inR:transaksi bertanggal di rentang, last:tgl terakhir } */
+/* murid yang top up menurut riwayat pembelian, dipakai melengkapi catatan paket manual */
+function muridTopupBeli(a,b){
+  const set=new Set();
+  Object.values(U.beli||{}).forEach(o=>{
+    if(!o.mid||!o.tgl||o.tgl<a||o.tgl>b)return;
+    if(o.tipe==="topup"||o.tipe==="ulang"){
+      const m=U.murid[o.mid];
+      if(m)set.add(nkey(m.nm));
+    }});
+  return set;
+}
 function tuIndex(from,to){
   const ix={};
   Object.keys(U.topup||{}).forEach(nm=>{
@@ -2842,7 +2853,8 @@ function renderTutorCards(){
      di tab Statistik, jadi memakai sumber yang sama persis — tidak ada dua versi angka. */
   const _ra=payMode==="range"&&pFrom?pFrom:pa, _rb=payMode==="range"&&pTo?pTo:pb;
   const trxJual=jualSum(_ra,_rb).n;
-  const trxTU=topupSum(_ra,_rb).n;
+  const _bhT=beliHarian(_ra,_rb);
+  const trxTU=Math.max(topupSum(_ra,_rb).n,_bhT.tot.topup);
   const rasioTrx=trxJual?trxTU/trxJual:null;
   const cStat=hitungTstat(Object.keys(stat).filter(t=>okLang(t)));
 
@@ -2881,7 +2893,7 @@ function renderTutorCards(){
     <div class="kpi${sel("batal")||sel("rendah")}" onclick="drillG('comp')"><div class="v" style="color:${allDue?(allDone/allDue>=.95?"#1B6B47":allDone/allDue>=.85?"#A9761B":"var(--red)"):"var(--ink-soft)"}">${allDue?Math.round(allDone/allDue*100)+"%":"—"}</div><div class="l">Completion · ${allBatal} batal</div></div>
     <div class="kpi${sel("pasif")}" onclick="drillG('murid')"><div class="v">${allMurid.size}</div><div class="l">Murid · ${allAktif.size} aktif</div></div>
     <div class="kpi${sel("kelar")}" onclick="drillG('selesai')"><div class="v" style="color:#1B6B47">${allKelar.size}</div><div class="l">Paket Selesai · retensi ${retensiAll==null?"—":Math.round(retensiAll*100)+"%"}</div></div>
-    <div class="kpi${sel("topup")}" onclick="drillG('topup')" title="${trxTU} transaksi top up dibagi ${trxJual} transaksi penjualan pada ${payMode==="range"?"rentang "+pFrom+" – "+pTo:periodLabel(key)}.${trxJual?"":" Jumlah transaksi penjualannya belum diisi — isi di tab Statistik, card Rasio Top Up."}"><div class="v" style="color:${rasioTrx==null?"var(--ink-soft)":rasioTrx>=.25?"#1B6B47":rasioTrx>=.15?"#A9761B":"var(--red)"}">${rasioTrx==null?"—":Math.round(rasioTrx*1000)/10+"%"}</div><div class="l">Rasio Transaksi Top Up · ${trxTU}/${trxJual||"?"}</div></div>
+    <div class="kpi${sel("topup")}" onclick="drillG('topup')" title="${trxTU} transaksi top up (catatan paket ${topupSum(_ra,_rb).n} · riwayat pembelian ${_bhT.tot.topup}) dibagi ${trxJual} transaksi penjualan pada ${payMode==="range"?"rentang "+pFrom+" – "+pTo:periodLabel(key)}.${trxJual?"":" Jumlah transaksi penjualannya belum diisi — isi di tab Statistik, card Rasio Top Up."}"><div class="v" style="color:${rasioTrx==null?"var(--ink-soft)":rasioTrx>=.25?"#1B6B47":rasioTrx>=.15?"#A9761B":"var(--red)"}">${rasioTrx==null?"—":Math.round(rasioTrx*1000)/10+"%"}</div><div class="l">Rasio Transaksi Top Up · ${trxTU}/${trxJual||"?"}</div></div>
     ${Object.entries(TSTAT).map(([k,d])=>{
       const n=cStat[k]||0;
       return `<div class="kpi${tStatFilter.has(k)?" on":""}" onclick="toggleTStat('${k}')"
@@ -6256,14 +6268,25 @@ function exStatRows(a,b){
   done.forEach(c=>{W[new Date(c.date+"T00:00:00").getDay()]++;});
   [1,2,3,4,5,6,0].forEach(i=>R.push([HARI7[i],W[i]]));
 
+  sec("PEMBELIAN TERSAMBUNG KE MURID (dari riwayat pembelian)");
+  R.push(["Tanggal","Nomor Induk","Nama Murid","Program","Jenis","Produk","Nominal (Rp)","Jam Paket","Sumber","Order ID"]);
+  Object.entries(U.beli||{}).filter(([,o])=>o.tgl>=a&&o.tgl<=b)
+    .sort((x,y)=>String(x[1].tgl).localeCompare(String(y[1].tgl)))
+    .forEach(([oid,o])=>R.push([o.tgl,o.mid||"",o.mid?namaMid(o.mid):"",progBeli(o),
+      (o.tipe==="topup"||o.tipe==="ulang")?"top up":"pembelian awal",o.produk||"",
+      +o.nominal||0,+o.jam||"",o.sumber||o.metode||"",oid]));
+
   sec("RASIO TOP UP PER PERIODE (cut-off 26-25, seluruh data)");
-  R.push(["Periode","Dari","Sampai","Transaksi Penjualan","Transaksi Top Up","Rasio (%)"]);
+  R.push(["Periode","Dari","Sampai","Transaksi Penjualan","Transaksi Top Up","Rasio (%)",
+    "Pembelian Tersambung","Nilai Tersambung (Rp)"]);
   const MO={};
   Object.entries(U.jual||{}).forEach(([d,r])=>{const k=periodKeyOf(d);(MO[k]=MO[k]||{j:0,t:0}).j+=(+r.n||0);});
   Object.values(U.topup||{}).forEach(arr=>(arr||[]).forEach(t=>{
     if(!t.tgl)return;const k=periodKeyOf(t.tgl);if(MO[k])MO[k].t++;}));
   Object.keys(MO).sort().forEach(k=>{const[pa,pb]=periodRange(k);
-    R.push([periodLabel(k),pa,pb,MO[k].j,MO[k].t,MO[k].j?Math.round(MO[k].t/MO[k].j*1000)/10:""]);});
+    const _rk=rekapPeriodeJual().find(x=>x.k===k)||{};
+    R.push([periodLabel(k),pa,pb,MO[k].j,MO[k].t,MO[k].j?Math.round(MO[k].t/MO[k].j*1000)/10:"",
+      _rk.beli||0,_rk.beliRp||0]);});
   return R;
 }
 function exStat(){
@@ -6337,6 +6360,13 @@ function rekapPeriodeJual(){
   });
   Object.values(U.topup||{}).forEach(arr=>(arr||[]).forEach(t=>{
     if(!t.tgl)return;const k=periodKeyOf(t.tgl);if(P[k])P[k].tu++;}));
+  // riwayat pembelian ikut dihitung: top up per program dan nilai yang tersambung ke murid
+  Object.values(U.beli||{}).forEach(o=>{
+    if(!o.tgl)return;const k=periodKeyOf(o.tgl);const x=P[k];if(!x)return;
+    x.beli=(x.beli||0)+1;x.beliRp=(x.beliRp||0)+(+o.nominal||0);
+    if(o.tipe==="topup"||o.tipe==="ulang")x.tuBeli=(x.tuBeli||0)+1;
+  });
+  Object.values(P).forEach(x=>{x.tu=Math.max(x.tu||0,x.tuBeli||0);});
   return Object.values(P).sort((a,b)=>a.k.localeCompare(b.k));
 }
 /* grafik garis akumulasi */
@@ -6470,6 +6500,31 @@ function simpanJBulk(){
   document.getElementById("jBulk").value="";
   toast(ok.length+" hari tersimpan"+(gagal.length?" · "+gagal.length+" baris dilewati":""));
 }
+/* ================= RIWAYAT PEMBELIAN SEBAGAI DATA INDUK =================
+   Riwayat pembelian di Data Murid terhubung ke nomor induk, jadi ia bisa dipakai
+   sebagai sumber angka penjualan — bukan sekadar catatan per murid.
+   Bedanya dengan isian harian manual:
+   - Isian manual = TOTAL semua transaksi hari itu (lengkap, tapi tanpa identitas)
+   - Riwayat pembelian = transaksi yang sudah tersambung ke murid (identitasnya jelas,
+     tapi hanya yang berhasil dicocokkan)
+   Keduanya ditampilkan berdampingan; selisihnya justru berguna sebagai penanda
+   berapa transaksi yang belum tersambung ke murid mana pun. */
+function beliHarian(a,b){
+  const per={}, tot={n:0,rp:0,topup:0,awal:0,murid:new Set()};
+  Object.entries(U.beli||{}).forEach(([oid,o])=>{
+    const d=String(o.tgl||"");
+    if(!d||d<a||d>b)return;
+    const p2=per[d]=per[d]||{n:0,rp:0,topup:0,awal:0,items:[]};
+    const isTU=o.tipe==="topup"||o.tipe==="ulang";
+    p2.n++;p2.rp+=(+o.nominal||0);p2[isTU?"topup":"awal"]++;
+    p2.items.push(Object.assign({oid},o,{_tu:isTU}));
+    tot.n++;tot.rp+=(+o.nominal||0);tot[isTU?"topup":"awal"]++;
+    if(o.mid)tot.murid.add(o.mid);
+  });
+  Object.values(per).forEach(x=>x.items.sort((m,n2)=>(+n2.nominal||0)-(+m.nominal||0)));
+  return {per,tot};
+}
+function beliHari(d){const H=beliHarian(d,d);return H.per[d]||{n:0,rp:0,topup:0,awal:0,items:[]};}
 /* ---- rincian satu hari: siapa saja yang top up + isi angka penjualan ---- */
 let jHariPilih="";
 function topupHari(tgl){
@@ -6510,11 +6565,14 @@ function renderJualDetail(){
   const d=jHariPilih;
   if(!d){e.innerHTML="";return;}
   const list=topupHari(d), n=jualN(d);
-  const rasio=n?Math.round(list.length/n*1000)/10:null;
+  const bh=beliHari(d);
+  const tuHari=Math.max(list.length,bh.topup);
+  const rasio=n?Math.round(tuHari/n*1000)/10:null;
   e.innerHTML=`<div class="jdet">
     <div class="jdet-h">
       <span class="t">${fmtD_(d)}</span>
-      <span class="chip">${list.length} top up</span>
+      <span class="chip">${tuHari} top up</span>
+      ${bh.n?`<span class="chip" style="background:#EBE8FC;color:#5B3FD9">${bh.n} pembelian · ${rp(bh.rp)}</span>`:""}
       <span class="chip" style="background:#E8F1F6;color:#0E5F8A">${n==null?"penjualan belum diisi":n+" transaksi"}</span>
       ${jualRp(d)?`<span class="chip" style="background:#E6F4EC;color:#1B6B47">${rp(jualRp(d))}</span>`:""}
       ${rasio!=null?`<span class="chip" style="background:#E6F4EC;color:#1B6B47">rasio ${rasio}%</span>`:""}
@@ -6530,6 +6588,19 @@ function renderJualDetail(){
           onkeydown="if(event.key==='Enter'){event.preventDefault();simpanDetJual();}"></label>
       <button class="btn small" onclick="simpanDetJual()">Simpan</button>
     </div>
+    ${bh.n?`<div style="margin:0 0 8px">
+      <b style="font-size:12px">Pembelian hari ini</b>
+      ${bh.items.map((o,i)=>`<div class="turow2">
+        <span class="no">${i+1}.</span>
+        <span class="nm">${o.mid?`<span class="link" onclick="openMuridId('${o.mid}')">${namaMid(o.mid)}</span>
+          <span class="mid" style="font-size:10px">${o.mid}</span>`:"(murid belum tersambung)"}</span>
+        <span class="mtag ${o._tu?"kelar":"aktif"}">${o._tu?"top up":"pembelian awal"}</span>
+        <span class="chip">${progBeli(o)}</span>
+        <span class="mt">${o.produk||""}</span>
+        <span class="rp" style="margin-left:auto;font-weight:800">${rp(+o.nominal||0)}</span>
+      </div>`).join("")}
+    </div>`:""}
+    ${list.length?`<b style="font-size:12px">Catatan paket top up</b>`:""}
     ${list.length?list.map((t,i)=>{
       const k=muridKonteks(t.nm,d);
       return `<div class="turow2">
@@ -6617,7 +6688,10 @@ function renderJual(){
 
   const[a,b]=jualRange();
   const js=jualSum(a,b), ts=topupSum(a,b);
-  const rasio=js.n?ts.n/js.n:null;
+  const BH=beliHarian(a,b);
+  // top up diambil dari yang paling lengkap: catatan paket manual atau riwayat pembelian
+  const tuDipakai=Math.max(ts.n,BH.tot.topup);
+  const rasio=js.n?tuDipakai/js.n:null;
   const baru=js.n-ts.n;
   const warna=rasio==null?"var(--ink-soft)":rasio>=.4?"#1B6B47":rasio>=.2?"#A9761B":"var(--red)";
 
@@ -6627,10 +6701,18 @@ function renderJual(){
 
   document.getElementById("jKpis").innerHTML=`
     <div class="kpi hi"><div class="v" style="color:${warna}">${rasio==null?"—":Math.round(rasio*1000)/10+"%"}</div><div class="l">Rasio Top Up</div></div>
-    <div class="kpi"><div class="v">${js.n.toLocaleString("id-ID")}</div><div class="l">Transaksi Penjualan</div></div>
+    <div class="kpi"><div class="v">${js.n.toLocaleString("id-ID")}</div><div class="l">Transaksi Penjualan</div>
+      <div class="sub" style="font-size:10px;color:var(--ink-soft)">isian harian</div></div>
+    <div class="kpi"><div class="v" style="color:${BH.tot.n?"#5B3FD9":"var(--ink-soft)"}">${BH.tot.n.toLocaleString("id-ID")}</div>
+      <div class="l">Pembelian Tersambung</div>
+      <div class="sub" style="font-size:10px;color:var(--ink-soft)">${BH.tot.murid.size} murid · ${js.n?Math.round(BH.tot.n/js.n*100):0}% dari total</div></div>
+    <div class="kpi"><div class="v" style="color:#0E5F8A">${BH.tot.topup.toLocaleString("id-ID")}</div>
+      <div class="l">Top Up dari Riwayat</div>
+      <div class="sub" style="font-size:10px;color:var(--ink-soft)">${BH.tot.awal} pembelian awal</div></div>
     <div class="kpi"><div class="v" style="font-size:13px;color:#1B6B47">${js.rp?rp(js.rp):"—"}</div><div class="l">Nominal Penjualan</div></div>
     <div class="kpi"><div class="v" style="font-size:13px">${js.n&&js.rp?rp(Math.round(js.rp/js.n)):"—"}</div><div class="l">Rata per Transaksi</div></div>
-    <div class="kpi"><div class="v" style="color:#0E5F8A">${ts.n.toLocaleString("id-ID")}</div><div class="l">Transaksi Top Up</div></div>
+    <div class="kpi"><div class="v" style="color:#0E5F8A">${tuDipakai.toLocaleString("id-ID")}</div><div class="l">Transaksi Top Up</div>
+      <div class="sub" style="font-size:10px;color:var(--ink-soft)">catatan paket ${ts.n} · riwayat ${BH.tot.topup}</div></div>
     <div class="kpi"><div class="v" style="color:${baru<0?"var(--red)":"#132A2E"}">${baru.toLocaleString("id-ID")}</div><div class="l">Sisa (non top up)</div></div>
     <div class="kpi"><div class="v">${ts.murid}</div><div class="l">Murid Top Up</div></div>
     <div class="kpi"><div class="v" style="color:${js.hari>=hariLewat?"#1B6B47":"#A9761B"}">${js.hari}/${hariLewat}</div><div class="l">Hari Terisi</div></div>`;
@@ -6638,12 +6720,16 @@ function renderJual(){
   const kurang=hariLewat-js.hari;
   document.getElementById("jRingkas").innerHTML=`
     <p class="note" style="margin:0 0 4px"><b>${jualLabel()}</b> (${fmtD_(a)} – ${fmtD_(b)}):
-      ${ts.n} transaksi top up dari ${js.n} transaksi penjualan
+      ${tuDipakai} transaksi top up dari ${js.n} transaksi penjualan
       → rasio <b style="color:${warna}">${rasio==null?"—":Math.round(rasio*1000)/10+"%"}</b>.
       Artinya ${rasio==null?"belum bisa dihitung — jumlah penjualannya belum diisi":
         "sekitar "+Math.round(rasio*100)+" dari tiap 100 transaksi berasal dari murid yang top up"}.</p>
     ${baru<0?`<p class="note" style="margin:0 0 4px;color:var(--red)"><b>Cek lagi:</b> transaksi top up lebih banyak daripada transaksi penjualan.
         Kemungkinan angka penjualan harian belum lengkap, atau tanggal top up dicatat di luar tanggal transaksinya.</p>`:""}
+    ${BH.tot.n?`<p class="note" style="margin:0 0 4px">Dari ${js.n} transaksi, <b>${BH.tot.n} sudah tersambung ke murid</b>
+      (${BH.tot.murid.size} murid · ${rp(BH.tot.rp)}). ${js.n>BH.tot.n
+        ? `Sisa <b>${js.n-BH.tot.n}</b> belum punya identitas murid — impor pembeliannya di tab Data Murid supaya bisa dilacak per orang.`
+        : `Semuanya sudah tersambung.`}</p>`:""}
     ${kurang>0?`<p class="note" style="margin:0 0 4px;color:#8A5309"><b>${kurang} hari</b> yang sudah lewat belum diisi angka penjualannya —
         selama masih kosong, rasionya kelihatan lebih tinggi dari yang sebenarnya.</p>`:""}`;
 
@@ -6682,7 +6768,7 @@ function renderJual(){
           <div class="sub">${o.hari} hari terisi</div></span>
         <span class="r">${o.n.toLocaleString("id-ID")}</span>
         <span class="r"><b>${o.rp?rp(o.rp):"—"}</b>${o.n&&o.rp?`<div class="sub">${rp(Math.round(o.rp/o.n))}/trx</div>`:""}</span>
-        <span class="r">${o.tu||"—"}</span>
+        <span class="r">${o.tu||"—"}${o.beli?`<div class="sub">${o.beli} tersambung</div>`:""}</span>
         <span class="r">${o.n?Math.round(o.tu/o.n*1000)/10+"%":"—"}</span>
       </div>`).join("")+
       (()=>{const T=RP.reduce((a,o)=>({n:a.n+o.n,rp:a.rp+o.rp,tu:a.tu+o.tu}),{n:0,rp:0,tu:0});
