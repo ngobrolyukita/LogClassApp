@@ -620,12 +620,18 @@
     <div class="sheet">
       <div class="sheet-head">
         <div><div class="ttl">📥 Import Pembelian dari WooCommerce</div>
-          <div class="sub">Tempel isi file CSV export order</div></div>
+          <div class="sub">Pilih file CSV, atau tempel isinya</div></div>
         <button class="btn ghost small" onclick="tutupImpor()">✕ Tutup</button>
       </div>
       <div class="sheet-body">
-        <p class="note" style="margin-top:0">Buka file CSV export dari WooCommerce (Analytics → Orders → Download),
-          pilih semua isinya (Ctrl+A), salin, lalu tempel di kotak bawah ini.
+        <div class="row-actions" style="margin:0 0 9px">
+          <label class="btn" style="cursor:pointer;margin:0">📂 Pilih file CSV
+            <input type="file" id="imporFile" accept=".csv,text/csv,text/plain" style="display:none"
+              onchange="muatFileImpor(this)"></label>
+          <span id="imporNamaFile" class="hint" style="margin:0"></span>
+        </div>
+        <p class="note" style="margin-top:0">Ambil dari WooCommerce → Analytics → Orders → Download, lalu pilih filenya di atas.
+          Kalau lebih mudah, isinya juga boleh disalin dan ditempel di kotak bawah.
           Kolom yang dibaca: <b>Order Number</b>, <b>Order Date</b>, nama pembeli, Email, Phone, Item Name, Order Total, Payment Method.
           Order yang sudah pernah masuk akan dilewati, jadi aman kalau tidak sengaja diimpor dua kali.</p>
         <textarea id="imporTeks" rows="7" placeholder='"Order Number","Order Status","Order Date",...'
@@ -3416,6 +3422,14 @@ function beliMurid(id){
     .map(([oid,o])=>Object.assign({oid},o))
     .sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl)));
 }
+/* Jumlah top up sekarang punya dua sumber: catatan top up manual di panel murid,
+   dan riwayat pembelian hasil impor. Yang dipakai adalah yang lebih lengkap —
+   kalau riwayat pembeliannya sudah ada, itu yang lebih dipercaya karena bernilai rupiah. */
+function topupTotal(id){
+  const dariBeli=beliPerProgram(id).reduce((a,g)=>a+Math.max(0,g.n-1),0);
+  const dariCatat=(rekapMurid(id)||{}).topup||0;
+  return Math.max(dariBeli,dariCatat);
+}
 function beliRingkas(id){
   const L=beliMurid(id);
   return {n:L.length, total:L.reduce((s,o)=>s+(+o.nominal||0),0),
@@ -4233,7 +4247,7 @@ function renderMurid(){
     <div class="kpi"><div class="v" style="font-size:12px">${mLabel()}</div><div class="l">Periode Ditampilkan</div></div>
     <div class="kpi"><div class="v" style="color:#1B6B47">${aktif}</div><div class="l">Aktif</div></div>
     <div class="kpi"><div class="v">${baru}</div><div class="l">Baru Periode Ini</div></div>
-    <div class="kpi"><div class="v">${R.reduce((a,r)=>a+r.topup,0)}</div><div class="l">Total Top Up</div></div>
+    <div class="kpi"><div class="v">${R.reduce((a,r)=>a+topupTotal(r.id),0)}</div><div class="l">Total Top Up</div></div>
     <div class="kpi"><div class="v" style="font-size:13px">${rp(belanja)}</div><div class="l">Total Belanja</div></div>
     <div class="kpi"><div class="v" style="color:${punyaBeli<tot?"#A9761B":"#1B6B47"}">${punyaBeli}/${tot}</div><div class="l">Ada Data Beli</div></div>`;
 
@@ -4290,7 +4304,10 @@ function exportMurid(){
     "Email","WA","Catatan"]];
   R.sort((a,b)=>a.id.localeCompare(b.id)).forEach(r=>rows.push([r.id,r.nm,(r.m.al||[]).join(" | "),
     r.bahasa.join(", "),r.tutor.join(", "),r.statusL,r.sesi,r.jam,r.post.length,r.akan.length,
-    r.mulai,r.akhir,r.selisih==null?"":r.selisih,r.topup,r.topupJam,r.beli,r.belanja,
+    r.mulai,r.akhir,r.selisih==null?"":r.selisih,r.topup,r.topupJam,r.beli,
+    beliPerProgram(r.id).length,
+    beliPerProgram(r.id).map(g=>g.prog+" ("+g.n+"x "+g.rp+")").join(" | "),
+    r.belanja,
     r.beli1,r.beliAkhir,r.m.email||"",r.m.wa||"",r.m.catatan||""]));
   unduhCSV(rows,"data_murid_"+todayStr()+".csv");
   toast(R.length+" murid diekspor");
@@ -4323,10 +4340,11 @@ function blokMurid(nama){
     ${(m.al||[]).length>1?`<div class="hint" style="margin:0 0 7px">Nama lain yang dikenali: ${(m.al||[]).join(" · ")}</div>`:""}
     ${m.catatan?`<div class="note" style="margin:0 0 7px">${m.catatan}</div>`:""}
     <div class="mini-kpis" style="margin:0 0 8px">
-      <div class="kpi"><div class="v">${r.beli}</div><div class="l">Pembelian</div></div>
+      <div class="kpi"><div class="v">${r.beli}</div><div class="l">Kali Beli</div></div>
+      <div class="kpi"><div class="v">${beliPerProgram(id).length||"—"}</div><div class="l">Program Dibeli</div></div>
       <div class="kpi"><div class="v" style="font-size:13px">${r.belanja?rp(r.belanja):"—"}</div><div class="l">Total Belanja</div></div>
       <div class="kpi"><div class="v" style="font-size:12px">${r.beli1?fmtD_(r.beli1):"—"}</div><div class="l">Beli Pertama</div></div>
-      <div class="kpi"><div class="v">${r.topup}${r.topupJam?`<span style="font-size:11px"> · ${r.topupJam}j</span>`:""}</div><div class="l">Top Up</div></div>
+      <div class="kpi"><div class="v" style="color:${topupTotal(id)?"#0E5F8A":""}">${topupTotal(id)||"—"}${r.topupJam?`<span style="font-size:11px"> · ${r.topupJam}j</span>`:""}</div><div class="l">Top Up · semua program</div></div>
       <div class="kpi"><div class="v">${jarak==null?"—":jarak+" hr"}</div><div class="l">Jarak Antar Beli</div></div>
       <div class="kpi"><div class="v">${r.selisih==null?"—":r.selisih+" hr"}</div><div class="l">Sejak Kelas Terakhir</div></div>
     </div>
@@ -4334,15 +4352,21 @@ function blokMurid(nama){
       <b style="font-size:12px">Riwayat Pembelian</b>
       <button class="btn ghost small editonly" onclick="tambahBeli('${id}')">+ Catat pembelian</button>
     </div>
-    ${L.length?L.slice().reverse().map(o=>`<div class="belirow">
+    ${L.length?beliPerProgram(id).map(g=>`
+      <div style="margin:9px 0 2px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <b style="font-size:12px">${g.prog}</b>
+        <span class="chip">${g.n}× beli</span>
+        <span class="chip" style="background:#E6F4EC;color:#1B6B47">${rp(g.rp)}</span>
+        <span class="hint" style="margin:0">awal ${fmtD_(g.awal)}${g.n>1?" · terakhir "+fmtD_(g.akhir):""}</span>
+      </div>`+
+      g.items.slice().reverse().map(o=>`<div class="belirow">
         <span class="tg">${fmtD_(o.tgl)}</span>
-        <span class="pr">${o.produk||"—"}
-          ${o.tipe?`<span class="mtag ${o.tipe==="pertama"?"aktif":"kelar"}">${o.tipe}</span>`:""}
+        <span class="pr">${o.produk||"—"} ${labelTipe(o)}
           ${o.jam?`<span class="chip">${o.jam} jam</span>`:""}
           <span class="sub" style="color:var(--ink-soft);font-size:10.5px">${o.sumber||""}${o.metode?" · "+o.metode:""} · ${o.oid}</span></span>
         <span class="rp">${rp(+o.nominal||0)}</span>
         <button class="btn ghost small editonly" onclick="hapusBeli(du('${eu(o.oid)}'))" title="Hapus">✕</button>
-      </div>`).join("")
+      </div>`).join("")).join("")
       :`<div class="empty" style="padding:10px">Belum ada data pembelian.
         ${canEdit()?"Catat manual, atau impor dari WooCommerce lewat tab Data Murid.":""}</div>`}
   </div>`;
@@ -4389,42 +4413,187 @@ function tambahBeli(id){
             {label:"Produk / paket",nilai:"",ph:"mis. Kelas Privat Bahasa Jerman 10 jam"},
             {label:"Nominal",nilai:"",tipe:"number",ph:"1900000",hint:"— angka saja"},
             {label:"Jumlah jam paket",nilai:"",tipe:"number",hint:"— kosongkan kalau tidak tahu"},
-            {label:"Metode bayar",nilai:"Transfer Bank",pilihan:["Transfer Bank","Duitku","Tunai","Lainnya"]}],
+            {label:"Metode bayar",nilai:"Transfer Bank",pilihan:["Transfer Bank","Duitku","Tunai","Lainnya"]},
+            {label:"Program",nilai:"",pilihan:PROG.map(x=>x[0]).concat("Lainnya"),
+             hint:"— kosongkan untuk ditebak dari nama produk"}],
     tombol:"Catat",
     ok:(v)=>simpanBeliManual(id,v)
   });
 }
-function simpanBeliManual(id,[tgl,produk,nominal,jam,metode]){
+function simpanBeliManual(id,[tgl,produk,nominal,jam,metode,prog]){
   const t=jParseTgl(tgl)||normDate(tgl);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(t))return toast("Tanggalnya belum benar");
   const n=+String(nominal).replace(/\D/g,"");
-  const sudah=beliMurid(id);
-  const tipe=(!sudah.length||t<(sudah[0].tgl||"9999"))?"pertama":"ulang";
   const oid="MAN-"+id+"-"+t.replace(/-/g,"")+"-"+Math.random().toString(36).slice(2,6);
   simpanBeli(oid,{mid:id,tgl:t,produk:String(produk).trim(),nominal:n,
     jam:+String(jam).replace(/[^\d.]/g,"")||0,metode:String(metode).trim(),
-    sumber:"manual",tipe});
+    sumber:"manual",prog:String(prog||"").trim()||progOf(produk),tipe:"awal",ke:0});
   // kalau ini jadi yang paling awal, yang lain disesuaikan
   segarkanTipeBeli(id);
   renderMurid();if(detailCtx)renderDetail();
   toast("Pembelian tercatat");
 }
+/* ================= PROGRAM PEMBELIAN =================
+   Satu murid bisa membeli beberapa program bahasa. Pembelian pertama pada SETIAP program
+   dihitung sebagai pembelian awal; pembelian berikutnya di program yang sama baru dihitung
+   top up. Jadi murid yang sudah lama belajar Jerman lalu membeli Spanyol tidak dianggap
+   top up Spanyol — itu murid baru untuk program tersebut. */
+const PROG=[
+  ["Inggris Bisnis",       /bisnis\s*bahasa\s*inggris|business\s*english|english\s*business/i],
+  ["Inggris Conversation", /conversation\s*club|percakapan\s*bahasa\s*inggris|convo/i],
+  ["Inggris Prep",         /prep|toefl|ielts/i],
+  ["Inggris",              /bahasa\s*inggris|english/i],
+  ["Jerman",               /jerman|german|deutsch/i],
+  ["Spanyol",              /spanyol|spanish|espa[nñ]ol/i],
+  ["Mandarin",             /mandarin|chinese|hsk|chuji/i],
+  ["Indonesia",            /bahasa\s*indonesia|indonesian/i],
+];
+function progOf(teks){
+  const t=String(teks||"");
+  for(const [k,re] of PROG)if(re.test(t))return k;
+  return "Lainnya";
+}
+/* program sebuah pembelian: yang tersimpan dulu, kalau kosong ditebak dari nama produk */
+function progBeli(o){return o.prog||progOf(o.produk);}
+/* susun ulang tipe & urutan top up — dihitung per program, bukan per murid */
 function segarkanTipeBeli(id){
   const L=beliMurid(id);
-  L.forEach((o,i)=>{
-    const t=i===0?"pertama":"ulang";
-    if(o.tipe!==t){const x=U.beli[o.oid];x.tipe=t;pushBELI(o.oid,x);}
+  const per={};
+  L.forEach(o=>{const k=progBeli(o);(per[k]=per[k]||[]).push(o);});
+  let ubah=0;
+  Object.entries(per).forEach(([k,arr])=>{
+    arr.sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl)));
+    arr.forEach((o,i)=>{
+      const tipe=i===0?"awal":"topup", ke=i;                    // ke=0 untuk pembelian awal
+      const x=U.beli[o.oid];
+      if(!x)return;
+      if(x.tipe!==tipe||(+x.ke||0)!==ke||x.prog!==k){
+        x.tipe=tipe;x.ke=ke;x.prog=k;pushBELI(o.oid,x);ubah++;
+      }
+    });
   });
   const m=U.murid[id];
-  if(m&&L.length&&m.beli1!==L[0].tgl){m.beli1=L[0].tgl;simpanMurid(id,m);}
-  cacheAll();
+  if(m&&L.length){
+    const t1=L.map(o=>o.tgl).filter(Boolean).sort()[0]||"";
+    if(t1&&m.beli1!==t1){m.beli1=t1;simpanMurid(id,m);}
+  }
+  if(ubah)cacheAll();
+  return ubah;
 }
+/* ringkasan per program untuk satu murid */
+function beliPerProgram(id){
+  const L=beliMurid(id), per={};
+  L.forEach(o=>{
+    const k=progBeli(o);
+    const p2=per[k]=per[k]||{prog:k,n:0,rp:0,awal:"",akhir:"",items:[]};
+    p2.n++;p2.rp+=(+o.nominal||0);p2.items.push(o);
+    if(!p2.awal||o.tgl<p2.awal)p2.awal=o.tgl;
+    if(!p2.akhir||o.tgl>p2.akhir)p2.akhir=o.tgl;
+  });
+  Object.values(per).forEach(p2=>p2.items.sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl))));
+  return Object.values(per).sort((a,b)=>String(a.awal).localeCompare(String(b.awal)));
+}
+function labelTipe(o){
+  if(o.tipe==="awal"||!(+o.ke>0))return `<span class="mtag aktif">pembelian awal</span>`;
+  return `<span class="mtag" style="background:#E8F1F6;color:#0E5F8A">top up ke-${+o.ke}</span>`;
+}
+/* hitung ulang seluruh murid — dipakai sekali setelah impor besar */
+function segarkanSemuaTipe(diam){
+  if(!canEdit())return 0;
+  mulaiMassal();
+  let n=0;
+  Object.keys(U.murid||{}).forEach(id=>{n+=segarkanTipeBeli(id);});
+  selesaiMassal();cacheAll();lupakanRekap();
+  if(!diam)toast(n?n+" catatan pembelian dirapikan per program":"Semua catatan pembelian sudah rapi");
+  renderMurid();
+  return n;
+}
+
 /* ---------- impor CSV WooCommerce ---------- */
+let IMPOR=null;
+/* Menetapkan murid untuk baris yang tidak otomatis cocok. Nama yang diketik dicari di
+   registry; kalau ketemu, nama pembeli disimpan sebagai alias murid itu supaya impor
+   berikutnya langsung cocok tanpa perlu diketik lagi. */
+function setImporMurid(i,nama){
+  if(!IMPOR||!IMPOR[i])return;
+  const x=IMPOR[i], v=normName(nama||"");
+  if(!v){x.mid="";x.status="belum ketemu murid";return;}
+  let id=midOf(v);
+  if(!id){
+    const cari=Object.entries(U.murid||{}).find(([,m])=>m.nm.toLowerCase()===v.toLowerCase());
+    if(cari)id=cari[0];
+  }
+  if(!id)return toast('Murid "'+v+'" tidak ada di registry — cek ejaannya');
+  x.mid=id;x.status="cocok";
+  const m=U.murid[id], al=nkey(x.nama);
+  if(al&&!(m.al||[]).includes(al)){m.al=[...(m.al||[]),al];simpanMurid(id,m);lupakanIndex();}
+  const sisa=IMPOR.filter(y=>y.status==="belum ketemu murid").length;
+  toast(x.nama+" → "+m.nm+" · "+sisa+" baris lagi belum dicocokkan");
+  prosesImpor(false);
+}
+function terimaSaranImpor(){
+  if(!IMPOR)return;
+  let n=0;
+  mulaiMassal();
+  IMPOR.forEach(x=>{
+    if(x.status!=="belum ketemu murid"||!x.saran)return;
+    x.mid=x.saran.id;x.status="cocok";
+    const m=U.murid[x.saran.id], al=nkey(x.nama);
+    if(m&&al&&!(m.al||[]).includes(al)){m.al=[...(m.al||[]),al];simpanMurid(x.saran.id,m);}
+    n++;
+  });
+  selesaiMassal();cacheAll();lupakanIndex();
+  toast(n+" saran diterima");
+  prosesImpor(false);
+}
+function simpanImpor(){
+  if(!IMPOR)return toast("Periksa dulu isinya");
+  const cocok=IMPOR.filter(x=>x.status==="cocok"&&x.mid);
+  if(!cocok.length)return toast("Tidak ada baris yang siap disimpan");
+  mulaiMassal();
+  cocok.forEach(x=>{
+    simpanBeli(x.oid,{mid:x.mid,tgl:x.tgl,produk:x.produk,nominal:x.nominal,jam:0,
+      metode:x.metode,sumber:"woocommerce",prog:progOf(x.produk),tipe:"awal",ke:0});
+    const m=U.murid[x.mid];
+    if(m){let ubah=false;
+      if(!m.email&&x.email){m.email=x.email;ubah=true;}
+      if(!m.wa&&x.hp){m.wa=waNorm(x.hp);ubah=true;}
+      if(ubah)simpanMurid(x.mid,m);}
+  });
+  [...new Set(cocok.map(x=>x.mid))].forEach(segarkanTipeBeli);
+  selesaiMassal();cacheAll();lupakanIndex();
+  const sisa=IMPOR.filter(x=>x.status==="belum ketemu murid").length;
+  IMPOR=null;
+  renderMurid();if(detailCtx)renderDetail();
+  toast(cocok.length+" pembelian tersimpan"+(sisa?" · "+sisa+" baris belum dicocokkan":""));
+  tutupImpor();
+}
+/* Baca file CSV langsung — jauh lebih mudah daripada menempel 600 KB teks,
+   apalagi di HP yang sering memotong tempelan sepanjang itu. */
+function muatFileImpor(el){
+  const f=el&&el.files&&el.files[0];
+  if(!f)return;
+  const info=document.getElementById("imporNamaFile");
+  info.textContent="Membaca "+f.name+"…";
+  const fr=new FileReader();
+  fr.onload=()=>{
+    const isi=String(fr.result||"");
+    document.getElementById("imporTeks").value=isi;
+    const nBaris=isi.split(/\r?\n/).filter(x=>x.trim()).length-1;
+    info.innerHTML=`<b>${f.name}</b> · ${nBaris.toLocaleString("id-ID")} baris · ${Math.round(f.size/1024)} KB — tinggal klik <b>Periksa dulu</b>`;
+    prosesImpor(false);
+  };
+  fr.onerror=()=>{info.textContent="Gagal membaca file. Coba salin isinya lalu tempel di kotak bawah.";};
+  fr.readAsText(f);
+}
 function bukaImporBeli(){
   if(!guard())return;
+  IMPOR=null;
   bukaOv("imporOv");
   document.getElementById("imporHasil").innerHTML="";
   document.getElementById("imporTeks").value="";
+  const fi=document.getElementById("imporFile"); if(fi)fi.value="";
+  const inf=document.getElementById("imporNamaFile"); if(inf)inf.textContent="";
 }
 function tutupImpor(){tutupOv("imporOv");}
 function bacaCSV(teks){
@@ -4443,10 +4612,16 @@ function bacaCSV(teks){
 function kolIdx(head,kandidat){
   const h=head.map(x=>String(x).toLowerCase().replace(/^\ufeff/,"").trim());
   for(const k of kandidat){const i=h.indexOf(k);if(i>=0)return i;}
-  for(const k of kandidat){const i=h.findIndex(x=>x.includes(k));if(i>=0)return i;}
+  // pencocokan sebagian: lewati kolom catatan supaya "customer" tidak nyangkut
+  // di "Customer Note" — dulu ini bikin seluruh nama pembeli terbaca kosong.
+  for(const k of kandidat){
+    const i=h.findIndex(x=>x.includes(k)&&!/\bnote|catatan|keterangan\b/.test(x));
+    if(i>=0)return i;
+  }
   return -1;
 }
 function prosesImpor(simpan){
+  if(IMPOR&&IMPOR.length&&simpan)return simpanImpor();
   const teks=document.getElementById("imporTeks").value.trim();
   if(!teks)return toast("Tempel dulu isi CSV-nya");
   const rows=bacaCSV(teks);
@@ -4467,7 +4642,10 @@ function prosesImpor(simpan){
   const seen=new Set(), hasil=[];
   rows.slice(1).forEach(r=>{
     const oid=ambil(r,iOid); if(!oid||seen.has(oid))return; seen.add(oid);
-    const nama=(iNm>=0?ambil(r,iNm):(ambil(r,iDep)+" "+ambil(r,iBel))).trim();
+    // kolom nama depan + belakang lebih dipercaya daripada satu kolom nama gabungan
+    const nama=((iDep>=0||iBel>=0)
+      ? (ambil(r,iDep)+" "+ambil(r,iBel))
+      : (iNm>=0?ambil(r,iNm):"")).replace(/\s+/g," ").trim();
     const tgl=(jParseTgl(ambil(r,iTgl).slice(0,10))||ambil(r,iTgl).slice(0,10));
     const total=+ambil(r,iTot).replace(/[^\d]/g,"")||0;
     const id=midOf(nama);
@@ -4475,16 +4653,28 @@ function prosesImpor(simpan){
       nominal:total,metode:ambil(r,iMet),mid:id,
       status:U.beli[oid]?"sudah ada":(id?"cocok":"belum ketemu murid")});
   });
+  hasil.forEach(x=>{
+    if(x.mid)return;
+    // tebak murid terdekat supaya tinggal disetujui, bukan diketik ulang
+    let best=null,sc=0;
+    const k=nkey(x.nama);
+    if(k.length>=4)Object.entries(U.murid||{}).forEach(([id,m])=>{
+      const p2=miripPersen(k,nkey(m.nm));
+      if(p2>sc){sc=p2;best={id,nm:m.nm,p:p2};}
+    });
+    if(best&&best.p>=80)x.saran=best;
+  });
+  IMPOR=hasil;
   const cocok=hasil.filter(x=>x.status==="cocok");
   const ada=hasil.filter(x=>x.status==="sudah ada");
   const gagal=hasil.filter(x=>x.status==="belum ketemu murid");
-  if(simpan){
+  if(simpan)return simpanImpor();
+  if(false){
     if(!cocok.length)return toast("Tidak ada baris baru yang cocok");
     mulaiMassal();
     cocok.forEach(x=>{
-      const sudah=beliMurid(x.mid);
       simpanBeli(x.oid,{mid:x.mid,tgl:x.tgl,produk:x.produk,nominal:x.nominal,jam:0,
-        metode:x.metode,sumber:"woocommerce",tipe:(!sudah.length||x.tgl<(sudah[0].tgl||"9999"))?"pertama":"ulang"});
+        metode:x.metode,sumber:"woocommerce",prog:progOf(x.produk),tipe:"awal",ke:0});
       const m=U.murid[x.mid];
       if(m){if(!m.email&&x.email)m.email=x.email;if(!m.wa&&x.hp)m.wa=waNorm(x.hp);simpanMurid(x.mid,m);}
     });
@@ -4503,11 +4693,30 @@ function prosesImpor(simpan){
     <div class="hint" style="margin-top:8px">Yang "belum ketemu murid" tidak disimpan — biasanya pembeli kelas reguler,
       murid baru yang belum ada di log kelas, atau yang membeli atas nama orang lain.
       Kalau ada yang seharusnya cocok, buka murid itu lalu tambahkan namanya sebagai alias lewat ✏️ Kontak.</div>
-    ${gagal.length?`<div class="scroll" style="max-height:220px;margin-top:8px">
-      ${gagal.slice(0,80).map(x=>`<div class="belirow"><span class="tg">${x.tgl}</span>
-        <span class="pr">${x.nama} <span style="color:var(--ink-soft);font-size:10.5px">${x.email||""} · ${x.produk||""}</span></span>
-        <span class="rp">${rp(x.nominal)}</span></div>`).join("")}
-      ${gagal.length>80?`<div class="hint">… dan ${gagal.length-80} lagi</div>`:""}</div>`:""}`;
+    ${gagal.length?`<div class="row-actions" style="margin-top:9px">
+        <b style="font-size:12px">Belum ketemu muridnya (${gagal.length})</b>
+        ${gagal.filter(x=>x.saran).length?`<button class="btn small" onclick="terimaSaranImpor()">
+          ✓ Terima ${gagal.filter(x=>x.saran).length} saran sekaligus</button>`:""}
+      </div>
+      <div class="hint" style="margin:0 0 5px">Ketik nama murid yang benar di kotak, atau terima saran yang muncul.
+        Nama yang kamu isi otomatis disimpan sebagai alias, jadi impor berikutnya langsung cocok.</div>
+      <div class="scroll" style="max-height:300px">
+      ${gagal.slice(0,120).map((x,i)=>`<div class="belirow">
+        <span class="tg">${x.tgl}</span>
+        <span class="pr"><b>${x.nama}</b>
+          <span style="color:var(--ink-soft);font-size:10.5px">${x.email||""} · ${x.produk||""}</span>
+          <div style="margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <input type="text" list="dlMurid" placeholder="murid…" value="${x.saran?String(x.saran.nm).replace(/"/g,"&quot;"):""}"
+              onchange="setImporMurid(${hasil.indexOf(x)},this.value)"
+              style="padding:5px 7px;font-size:11.5px;min-width:170px">
+            ${x.saran?`<span class="chip" title="Kemiripan nama">${x.saran.p}% mirip</span>`:""}
+          </div></span>
+        <span class="rp">${rp(x.nominal)}</span>
+      </div>`).join("")}
+      ${gagal.length>120?`<div class="hint">… dan ${gagal.length-120} lagi. Simpan yang ini dulu, sisanya muncul di periksa berikutnya.</div>`:""}
+      </div>
+      <datalist id="dlMurid">${Object.entries(U.murid||{}).map(([id,m])=>
+        `<option value="${String(m.nm).replace(/"/g,"&quot;")}">${id}</option>`).join("")}</datalist>`:""}`;
 }
 /* ---------- kontak tutor & berbagi slip ke WhatsApp / Email ----------
    Kontak disimpan sebagai baris "K:<nama tutor>" di sheet Rates (lang = v1~wa~email~oleh~waktu). */
