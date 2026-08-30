@@ -837,6 +837,7 @@
         <label>Jumlah transaksi<input type="number" min="0" step="1" class="s" id="jN" placeholder="0"></label>
         <label>Nominal (Rp)<input type="number" min="0" step="1000" id="jRp" placeholder="0" style="width:130px"></label>
         <button class="btn small" onclick="simpanJual()">Simpan</button>
+        <button class="btn ghost small editonly" onclick="bukaImporBeli()">📥 Import Pembelian</button>
         <button class="btn ghost small" onclick="toggleJBulk()">📥 Isi Massal</button>
         <button class="btn ghost small" onclick="exportJual()">Export CSV</button>
       </div>
@@ -5675,21 +5676,50 @@ function segarkanSemuaTipe(diam){
 }
 
 /* ---------- impor CSV WooCommerce ---------- */
-let IMPOR=null;
+let IMPOR=null, IMPOR_OVR={};
+function __IMPOR(){return IMPOR||[];}
+/* Setiap kali daftar diperiksa ulang, isinya disusun dari CSV lagi — keputusan
+   manual (cocokkan ke murid, tandai murid baru, lewati karena dobel) disimpan
+   terpisah per Order ID supaya tidak hilang. */
+function simpanOvr(x){
+  IMPOR_OVR[x.oid]={mid:x.mid||"",status:x.status,lewati:!!x.lewati,manual:1};
+}
+function pakaiOvr(x){
+  const o=IMPOR_OVR[x.oid]; if(!o)return;
+  if(o.lewati)x.lewati=true;
+  if(o.status==="murid baru"){x.mid="";x.status="murid baru";x.saran=null;x.beda=false;return;}
+  if(o.mid&&U.murid[o.mid]){x.mid=o.mid;x.status=U.beli[x.oid]?"sudah ada":"cocok";}
+}
 /* Menetapkan murid untuk baris yang tidak otomatis cocok. Nama yang diketik dicari di
    registry; kalau ketemu, nama pembeli disimpan sebagai alias murid itu supaya impor
    berikutnya langsung cocok tanpa perlu diketik lagi. */
+/* Baris yang memang orang lain: didaftarkan sebagai murid baru saat disimpan.
+   Sebelumnya mengosongkan kotak saran membuat barisnya tidak ikut terimpor sama sekali —
+   sekarang ada tombolnya sendiri supaya niatnya jelas. */
+function lewatiDobel(i,on){
+  if(!IMPOR||!IMPOR[i])return;
+  IMPOR[i].lewati=!!on;simpanOvr(IMPOR[i]);
+  prosesImpor(false);
+}
+function importJadiBaru(i){
+  if(!IMPOR||!IMPOR[i])return;
+  const x=IMPOR[i];
+  if(!x.nama)return toast("Baris ini tidak punya nama pembeli — ketik nama muridnya dulu");
+  x.mid="";x.status="murid baru";x.saran=null;x.beda=false;simpanOvr(x);
+  toast(x.nama+" akan didaftarkan sebagai murid baru");
+  prosesImpor(false);
+}
 function setImporMurid(i,nama){
   if(!IMPOR||!IMPOR[i])return;
   const x=IMPOR[i], v=normName(nama||"");
-  if(!v){x.mid="";x.status="belum ketemu murid";return;}
+  if(!v){x.mid="";x.status="belum ketemu murid";delete IMPOR_OVR[x.oid];prosesImpor(false);return;}
   let id=midOf(v);
   if(!id){
     const cari=Object.entries(U.murid||{}).find(([,m])=>m.nm.toLowerCase()===v.toLowerCase());
     if(cari)id=cari[0];
   }
   if(!id)return toast('Murid "'+v+'" tidak ada di registry — cek ejaannya');
-  x.mid=id;x.status="cocok";
+  x.mid=id;x.status="cocok";simpanOvr(x);
   const m=U.murid[id], al=nkey(x.nama);
   if(al&&!(m.al||[]).includes(al)){m.al=[...(m.al||[]),al];simpanMurid(id,m);lupakanIndex();}
   const sisa=IMPOR.filter(y=>y.status==="belum ketemu murid").length;
@@ -5713,7 +5743,7 @@ function terimaSaranImpor(){
   let n=0;
   mulaiMassal();
   kandidat.forEach(x=>{
-    x.mid=x.saran.id;x.status="cocok";
+    x.mid=x.saran.id;x.status="cocok";simpanOvr(x);
     const m=U.murid[x.saran.id], al=nkey(x.nama);
     if(m&&al&&!(m.al||[]).includes(al)){m.al=[...(m.al||[]),al];simpanMurid(x.saran.id,m);}
     n++;
@@ -5724,7 +5754,7 @@ function terimaSaranImpor(){
 }
 function simpanImpor(){
   if(!IMPOR)return toast("Periksa dulu isinya");
-  const perluBaru=IMPOR.filter(x=>x.status==="murid baru"&&x.nama);
+  const perluBaru=IMPOR.filter(x=>x.status==="murid baru"&&x.nama&&!x.lewati);
   mulaiMassal();
   /* Murid baru didaftarkan lebih dulu supaya pembeliannya punya nomor induk.
      Dikelompokkan per orang (email > nomor HP > nama) agar satu pembeli yang
@@ -5746,7 +5776,7 @@ function simpanImpor(){
     }
     x.mid=kunciBaru[k];x.status="cocok";
   });
-  const cocok=IMPOR.filter(x=>x.status==="cocok"&&x.mid);
+  const cocok=IMPOR.filter(x=>x.status==="cocok"&&x.mid&&!x.lewati);
   if(!cocok.length){selesaiMassal();return toast("Tidak ada baris yang siap disimpan");}
   cocok.forEach(x=>{
     simpanBeli(x.oid,{mid:x.mid,nm:namaMid(x.mid),tgl:x.tgl,produk:x.produk,nominal:x.nominal,jam:0,
@@ -5805,6 +5835,7 @@ function bukaImporBeli(){
   bukaOv("imporOv");
   document.getElementById("imporHasil").innerHTML="";
   document.getElementById("imporTeks").value="";
+  IMPOR_OVR={};
   const fi=document.getElementById("imporFile"); if(fi)fi.value="";
   const inf=document.getElementById("imporNamaFile"); if(inf)inf.textContent="";
 }
@@ -5926,7 +5957,28 @@ function prosesImpor(simpan){
         :((nama&&!c.beda)?"murid baru":"belum ketemu murid"))});
   });
   IMPOR=hasil;
-  const cocok=hasil.filter(x=>x.status==="cocok");
+  hasil.forEach(pakaiOvr);
+  /* Kemungkinan dobel: murid yang sama, program yang sama, nominal sama,
+     dan tanggalnya berdekatan (≤3 hari). Bisa transaksi asli yang kebetulan sama,
+     jadi tidak dibuang otomatis — ditandai untuk kamu putuskan. */
+  hasil.forEach(x=>{
+    x.dobel=null;
+    if(x.status==="sudah ada"||!x.mid)return;
+    const prog=progOf(x.produk), nom=+x.nominal||0;
+    const lama=Object.entries(U.beli||{}).find(([oid,o])=>
+      o.mid===x.mid && oid!==x.oid && (+o.nominal||0)===nom && nom>0 &&
+      progBaku(progBeli(o))===progBaku(prog) &&
+      Math.abs((new Date(o.tgl)-new Date(x.tgl))/86400000)<=3);
+    if(lama)x.dobel={oid:lama[0],o:lama[1]};
+    else{
+      const kembar=hasil.find(y=>y!==x&&y.mid===x.mid&&(+y.nominal||0)===nom&&nom>0&&
+        progOf(y.produk)===prog&&Math.abs((new Date(y.tgl)-new Date(x.tgl))/86400000)<=3);
+      if(kembar&&hasil.indexOf(kembar)<hasil.indexOf(x))x.dobel={oid:kembar.oid,o:kembar,dalamFile:true};
+    }
+  });
+  const dobel=hasil.filter(x=>x.dobel);
+  const dobelAktif=dobel.filter(x=>!x.lewati);
+  const cocok=hasil.filter(x=>x.status==="cocok"&&!x.lewati);
   const ada=hasil.filter(x=>x.status==="sudah ada");
   const baru=hasil.filter(x=>x.status==="murid baru");
   const gagal=hasil.filter(x=>x.status==="belum ketemu murid");
@@ -5952,9 +6004,28 @@ function prosesImpor(simpan){
       <div class="kpi hi"><div class="v">${cocok.length}</div><div class="l">Murid Lama</div></div>
       <div class="kpi"><div class="v" style="color:#1F6088">${baru.length}</div><div class="l">Murid Baru · didaftarkan</div></div>
       <div class="kpi"><div class="v">${ada.length}</div><div class="l">Sudah Ada (dilewati)</div></div>
+      <div class="kpi"><div class="v" style="color:${dobelAktif.length?"#A0303D":"#1C6047"}">${dobelAktif.length}</div><div class="l">Diduga Dobel</div>
+        ${dobel.length-dobelAktif.length?`<div class="sub" style="font-size:10px">${dobel.length-dobelAktif.length} dilewati</div>`:""}</div>
       <div class="kpi"><div class="v" style="color:${gagal.length?"#8A5F14":"#1C6047"}">${gagal.length}</div><div class="l">Perlu Dicek</div></div>
     </div>
     ${(cocok.length+baru.length)?`<button class="btn" onclick="prosesImpor(true)">💾 Simpan ${cocok.length+baru.length} pembelian${baru.length?` + daftarkan ${new Set(baru.map(x=>(x.email||"").toLowerCase()||waNorm(x.hp)||nkey(x.nama))).size} murid baru`:""}</button>`:""}
+    ${dobel.length?`<div class="filterchip" style="background:#F6E1E3;border-color:#DCB2B6;display:block;margin-top:9px">
+      <b>${dobelAktif.length} transaksi diduga dobel</b> — murid, program, dan nominalnya sama dengan transaksi lain
+      pada tanggal yang berdekatan. Periksa dulu; centang <b>lewati</b> kalau memang dobel, atau biarkan kalau
+      memang dua transaksi berbeda.
+      <div class="scroll" style="max-height:250px;margin-top:6px">
+      ${dobel.slice(0,60).map(x=>`<div class="belirow">
+        <span class="tg">${x.tgl}</span>
+        <span class="pr"><b>${namaMid(x.mid)}</b> · ${x.produk||""}
+          <div style="font-size:10.5px;color:#8C2A34">sama dengan ${x.dobel.dalamFile?"baris lain di file ini":"transaksi tersimpan"}
+            ${x.dobel.o.tgl} · ${x.dobel.o.produk||""} · ${rp(+x.dobel.o.nominal||0)}</div>
+          <label style="font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;gap:5px;align-items:center;margin-top:3px">
+            <input type="checkbox" ${x.lewati?"checked":""} onchange="lewatiDobel(${hasil.indexOf(x)},this.checked)"> lewati baris ini</label>
+        </span>
+        <span class="rp">${rp(x.nominal)}</span>
+      </div>`).join("")}
+      ${dobel.length>60?`<div class="hint">… dan ${dobel.length-60} lagi</div>`:""}
+      </div></div>`:""}
     ${baru.length?`<div class="hint" style="margin-top:8px">
       <b>${baru.length} pembelian dari pembeli yang belum terdaftar</b> — muridnya dibuatkan otomatis
       lengkap dengan nomor induk, email, dan nomor HP, lalu pembeliannya langsung masuk ke riwayatnya.
@@ -5968,8 +6039,9 @@ function prosesImpor(simpan){
           ✓ Terima ${gagal.filter(x=>x.saran&&!x.beda&&x.saran.p>=90).length} saran yang meyakinkan</button>`:""}
       </div>
       <div class="hint" style="margin:0 0 5px">Baris ini namanya mirip murid lama tapi kontaknya berbeda, atau nama pembelinya kosong.
-        Ketik nama murid yang benar, atau terima saran kalau memang orang yang sama.
-        Nama yang kamu isi disimpan sebagai alias, jadi impor berikutnya langsung cocok.</div>
+        Ada tiga pilihan: <b>ketik nama murid yang benar</b> kalau memang orang yang sama (namanya disimpan sebagai alias),
+        <b>terima saran</b>, atau <b>➕ murid baru</b> kalau memang orang lain — nomor induknya dibuatkan otomatis.
+        Mengosongkan kotaknya berarti baris itu dilewati, tidak ikut terimpor.</div>
       <div class="scroll" style="max-height:300px">
       ${gagal.slice(0,120).map((x,i)=>`<div class="belirow">
         <span class="tg">${x.tgl}</span>
@@ -5981,6 +6053,8 @@ function prosesImpor(simpan){
               onchange="setImporMurid(${hasil.indexOf(x)},this.value)"
               style="padding:5px 7px;font-size:11.5px;min-width:170px">
             ${x.saran?`<span class="chip" title="Kemiripan nama">${x.saran.p}% mirip</span>`:""}
+            <button class="btn small" onclick="importJadiBaru(${hasil.indexOf(x)})"
+              title="Ini memang orang lain — daftarkan sebagai murid baru dengan nomor induk sendiri">➕ murid baru</button>
           </div></span>
         <span class="rp">${rp(x.nominal)}</span>
       </div>`).join("")}
