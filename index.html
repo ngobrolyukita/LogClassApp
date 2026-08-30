@@ -3802,7 +3802,7 @@ function editBeli(oid){
       {label:"Tanggal",nilai:o.tgl,tipe:"date"},
       {label:"Program",nilai:progBeli(o),pilihan:[...new Set([...DATA.langs,...G.map(g=>g.prog)])]},
       {label:"Jenis",nilai:(o.tipe==="topup"||o.tipe==="ulang")?"top up":"awal",pilihan:["awal","top up"],
-        hint:"— program berbeda dihitung awal, bukan top up"},
+        hint:"— top up hanya untuk bahasa DAN jenis kelas yang sama; pilihan ini dikunci setelah diubah"},
       {label:"Jam paket",nilai:+o.jam>0?o.jam:"",tipe:"number",
         hint:"— kosongkan untuk memakai bawaan "+(MEET.jamDefault||JAM_PAKET_BAWAAN)+" jam"},
       {label:"Nominal (Rp)",nilai:+o.nominal||"",tipe:"number"},
@@ -3819,7 +3819,9 @@ function simpanEditBeli(oid,[tgl,prog,jenis,jam,nominal,dipakai]){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(t))return toast("Tanggalnya belum benar");
   o.tgl=t;
   o.prog=progBaku(normName(prog))||progBeli(o);
-  o.tipe=/top/i.test(jenis)?"topup":"awal";
+  const tipeBaru=/top/i.test(jenis)?"topup":"awal";
+  if(o.tipe!==tipeBaru)o.kunci=1;              // ditetapkan manual, jangan ditimpa lagi
+  o.tipe=tipeBaru;
   o.jam=+String(jam).replace(/[^\d.]/g,"")||0;
   o.nominal=+String(nominal).replace(/\D/g,"")||0;
   o.dipakai=+String(dipakai).replace(/[^\d.]/g,"")||0;
@@ -4766,6 +4768,21 @@ function blokMurid(nama){
           Jam paketnya diatur lewat tombol ✎ di riwayat pembelian.
           <b>Kelas reguler belum ikut dihitung</b> — rupiahnya tetap tercatat penuh, tokennya ditunda sampai kelas privat rapi.</div>
       </div>`;})()}
+    ${(()=>{const nmM=(U.murid[id]||{}).nm||"";
+      const tl=tuList(nmM), ck=cocokTUBeli(id,nmM);
+      const sisa=ck.filter(x=>!x.beli);
+      if(!sisa.length)return "";
+      return `<div style="margin:0 0 10px">
+        <b style="font-size:12px">Catatan Paket Lama</b>
+        <div class="hint" style="margin:2px 0 5px">Dicatat tim sebelum riwayat pembelian ada, dan belum ketemu transaksinya.
+          Tetap dipakai untuk hitungan jam. Kalau transaksinya sudah dicatat di atas, catatan ini boleh dihapus.</div>
+        ${sisa.map(x=>`<div class="belirow">
+          <span class="tg">${x.t.tgl?fmtD_(x.t.tgl):"—"}</span>
+          <span class="pr">Top up ke-${x.t.ke}${+x.t.jam>0?" · "+x.t.jam+" jam":""}
+            <div class="sub" style="color:var(--ink-soft);font-size:10.5px">${x.t.note||""}${x.t.by?" · dicatat "+x.t.by:""}</div></span>
+          ${canEdit()?`<button class="btn ghost small" onclick="hapusTU(du('${eu(nmM)}'),${x.t.seq})" title="Hapus catatan paket ini">✕</button>`:""}
+        </div>`).join("")}
+      </div>`;})()}
     <div class="row-actions" style="margin:0 0 4px">
       <b style="font-size:12px">Riwayat Pembelian</b>
       <button class="btn ghost small editonly" onclick="bukaCatatBeli('${id}')">+ Catat pembelian</button>
@@ -5146,19 +5163,26 @@ function progOf(teks){
 /* program sebuah pembelian: yang tersimpan dulu, kalau kosong ditebak dari nama produk */
 function progBeli(o){return progBaku(o.prog)||progOf(o.produk);}
 /* susun ulang tipe & urutan top up — dihitung per program, bukan per murid */
+/* Top up hanya berlaku dalam satu kelompok yang sama: bahasa DAN jenis kelasnya.
+   Joned yang sudah privat Jerman lalu membeli reguler Jerman bukan top up —
+   itu paket baru, jadi dihitung pembelian awal untuk kelompok reguler. */
+function jenisKelas(o){return beliReguler(o)?"Reguler":"Privat";}
+function grupBeli(o){return progBeli(o)+" · "+jenisKelas(o);}
 function segarkanTipeBeli(id){
   const L=beliMurid(id);
   const per={};
-  L.forEach(o=>{const k=progBeli(o);(per[k]=per[k]||[]).push(o);});
+  L.forEach(o=>{const k=grupBeli(o);(per[k]=per[k]||[]).push(o);});
   let ubah=0;
   Object.entries(per).forEach(([k,arr])=>{
     arr.sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl)));
     arr.forEach((o,i)=>{
-      const tipe=i===0?"awal":"topup", ke=i;                    // ke=0 untuk pembelian awal
       const x=U.beli[o.oid];
       if(!x)return;
-      if(x.tipe!==tipe||(+x.ke||0)!==ke||x.prog!==k){
-        x.tipe=tipe;x.ke=ke;x.prog=k;pushBELI(o.oid,x);ubah++;
+      // jenis yang diubah manual dihormati, tidak ditimpa hitungan otomatis
+      const tipe=x.kunci?x.tipe:(i===0?"awal":"topup");
+      const ke=x.kunci?(+x.ke||0):i;
+      if(x.tipe!==tipe||(+x.ke||0)!==ke){
+        x.tipe=tipe;x.ke=ke;pushBELI(o.oid,x);ubah++;
       }
     });
   });
@@ -5175,7 +5199,7 @@ function segarkanTipeBeli(id){
 function beliPerProgram(id){
   const L=beliMurid(id), per={};
   L.forEach(o=>{
-    const k=progBeli(o);
+    const k=grupBeli(o);
     const p2=per[k]=per[k]||{prog:k,n:0,rp:0,awal:"",akhir:"",items:[]};
     p2.n++;p2.rp+=(+o.nominal||0);p2.items.push(o);
     if(!p2.awal||o.tgl<p2.awal)p2.awal=o.tgl;
@@ -7878,40 +7902,8 @@ function renderDetail(){
       const _mid=midOf(name), _cocok=_mid?cocokTUBeli(_mid,name):[];
       const _cari=t=>(_cocok.find(x=>x.t.seq===t.seq)||{});
       const _blmCocok=_cocok.filter(x=>!x.beli).length;
-      html+=`<div class="card"><h2>Top Up Paket${tl.length?` · ${tl.length}×`:""}</h2>`+
-        `<p class="note" style="margin:0 0 8px">Top up sekarang cukup dicatat sekali di
-          <b>Riwayat Pembelian</b> — begitu ditandai <b>top up</b>, transaksinya otomatis masuk
-          ke statistik harian, badge top up, dan penghitungan jam paket. Bagian ini tinggal
-          menampung catatan paket lama yang belum punya pembelian.</p>`+
-        (canEdit()&&_mid?`<div class="row-actions" style="margin:0 0 9px">
-          <button class="btn small" onclick="bukaCatatBeli(du('${eu(_mid)}'))">🧾 Catat top up di Riwayat Pembelian</button>
-        </div>`:"")+
-        (tl.length?`<div>`+tl.map(t=>{const c=_cari(t);return `<div class="turow">
-            <div style="flex:1;min-width:0">
-              <b>Top up ke-${t.ke}</b>${t.jam?` · ${t.jam} jam`:""}
-              ${_mid?(c.beli
-                ? `<span class="mtag aktif" title="Sudah ada pembeliannya ${fmtD_(c.beli.tgl)} · ${rp(+c.beli.nominal||0)} — catatan ini tidak dihitung dua kali">✓ sudah ada di Riwayat Pembelian</span>`
-                : `<span class="mtag cuti" title="Belum ada pembelian bernilai rupiah — catatan ini masih dipakai untuk hitungan jam">catatan lama, belum ada pembeliannya</span>`):""}
-              <div class="meta">${t.tgl?fmtD_(t.tgl):"—"}${t.note?" · "+t.note:""}${c.beli?` · ${rp(+c.beli.nominal||0)} · ${c.beli.produk||""}`:""}</div>
-              <div class="meta">${t.by?"dicatat "+t.by:""}${t.at?" · "+new Date(t.at).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""}</div>
-            </div>
-            ${canEdit()?`<button title="Hapus catatan paket ini" onclick="hapusTU('${eu(name)}',${t.seq})">✕</button>`:""}
-          </div>`;}).join("")+`</div>`
-          :`<p class="note" style="margin:0">Tidak ada catatan paket lama. Semua top up murid ini
-            dibaca langsung dari Riwayat Pembelian.</p>`)+
-        (canEdit()?`<details style="margin-top:9px"><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--ink-soft)">
-            Catat paket tanpa nilai rupiah</summary>
-          <p class="note" style="margin:6px 0">Dipakai hanya untuk top up lama yang transaksinya tidak terlacak.
-            Untuk transaksi baru, catat di Riwayat Pembelian supaya rupiahnya ikut terhitung.</p>
-          <div class="tuform">
-            <label>Tanggal<input type="date" id="tuTgl" value="${todayStr()}"></label>
-            <label>Top up ke<input class="s" type="number" min="1" step="1" id="tuKe" value="${lastKe+1}"></label>
-            <label>Jumlah jam<input class="s" type="number" min="0" step="0.5" id="tuJam" placeholder="—"></label>
-            <label style="flex:1;min-width:140px">Catatan<input type="text" id="tuNote" placeholder="mis. lanjut paket 20 jam"></label>
-            <button class="btn small ghost" onclick="simpanTU('${eu(name)}')">+ Catat paket saja</button>
-          </div></details>`
-        :`<p class="note" style="margin:6px 0 0">Hanya user dengan akses edit yang bisa mencatat top up.</p>`)+
-        `</div>`;
+      /* Kartu Top Up Paket dihapus — pencatatannya sudah menyatu di Riwayat Pembelian.
+         Catatan paket lama yang belum punya pembelian tetap ditampilkan di sana. */
     }
     // ---- riwayat pindah tutor ----
     const gl=gtutList(name);
