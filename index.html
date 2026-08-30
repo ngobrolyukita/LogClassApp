@@ -247,6 +247,9 @@
   .tok-tipis{background:#F4EAD4;color:#7A5310;border-color:#D8BE86}
   .tok-aman{background:#DCEBE3;color:#1C6047;border-color:#A6C4B4}
   .tok-reg{background:#E3EAE9;color:#5B6E77;border-color:#C6D2D1}
+  .aliaschip{display:inline-flex;align-items:center;gap:3px;background:var(--iris-tint);color:var(--iris-dark);
+       border-radius:99px;padding:1px 4px 1px 9px;font-size:11px;font-weight:700;margin-right:3px}
+  .aliaschip button{border:0;background:none;color:var(--red);cursor:pointer;font-size:12px;padding:0 3px;line-height:1}
   .tstat{display:inline-block;margin-left:5px;font-size:9px;font-weight:800;letter-spacing:.3px;
         padding:1px 6px;border-radius:99px;border:1px solid;vertical-align:1px;white-space:nowrap}
   .tnum{display:inline-block;margin-left:6px;font-family:ui-monospace,monospace;font-size:10px;
@@ -3670,6 +3673,63 @@ function bikinIdMurid(diam){
   return n;
 }
 /* gabungkan dua murid: `dari` dilebur ke `ke` */
+/* Kebalikan dari Gabungkan: satu nama yang terlanjur ikut ke murid lain
+   dikeluarkan lagi jadi murid sendiri. Pembelian yang nama pembelinya cocok
+   dengan alias itu ikut pindah, supaya rupiahnya tidak tertinggal di orang yang salah. */
+function pisahkanAlias(id,alias){
+  if(!guard())return;
+  const m=(U.murid||{})[id]; if(!m)return;
+  const a=String(alias||"").trim();
+  if(!a||a===nkey(m.nm))return toast("Itu nama utamanya, tidak bisa dipisah");
+  const ikut=beliMurid(id).filter(o=>nkey(o.nm||"")===a);
+  const namaBaru=(ikut.length&&ikut[0].nm)?ikut[0].nm:a.replace(/\b\w/g,c=>c.toUpperCase());
+  tanyaForm({
+    judul:"Pisahkan Murid",
+    sub:'"'+a+'" dikeluarkan dari '+m.nm+" ("+id+")",
+    pesan:ikut.length
+      ? ikut.length+" pembelian atas nama itu ikut pindah ke murid baru. Kelas di log yang memakai nama itu juga akan mengikuti murid baru."
+      : "Tidak ada pembelian atas nama itu, jadi hanya namanya yang dikeluarkan. Kelas di log yang memakai nama itu akan mengikuti murid baru.",
+    fields:[{label:"Nama murid baru",nilai:namaBaru,hint:"— nomor induk "+idBerikut()+" dibuatkan otomatis"}],
+    tombol:"Pisahkan",
+    ok:([nm])=>lakukanPisah(id,a,nm)
+  });
+}
+function lakukanPisah(id,alias,nmBaru){
+  const m=(U.murid||{})[id]; if(!m)return;
+  const nama=normName(nmBaru||"");
+  if(!nama)return toast("Nama barunya kosong");
+  mulaiMassal();
+  const ikut=beliMurid(id).filter(o=>nkey(o.nm||"")===alias);
+  m.al=(m.al||[]).filter(x=>x!==alias);
+  simpanMurid(id,m);lupakanIndex();
+  /* Kalau murid dengan nama itu sudah ada (mis. sudah terdaftar dari log kelas),
+     pembeliannya dipindahkan ke sana — jangan bikin nomor induk kembar. */
+  let idBaru=midOf(nama);
+  if(idBaru&&idBaru!==id){
+    const lama=U.murid[idBaru];
+    if(!(lama.al||[]).includes(alias)){lama.al=[...(lama.al||[]),alias];}
+    const em=ikut.find(o=>o.email), hp=ikut.find(o=>o.hp);
+    if(!lama.email&&em)lama.email=em.email;
+    if(!lama.wa&&hp)lama.wa=waNorm(hp.hp);
+    simpanMurid(idBaru,lama);
+  }else{
+    idBaru=idBerikut();
+    const baru=muridBaru(nama);
+    baru.al=[...new Set([...(baru.al||[]),alias])];
+    if(ikut.length){
+      baru.daftar=ikut[0].tgl||todayStr();
+      const em=ikut.find(o=>o.email), hp=ikut.find(o=>o.hp);
+      baru.email=em?em.email:"";
+      baru.wa=hp?waNorm(hp.hp):"";
+    }
+    U.murid[idBaru]=baru;pushMURID(idBaru,baru);
+  }
+  ikut.forEach(o=>{const x=U.beli[o.oid];if(x){x.mid=idBaru;pushBELI(o.oid,x);}});
+  selesaiMassal();cacheAll();lupakanIndex();lupakanRekap();
+  segarkanTipeBeli(idBaru);segarkanTipeBeli(id);
+  renderAll();if(detailCtx)renderDetail();
+  toast(nama+" sekarang "+idBaru+(ikut.length?" · "+ikut.length+" pembelian ikut pindah":""));
+}
 function gabungMurid(ke,dari){
   if(!guard())return;
   if(ke===dari)return;
@@ -4665,7 +4725,13 @@ function blokMurid(nama){
     </div>
     ${r.tutor.length?`<div class="hint" style="margin:0 0 6px">Tutor: ${r.tutor.map(t=>
         `<span class="link" onclick="closeDetail();openTutor(du('${eu(t)}'))">${t}</span>${tutorTag(t,true)}`).join(" · ")}</div>`:""}
-    ${(m.al||[]).length>1?`<div class="hint" style="margin:0 0 7px">Nama lain yang dikenali: ${(m.al||[]).join(" · ")}</div>`:""}
+    ${(()=>{const al=(m.al||[]).filter(a=>a&&a!==nkey(m.nm));
+      if(!al.length)return "";
+      return `<div class="hint" style="margin:0 0 7px">Nama lain yang dikenali:
+        ${al.map(a=>`<span class="aliaschip">${a}${canEdit()
+          ? `<button title="Ini orang lain — pisahkan jadi murid sendiri" onclick="pisahkanAlias(du('${eu(id)}'),du('${eu(a)}'))">✂</button>`
+          : ""}</span>`).join(" ")}
+        ${canEdit()?`<div style="margin-top:3px">Klik ✂ kalau salah satunya ternyata murid lain — namanya dipisah jadi murid sendiri lengkap dengan nomor induk.</div>`:""}</div>`;})()}
     ${m.catatan?`<div class="note" style="margin:0 0 7px">${m.catatan}</div>`:""}
     <div class="mini-kpis" style="margin:0 0 8px">
       <div class="kpi"><div class="v">${r.beli}</div><div class="l">Kali Beli</div></div>
@@ -5097,9 +5163,10 @@ function segarkanTipeBeli(id){
     });
   });
   const m=U.murid[id];
-  if(m&&L.length){
-    const t1=L.map(o=>o.tgl).filter(Boolean).sort()[0]||"";
-    if(t1&&m.beli1!==t1){m.beli1=t1;simpanMurid(id,m);}
+  if(m){
+    // dikosongkan juga kalau pembeliannya sudah tidak ada, supaya tidak tertinggal
+    const t1=L.length?(L.map(o=>o.tgl).filter(Boolean).sort()[0]||""):"";
+    if((m.beli1||"")!==t1){m.beli1=t1;simpanMurid(id,m);}
   }
   if(ubah)cacheAll();
   return ubah;
@@ -5261,19 +5328,30 @@ function setImporMurid(i,nama){
   toast(x.nama+" → "+m.nm+" · "+sisa+" baris lagi belum dicocokkan");
   prosesImpor(false);
 }
+/* Terima saran massal hanya untuk kemiripan sangat tinggi DAN kontak yang tidak
+   bertentangan. Menggabungkan dua orang berbeda jauh lebih sulit diperbaiki
+   daripada mencocokkan satu per satu, jadi yang meragukan sengaja dilewati. */
 function terimaSaranImpor(){
   if(!IMPOR)return;
+  const kandidat=IMPOR.filter(x=>x.status==="belum ketemu murid"&&x.saran&&!x.beda&&x.saran.p>=90);
+  const lewat=IMPOR.filter(x=>x.status==="belum ketemu murid"&&x.saran).length-kandidat.length;
+  if(!kandidat.length)
+    return toast("Tidak ada saran yang cukup meyakinkan — cocokkan satu per satu di bawah");
+  if(!confirm(kandidat.length+" nama akan digabung ke murid yang sudah ada (kemiripan 90% ke atas).\n\n"+
+    kandidat.slice(0,6).map(x=>x.nama+" -> "+x.saran.nm+" ("+x.saran.p+"%)").join("\n")+
+    (kandidat.length>6?"\n…":"")+
+    (lewat?"\n\n"+lewat+" saran lain dilewati karena kurang meyakinkan.":"")+
+    "\n\nLanjutkan?"))return;
   let n=0;
   mulaiMassal();
-  IMPOR.forEach(x=>{
-    if(x.status!=="belum ketemu murid"||!x.saran)return;
+  kandidat.forEach(x=>{
     x.mid=x.saran.id;x.status="cocok";
     const m=U.murid[x.saran.id], al=nkey(x.nama);
     if(m&&al&&!(m.al||[]).includes(al)){m.al=[...(m.al||[]),al];simpanMurid(x.saran.id,m);}
     n++;
   });
   selesaiMassal();cacheAll();lupakanIndex();
-  toast(n+" saran diterima");
+  toast(n+" saran diterima"+(lewat?" · "+lewat+" dilewati, cocokkan manual":""));
   prosesImpor(false);
 }
 function simpanImpor(){
@@ -5518,8 +5596,8 @@ function prosesImpor(simpan){
       itu diperlakukan sebagai orang lain, dan ditaruh di daftar "Perlu Dicek" di bawah.</div>
     ${gagal.length?`<div class="row-actions" style="margin-top:9px">
         <b style="font-size:12px">Perlu dicek dulu (${gagal.length})</b>
-        ${gagal.filter(x=>x.saran).length?`<button class="btn small" onclick="terimaSaranImpor()">
-          ✓ Terima ${gagal.filter(x=>x.saran).length} saran sekaligus</button>`:""}
+        ${gagal.filter(x=>x.saran&&!x.beda&&x.saran.p>=90).length?`<button class="btn small" onclick="terimaSaranImpor()">
+          ✓ Terima ${gagal.filter(x=>x.saran&&!x.beda&&x.saran.p>=90).length} saran yang meyakinkan</button>`:""}
       </div>
       <div class="hint" style="margin:0 0 5px">Baris ini namanya mirip murid lama tapi kontaknya berbeda, atau nama pembelinya kosong.
         Ketik nama murid yang benar, atau terima saran kalau memang orang yang sama.
