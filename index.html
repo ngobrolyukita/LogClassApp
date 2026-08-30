@@ -445,6 +445,7 @@
     <button class="tab on" data-p="log">Log Kelas</button>
     <button class="tab" data-p="tutor">Tutor Card</button>
     <button class="tab" data-p="murid">Data Murid</button>
+    <button class="tab" data-p="club">Convo Club</button>
     <button class="tab" data-p="stat">Statistik</button>
     <button class="tab" data-p="master">Master Rate</button>
   </div>
@@ -741,6 +742,28 @@
         <button class="btn" onclick="prosesImpor(false)">🔍 Periksa dulu</button>
         <button class="btn ghost" onclick="tutupImpor()">Batal</button>
       </div>
+    </div>
+  </div>
+
+  <div class="panel" id="p-club">
+    <div class="card">
+      <h2>💬 Conversation Club — Masa Berlaku</h2>
+      <p class="note" style="margin-top:0">Club tidak memakai token jam. Yang habis adalah <b>waktunya</b>:
+        paket dihitung dari tanggal beli sesuai jumlah bulannya, ditambah <b>masa tenggang 5 hari</b>.
+        Top up memperpanjang dari tanggal berakhir yang lama kalau masih aktif, atau dari tanggal beli kalau sudah lewat.
+        Jumlah bulan dibaca dari nama produk WooCommerce.</p>
+      <div class="mini-kpis" id="ccKpis"></div>
+      <div class="searchrow" style="margin-top:9px">
+        <input type="text" id="ccCari" placeholder="Cari nama atau nomor induk..." oninput="renderCC()" style="flex:1;min-width:150px">
+        <select id="ccFilter" onchange="renderCC()">
+          <option value="all">Semua status</option>
+          <option value="segera">Segera habis</option>
+          <option value="habis">Sudah lewat</option>
+          <option value="aktif">Masih aktif</option>
+        </select>
+        <button class="btn ghost small" onclick="exportCC()">📦 Export CSV</button>
+      </div>
+      <div id="ccList"></div>
     </div>
   </div>
 
@@ -2511,11 +2534,12 @@ function gambarPanel(p){
   if(p==="log")renderLog();
   else if(p==="tutor")renderTutorCards();
   else if(p==="murid")renderMurid();
+  else if(p==="club")renderCC();
   else if(p==="stat")renderStats();
   else if(p==="master")renderMaster();
 }
 /* semua panel digambar sekali — dipakai saat sinkronisasi penuh selesai */
-function gambarSemua(){["log","tutor","murid","stat","master"].forEach(gambarPanel);}
+function gambarSemua(){["log","tutor","murid","club","stat","master"].forEach(gambarPanel);}
 function renderFlagBtn(){
   const b=document.getElementById("btnFlag");if(!b)return;
   const n=classes.filter(c=>c.flag).length;
@@ -3801,11 +3825,15 @@ function editBeli(oid){
       : "",
     fields:[
       {label:"Tanggal",nilai:o.tgl,tipe:"date"},
-      {label:"Program",nilai:progBeli(o),pilihan:[...new Set([...DATA.langs,...G.map(g=>g.prog)])]},
+      {label:"Program",nilai:progBaku(progBeli(o)),pilihan:DATA.langs,
+        hint:"— cukup bahasanya; privat/reguler dibaca dari nama produk"},
       {label:"Jenis",nilai:(o.tipe==="topup"||o.tipe==="ulang")?"top up":"awal",pilihan:["awal","top up"],
         hint:"— top up hanya untuk bahasa DAN jenis kelas yang sama; pilihan ini dikunci setelah diubah"},
-      {label:"Jam paket",nilai:+o.jam>0?o.jam:"",tipe:"number",
-        hint:"— kosongkan untuk memakai bawaan "+(MEET.jamDefault||JAM_PAKET_BAWAAN)+" jam"},
+      isCC(o)
+        ? {label:"Jumlah bulan paket",nilai:bulanPaket(o),tipe:"number",
+           hint:"— Conversation Club dihitung per bulan, bukan per jam"}
+        : {label:"Jam paket",nilai:+o.jam>0?o.jam:"",tipe:"number",
+           hint:"— kosongkan untuk memakai bawaan "+(MEET.jamDefault||JAM_PAKET_BAWAAN)+" jam"},
       {label:"Nominal (Rp)",nilai:+o.nominal||"",tipe:"number"},
       {label:"Jam sudah terpakai sebelum "+fmtD_(MEET.since),nilai:+o.dipakai||"",tipe:"number",
         hint:"— hanya untuk pembelian lama"}
@@ -3823,7 +3851,8 @@ function simpanEditBeli(oid,[tgl,prog,jenis,jam,nominal,dipakai]){
   const tipeBaru=/top/i.test(jenis)?"topup":"awal";
   if(o.tipe!==tipeBaru)o.kunci=1;              // ditetapkan manual, jangan ditimpa lagi
   o.tipe=tipeBaru;
-  o.jam=+String(jam).replace(/[^\d.]/g,"")||0;
+  if(isCC(o))o.bulan=+String(jam).replace(/[^\d.]/g,"")||0;
+  else o.jam=+String(jam).replace(/[^\d.]/g,"")||0;
   o.nominal=+String(nominal).replace(/\D/g,"")||0;
   o.dipakai=+String(dipakai).replace(/[^\d.]/g,"")||0;
   pushBELI(oid,o);
@@ -4680,7 +4709,7 @@ function renderMurid(){
       <span class="r">${r.sesi} · ${r.jam}j</span>
       <span class="r kol4">${r.topup?r.topup+"×":"—"}</span>
       <span class="r">${r.belanja?rp(r.belanja):"—"}${r.beli?`<div class="sub">${r.beli}× beli</div>`:""}</span>
-      <span><span class="mtag ${MSTATUS[r.status].c}">${r.statusL}</span>${tokenBadgeMurid(r.id)}</span>
+      <span><span class="mtag ${MSTATUS[r.status].c}">${r.statusL}</span>${tokenBadgeMurid(r.id)}${ccBadge(r.id)}</span>
     </div>`).join("")+`</div>`+
     (potong?`<div class="row-actions" style="justify-content:center;margin-top:9px">
       <span class="hint">Menampilkan ${R.length} dari ${total} murid — dibatasi supaya tetap ringan.</span>
@@ -4746,18 +4775,13 @@ function blokMurid(nama){
       <div class="kpi"><div class="v">${r.selisih==null?"—":r.selisih+" hr"}</div><div class="l">Sejak Kelas Terakhir</div></div>
     </div>
     ${(()=>{const t=tokenMurid(id);if(!t)return "";
-      const baris=Object.entries(t.per).filter(([,x])=>x.beli>0||x.pakai>0);
+      const baris=Object.entries(t.per).filter(([,x])=>!x.reg&&(x.beli>0||x.pakai>0));
       if(!baris.length)return `<div class="filterchip" style="background:#F6E1E3;border-color:#DCB2B6">
         <b>Belum ada token belajar.</b> Murid ini belum punya riwayat pembelian —
         jam yang sudah diajarkan belum ada yang membayarnya.</div>`;
       return `<div style="margin:0 0 10px">
         <b style="font-size:12px">Token Belajar</b>
         ${baris.map(([prog,x])=>{
-          if(x.reg)return `<div class="belirow">
-            <span class="pr"><b>${prog}</b>
-              <span class="mt">kelas reguler · ${x.n}× beli</span></span>
-            <span class="rp" style="color:#5B6E77">token belum dihitung</span>
-          </div>`;
           const habis=x.beli<=0||x.sisa<=0.001;
           return `<div class="belirow">
             <span class="pr"><b>${prog}</b>
@@ -4767,7 +4791,8 @@ function blokMurid(nama){
           </div>`;}).join("")}
         <div class="hint" style="margin-top:4px">Token bertambah dari pembelian dan top up, berkurang dari kelas Selesai di log.
           Jam paketnya diatur lewat tombol ✎ di riwayat pembelian.
-          <b>Kelas reguler belum ikut dihitung</b> — rupiahnya tetap tercatat penuh, tokennya ditunda sampai kelas privat rapi.</div>
+          <b>Kelas reguler dan Conversation Club tidak memakai token</b> — rupiahnya tetap tercatat penuh.
+          Reguler dihitung per batch, Club per masa berlaku di tab tersendiri.</div>
       </div>`;})()}
     ${(()=>{const nmM=(U.murid[id]||{}).nm||"";
       const tl=tuList(nmM), ck=cocokTUBeli(id,nmM);
@@ -4782,6 +4807,27 @@ function blokMurid(nama){
           <span class="pr">Top up ke-${x.t.ke}${+x.t.jam>0?" · "+x.t.jam+" jam":""}
             <div class="sub" style="color:var(--ink-soft);font-size:10.5px">${x.t.note||""}${x.t.by?" · dicatat "+x.t.by:""}</div></span>
           ${canEdit()?`<button class="btn ghost small" onclick="hapusTU(du('${eu(nmM)}'),${x.t.seq})" title="Hapus catatan paket ini">✕</button>`:""}
+        </div>`).join("")}
+      </div>`;})()}
+    ${(()=>{const c=ccMurid(id); if(!c)return "";
+      const w2=c.status==="habis"?["#F6E1E3","#DCB2B6","#A0303D"]
+             :c.status==="segera"?["#F4EAD4","#D8BE86","#7A5310"]
+             :["#DCEBE3","#A6C4B4","#1C6047"];
+      return `<div style="margin:0 0 10px">
+        <b style="font-size:12px">Conversation Club</b>
+        <div class="filterchip" style="display:block;background:${w2[0]};border-color:${w2[1]};margin-top:4px">
+          <b style="color:${w2[2]}">${CC_LABEL[c.status]}</b> — berlaku sampai <b>${fmtD_(c.akhir)}</b>
+          ${c.sisa<0?`(lewat ${-c.sisa} hari)`:`(sisa ${c.sisa} hari)`}
+          <div style="margin-top:4px;font-weight:600;color:var(--ink-soft)">
+            ${c.items.length}× beli · total ${c.bulan} bulan · ${rp(c.rp)} · sudah termasuk tenggang 5 hari</div>
+        </div>
+        ${c.items.map(o=>`<div class="belirow">
+          <span class="tg">${fmtD_(o.tgl)}</span>
+          <span class="pr">${o.produk||"—"}
+            <span class="chip">${o.bln} bulan</span>
+            ${o.ke?`<span class="mtag kelar">perpanjangan ke-${o.ke}</span>`:`<span class="mtag aktif">paket awal</span>`}
+            <div class="sub" style="color:var(--ink-soft);font-size:10.5px">berlaku ${fmtD_(o.mulai)} → ${fmtD_(o.habis)}</div></span>
+          <span class="rp">${rp(+o.nominal||0)}</span>
         </div>`).join("")}
       </div>`;})()}
     <div class="row-actions" style="margin:0 0 4px">
@@ -4895,7 +4941,11 @@ const PROG=[
 const PROG_LAMA={"Inggris":"English","Inggris Bisnis":"Professional English",
   "Inggris Conversation":"English","Inggris Prep":"English Prep","Jerman":"German",
   "Spanyol":"Spanish","Indonesia":"Bahasa Indonesia"};
-function progBaku(v){const x=String(v||"").trim();return PROG_LAMA[x]||x;}
+function progBaku(v){
+  let x=String(v||"").trim();
+  x=x.replace(/\s*·\s*(privat|private|reguler|regular)\s*$/i,"");   // buang embel jenis kelas
+  return PROG_LAMA[x]||x;
+}
 /* ================= CATAT PEMBELIAN / TOP UP (satu form) =================
    Dulu pembelian dan top up dicatat di dua tempat berbeda, padahal satu kejadian yang sama:
    murid bayar, lalu hitungan pertemuannya mulai lagi dari P1.
@@ -5168,7 +5218,12 @@ function progBeli(o){return progBaku(o.prog)||progOf(o.produk);}
    Joned yang sudah privat Jerman lalu membeli reguler Jerman bukan top up —
    itu paket baru, jadi dihitung pembelian awal untuk kelompok reguler. */
 function jenisKelas(o){return beliReguler(o)?"Reguler":"Privat";}
-function grupBeli(o){return progBeli(o)+" · "+jenisKelas(o);}
+function grupBeli(o){
+  const p2=progBaku(progBeli(o));
+  if(isCC(o))return p2+" · Conversation Club";
+  if(beliReguler(o))return p2+" · Reguler · "+batchDari(o);   // tiap batch berdiri sendiri
+  return p2+" · Privat";
+}
 function segarkanTipeBeli(id){
   const L=beliMurid(id);
   const per={};
@@ -5182,8 +5237,9 @@ function segarkanTipeBeli(id){
       // jenis yang diubah manual dihormati, tidak ditimpa hitungan otomatis
       const tipe=x.kunci?x.tipe:(i===0?"awal":"topup");
       const ke=x.kunci?(+x.ke||0):i;
-      if(x.tipe!==tipe||(+x.ke||0)!==ke){
-        x.tipe=tipe;x.ke=ke;pushBELI(o.oid,x);ubah++;
+      const progBersih=progBaku(x.prog||"")||progOf(x.produk);
+      if(x.tipe!==tipe||(+x.ke||0)!==ke||x.prog!==progBersih){
+        x.tipe=tipe;x.ke=ke;x.prog=progBersih;pushBELI(o.oid,x);ubah++;
       }
     });
   });
@@ -5208,6 +5264,125 @@ function beliPerProgram(id){
   });
   Object.values(per).forEach(p2=>p2.items.sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl))));
   return Object.values(per).sort((a,b)=>String(a.awal).localeCompare(String(b.awal)));
+}
+/* ================= KELAS REGULER: DIKELOMPOKKAN PER BATCH =================
+   Nama produk reguler selalu menyebut batch-nya di belakang tanda hubung:
+   "Kelas Reguler Bahasa Jerman - Bundling A1", "... - Chuji Shang (HSK 1)".
+   Batch adalah rombongan belajar yang berbeda, jadi membeli batch berikutnya
+   BUKAN top up — itu pendaftaran baru. */
+function batchDari(o){
+  const t=String((o&&o.produk)||"");
+  const m=t.split(/\s+[-–]\s+/);
+  if(m.length>1){
+    const b=m[m.length-1].replace(/,?\s*(cicilan|full\s*payment)\s*$/i,"").trim();
+    if(b&&b.length<=42)return b;
+  }
+  return "(tanpa batch)";
+}
+/* ================= CONVERSATION CLUB: BERBASIS MASA BERLAKU =================
+   Club tidak memakai token jam. Yang habis adalah waktunya: paket N bulan
+   ditambah masa tenggang 5 hari. Top up memperpanjang dari tanggal berakhir
+   yang lama kalau masih aktif, atau dari tanggal beli kalau sudah lewat. */
+const CC_TENGGANG=5;
+function isCC(o){
+  const t=String((o&&o.produk)||"");
+  if(/privat|private|semi/i.test(t))return false;      // conversation privat tetap pakai token
+  return /conversation\s*(club|class)|convo\s*club/i.test(t);
+}
+function bulanPaket(o){
+  const t=String((o&&o.produk)||"");
+  if(+o.bulan>0)return +o.bulan;                        // hasil koreksi manual
+  let m=t.match(/(\d+)\s*(month|months|bulan|bln)\b/i);
+  if(m)return +m[1];
+  m=t.match(/\b(1|2|3|6|12)\s*(m|b)\b/i);
+  if(m)return +m[1];
+  return 1;                                             // tanpa keterangan dianggap 1 bulan
+}
+function tambahBulan(tgl,n){
+  const d=new Date(tgl+"T00:00:00");
+  const hari=d.getDate();
+  d.setMonth(d.getMonth()+n);
+  if(d.getDate()<hari)d.setDate(0);                     // 31 Jan + 1 bulan -> 28/29 Feb
+  return d;
+}
+function isoDari(d){return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());}
+/* riwayat club satu murid, lengkap dengan masa berlaku berjalan */
+function ccMurid(id){
+  const L=beliMurid(id).filter(isCC).sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl)));
+  if(!L.length)return null;
+  let habis=null;
+  const items=L.map((o,i)=>{
+    const bln=bulanPaket(o);
+    const mulai=(habis&&isoDari(habis)>=o.tgl)?isoDari(habis):o.tgl;   // perpanjang kalau masih aktif
+    const d=tambahBulan(mulai,bln); d.setDate(d.getDate()+CC_TENGGANG);
+    habis=d;
+    return Object.assign({},o,{bln,mulai,habis:isoDari(d),ke:i});
+  });
+  const akhir=isoDari(habis);
+  const hariIni=todayStr();
+  const sisa=Math.round((new Date(akhir)-new Date(hariIni))/86400000);
+  return {id,nm:namaMid(id),items,akhir,sisa,
+    status:sisa<0?"habis":(sisa<=CC_TENGGANG?"segera":"aktif"),
+    bulan:items.reduce((a,x)=>a+x.bln,0),
+    rp:items.reduce((a,x)=>a+(+x.nominal||0),0)};
+}
+function ccSemua(){
+  return Object.keys(U.murid||{}).map(ccMurid).filter(Boolean)
+    .sort((a,b)=>(a.sisa)-(b.sisa));
+}
+const CC_LABEL={habis:"Sudah lewat",segera:"Segera habis",aktif:"Aktif"};
+function ccBadge(id){
+  const c=ccMurid(id); if(!c)return "";
+  if(c.status==="habis")
+    return `<span class="tok tok-habis" title="Masa Conversation Club berakhir ${fmtD_(c.akhir)} — sudah lewat ${-c.sisa} hari">club habis</span>`;
+  if(c.status==="segera")
+    return `<span class="tok tok-tipis" title="Masa Conversation Club berakhir ${fmtD_(c.akhir)}">club ${c.sisa} hari lagi</span>`;
+  return `<span class="tok tok-aman" title="Masa Conversation Club berakhir ${fmtD_(c.akhir)}">club ${c.sisa} hari</span>`;
+}
+function renderCC(){
+  const box=document.getElementById("ccList"); if(!box)return;
+  const L=ccSemua();
+  const habis=L.filter(x=>x.status==="habis"), segera=L.filter(x=>x.status==="segera");
+  const q=(document.getElementById("ccCari").value||"").toLowerCase().trim();
+  document.getElementById("ccKpis").innerHTML=`
+    <div class="kpi hi"><div class="v">${L.length}</div><div class="l">Peserta Club</div></div>
+    <div class="kpi"><div class="v" style="color:${segera.length?"#8A5F14":"#1C6047"}">${segera.length}</div>
+      <div class="l">Segera Habis · ≤${CC_TENGGANG} hari</div></div>
+    <div class="kpi"><div class="v" style="color:${habis.length?"#A0303D":"#1C6047"}">${habis.length}</div>
+      <div class="l">Sudah Lewat</div></div>
+    <div class="kpi"><div class="v" style="font-size:13px">${rp(L.reduce((a,x)=>a+x.rp,0))}</div><div class="l">Nilai Paket Club</div></div>`;
+  let R=L;
+  if(q)R=R.filter(x=>(x.nm+" "+x.id).toLowerCase().includes(q));
+  const f=document.getElementById("ccFilter").value;
+  if(f!=="all")R=R.filter(x=>x.status===f);
+  box.innerHTML=R.length?`<div class="scroll">
+    <div class="mrow head" style="grid-template-columns:74px 1fr 120px 96px 92px">
+      <span>ID</span><span>Nama</span><span>Berakhir</span><span class="r">Sisa</span><span>Status</span></div>`+
+    R.map(x=>`<div class="mrow" style="grid-template-columns:74px 1fr 120px 96px 92px">
+      <span class="mid">${x.id}</span>
+      <span><span class="nm" onclick="openMuridId('${x.id}')">${x.nm}</span>
+        <div class="sub">${x.items.length}× beli · ${x.bulan} bulan · ${rp(x.rp)}</div></span>
+      <span>${fmtD_(x.akhir)}<div class="sub">mulai ${fmtD_(x.items[0].tgl)}</div></span>
+      <span class="r">${x.sisa<0?"lewat "+(-x.sisa)+" hr":x.sisa+" hr"}</span>
+      <span><span class="mtag ${x.status==="habis"?"vakum":x.status==="segera"?"cuti":"aktif"}">${CC_LABEL[x.status]}</span></span>
+    </div>`).join("")+`</div>`
+   :`<div class="empty">${L.length?"Tidak ada yang cocok dengan saringan ini.":"Belum ada pembelian Conversation Club."}</div>`;
+}
+function exportCC(){
+  const rows=[["Nomor Induk","Nama Murid","Status","Mulai","Berakhir","Sisa Hari","Jumlah Paket",
+    "Total Bulan","Nilai (Rp)","Email","WhatsApp"]];
+  ccSemua().forEach(x=>{
+    const m=U.murid[x.id]||{};
+    rows.push([x.id,x.nm,CC_LABEL[x.status],x.items[0].tgl,x.akhir,x.sisa,x.items.length,
+      x.bulan,x.rp,m.email||"",m.wa?waTampil(m.wa):""]);
+  });
+  rows.push([]);
+  rows.push(["RINCIAN PAKET"]);
+  rows.push(["Nomor Induk","Nama Murid","Tanggal Beli","Produk","Bulan","Mulai Berlaku","Berakhir","Nominal (Rp)"]);
+  ccSemua().forEach(x=>x.items.forEach(o=>
+    rows.push([x.id,x.nm,o.tgl,o.produk||"",o.bln,o.mulai,o.habis,+o.nominal||0])));
+  unduhCSV(rows,"conversation_club_"+todayStr()+".csv");
+  toast(ccSemua().length+" peserta club diekspor");
 }
 /* ================= TOKEN BELAJAR =================
    Setiap murid aktif harus punya token — jam yang sudah dibayar. Token bertambah
@@ -5236,10 +5411,10 @@ function bangunToken(){
     const per={};
     let nReg=0;
     beliPerProgram(id).forEach(g=>{
-      const priv=g.items.filter(o=>!beliReguler(o));
+      const priv=g.items.filter(o=>!beliReguler(o)&&!isCC(o));
       const reg=g.items.length-priv.length;
       nReg+=reg;
-      if(!priv.length){per[g.prog]={beli:0,praLog:0,pakai:0,n:g.n,reg:true};return;}
+      if(!priv.length)return;         // reguler & club: tidak ikut token sama sekali
       per[g.prog]={beli:priv.reduce((a,o)=>a+jamPaket(o,null),0),
         praLog:priv.reduce((a,o)=>a+(+o.dipakai||0),0),pakai:0,n:priv.length,
         nReg:reg,reg:false};
@@ -5268,7 +5443,6 @@ function bangunToken(){
   Object.values(TOKEN).forEach(t=>{
     let sisa=0,beli=0,pakai=0,adaHabis=false,adaTanpa=false,adaPriv=false;
     Object.values(t.per).forEach(x=>{
-      if(x.reg){x.sisa=null;return;}          // program reguler: token ditunda
       adaPriv=true;
       x.sisa=Math.round((x.beli-x.praLog-x.pakai)*100)/100;
       beli+=x.beli;pakai+=x.pakai+x.praLog;sisa+=x.sisa;
@@ -5288,7 +5462,8 @@ function tokenNama(nm){const id=midOf(nm);return id?tokenMurid(id):null;}
 function tokenKelas(c){
   if(!c||!c.cls||isReg(c))return null;
   const t=tokenNama(c.cls); if(!t)return null;
-  const prog=progBaku(c.lang||"")||c.lang||"";
+  // kunci token memakai bentuk "Bahasa · Privat", sama seperti pengelompokan pembelian
+  const prog=(progBaku(c.lang||"")||c.lang||"")+" · Privat";
   const x=t.per[prog];
   if(!x)return {prog,beli:0,pakai:0,sisa:0,kosong:true};
   if(x.reg)return null;                      // program reguler: belum dihitung
@@ -5309,8 +5484,7 @@ function tokenBadge(c){
 }
 function tokenBadgeMurid(id){
   const t=tokenMurid(id); if(!t)return "";
-  if(t.status==="reguler")
-    return `<span class="tok tok-reg" title="Semua pembeliannya kelas reguler — token belum dihitung untuk reguler">reguler</span>`;
+  if(t.status==="reguler")return "";        // reguler/club tidak memakai token
   if(!t.nBeli)return `<span class="tok tok-tanpa" title="Belum ada riwayat pembelian sama sekali">tanpa token</span>`;
   if(t.status==="tanpa")return `<span class="tok tok-tanpa" title="Ada program yang dipakai tapi belum pernah dibeli">program tanpa token</span>`;
   if(t.status==="habis")return `<span class="tok tok-habis" title="Token habis — jam berikutnya belum dibayar">token habis</span>`;
@@ -6667,12 +6841,12 @@ function exStatRows(a,b){
   Object.keys(U.murid||{}).forEach(id=>{
     const t=tokenMurid(id); if(!t)return;
     Object.entries(t.per).forEach(([prog,x])=>{
+      if(x.reg)return;                        // reguler & club tidak memakai token
       if(x.beli<=0&&x.pakai<=0)return;
-      R.push([id,namaMid(id),x.reg?"reguler (ditunda)":t.status,prog,
-        x.reg?"":Math.round(x.beli*100)/100,
-        x.reg?"":Math.round(x.pakai*100)/100,
-        x.reg?"":Math.round((x.praLog||0)*100)/100,
-        x.reg?"":(x.sisa==null?"":Math.round(x.sisa*100)/100), x.n||0]);
+      R.push([id,namaMid(id),t.status,prog,
+        Math.round(x.beli*100)/100,Math.round(x.pakai*100)/100,
+        Math.round((x.praLog||0)*100)/100,
+        (x.sisa==null?"":Math.round(x.sisa*100)/100), x.n||0]);
     });
   });
 
