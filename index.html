@@ -748,11 +748,18 @@
   <div class="panel" id="p-club">
     <div class="card">
       <h2>💬 Conversation Club — Masa Berlaku</h2>
-      <p class="note" style="margin-top:0">Club tidak memakai token jam. Yang habis adalah <b>waktunya</b>:
-        paket dihitung dari tanggal beli sesuai jumlah bulannya, ditambah <b>masa tenggang 5 hari</b>.
+      <p class="note" style="margin-top:0">Club tidak memakai token jam. Yang habis adalah <b>waktunya</b>.
+        Dua hal ini berjalan sendiri-sendiri: <b>transaksinya</b> dihitung pada periode cut-off saat dibeli,
+        sedangkan <b>masa berlakunya</b> mengikuti lama berlangganan (1, 2, atau 3 bulan sesuai paket di WooCommerce)
+        dihitung dari tanggal beli, ditambah <b>masa tenggang 5 hari</b>.
         Top up memperpanjang dari tanggal berakhir yang lama kalau masih aktif, atau dari tanggal beli kalau sudah lewat.
         Jumlah bulan dibaca dari nama produk WooCommerce.</p>
+      <div class="rangerow">
+        <span>Periode transaksi</span>
+        <select id="ccPeriod" onchange="renderCC()"></select>
+      </div>
       <div class="mini-kpis" id="ccKpis"></div>
+      <div id="ccLibur" style="margin-top:9px"></div>
       <div class="searchrow" style="margin-top:9px">
         <input type="text" id="ccCari" placeholder="Cari nama atau nomor induk..." oninput="renderCC()" style="flex:1;min-width:150px">
         <select id="ccFilter" onchange="renderCC()">
@@ -2143,7 +2150,7 @@ async function fullSync(){
     // Sheet = satu-satunya sumber data. Tidak pernah ada pengisian otomatis.
     classes=raw.map(normClass).filter(c=>c.tutor&&/^\d{4}-\d{2}-\d{2}$/.test(c.date));
     if(raw.length&&!classes.length)toast("Data terbaca "+raw.length+" baris tapi format tanggalnya tidak dikenali — hubungi admin");
-    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{},sub:{},wk:{},tid:{},tstat:{}};sisaJual=[];
+    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{},sub:{},wk:{},tid:{},tstat:{},libur:{}};sisaJual=[];
     (all.rates||[]).forEach(r=>{
       const id=String(r.id||""), val=+r.rate;
       if(/^N:T-\d+$/.test(id)&&String(r.lang||"")==="v1"){                     // nomor induk tutor
@@ -2173,6 +2180,10 @@ async function fullSync(){
           (U.topup[nm]=U.topup[nm]||[]).push({ke:+p[1]||seq,tgl:p[2]||"",jam:val||0,
             note:p[3]||"",by:p[4]||"",at:p[5]||"",seq});
         }
+        return;}
+      if(id.slice(0,2)==="L:"){                                                 // tanggal merah / cuti bersama
+        const d=id.slice(2);
+        if(/^\d{4}-\d{2}-\d{2}$/.test(d))U.libur[d]=String(r.lang||"Libur");
         return;}
       if(id.slice(0,2)==="Q:"){                                                 // status kepegawaian tutor
         const nm=id.slice(2), st=String(r.lang||"").trim();
@@ -3834,6 +3845,8 @@ function editBeli(oid){
            hint:"— Conversation Club dihitung per bulan, bukan per jam"}
         : {label:"Jam paket",nilai:+o.jam>0?o.jam:"",tipe:"number",
            hint:"— kosongkan untuk memakai bawaan "+(MEET.jamDefault||JAM_PAKET_BAWAAN)+" jam"},
+      {label:"Nama paket",nilai:namaRapi(o),
+        hint:"— nama rapi untuk laporan; kosongkan agar disusun ulang otomatis"},
       {label:"Nominal (Rp)",nilai:+o.nominal||"",tipe:"number"},
       {label:"Jam sudah terpakai sebelum "+fmtD_(MEET.since),nilai:+o.dipakai||"",tipe:"number",
         hint:"— hanya untuk pembelian lama"}
@@ -3842,7 +3855,7 @@ function editBeli(oid){
     ok:(v)=>simpanEditBeli(oid,v)
   });
 }
-function simpanEditBeli(oid,[tgl,prog,jenis,jam,nominal,dipakai]){
+function simpanEditBeli(oid,[tgl,prog,jenis,jam,label,nominal,dipakai]){
   const o=(U.beli||{})[oid]; if(!o)return;
   const t=jParseTgl(tgl)||normDate(tgl);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(t))return toast("Tanggalnya belum benar");
@@ -3853,6 +3866,8 @@ function simpanEditBeli(oid,[tgl,prog,jenis,jam,nominal,dipakai]){
   o.tipe=tipeBaru;
   if(isCC(o))o.bulan=+String(jam).replace(/[^\d.]/g,"")||0;
   else o.jam=+String(jam).replace(/[^\d.]/g,"")||0;
+  const lbl=String(label||"").trim();
+  o.label=(lbl&&lbl!==namaRapi(Object.assign({},o,{label:""})))?lbl:"";
   o.nominal=+String(nominal).replace(/\D/g,"")||0;
   o.dipakai=+String(dipakai).replace(/[^\d.]/g,"")||0;
   pushBELI(oid,o);
@@ -4823,7 +4838,8 @@ function blokMurid(nama){
         </div>
         ${c.items.map(o=>`<div class="belirow">
           <span class="tg">${fmtD_(o.tgl)}</span>
-          <span class="pr">${o.produk||"—"}
+          <span class="pr"><b>${namaRapi(o)}</b>
+            <div class="sub" style="color:var(--ink-soft);font-size:10.5px">${o.produk||"—"}</div>
             <span class="chip">${o.bln} bulan</span>
             ${o.ke?`<span class="mtag kelar">perpanjangan ke-${o.ke}</span>`:`<span class="mtag aktif">paket awal</span>`}
             <div class="sub" style="color:var(--ink-soft);font-size:10.5px">berlaku ${fmtD_(o.mulai)} → ${fmtD_(o.habis)}</div></span>
@@ -5265,6 +5281,93 @@ function beliPerProgram(id){
   Object.values(per).forEach(p2=>p2.items.sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl))));
   return Object.values(per).sort((a,b)=>String(a.awal).localeCompare(String(b.awal)));
 }
+/* ================= HARI LIBUR NASIONAL =================
+   Tanggal merah dan cuti bersama menghilangkan sesi club tanpa kesalahan murid,
+   jadi masa berlakunya ditambah satu hari untuk setiap libur yang jatuh
+   di dalam masa paket itu. */
+function liburAntara(a,b){
+  return Object.keys(U.libur||{}).filter(d=>d>=a&&d<=b).length;
+}
+function setLibur(tgl,nama){
+  if(!guard())return;
+  const d=jParseTgl(tgl)||normDate(tgl);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return toast("Tanggalnya belum benar");
+  U.libur=U.libur||{};
+  U.libur[d]=String(nama||"Libur").trim()||"Libur";
+  cacheAll();
+  if(CFG.url)push({action:"setrate",rows:[{id:"L:"+d,tutor:d,cls:"",rate:0,lang:U.libur[d]}]});
+  renderCC();toast(fmtD_(d)+" ditandai libur · masa club diperpanjang 1 hari");
+}
+function hapusLibur(tgl){
+  if(!guard())return;
+  delete U.libur[tgl];cacheAll();
+  if(CFG.url)push({action:"delrate",ids:["L:"+tgl]});
+  renderCC();toast("Tanggal libur dihapus");
+}
+function tambahLibur(){
+  if(!guard())return;
+  tanyaForm({judul:"Tambah Hari Libur",sub:"Tanggal merah atau cuti bersama",
+    pesan:"Setiap libur yang jatuh di dalam masa paket Conversation Club menambah 1 hari masa berlaku.",
+    fields:[{label:"Tanggal",nilai:todayStr(),tipe:"date"},
+            {label:"Keterangan",nilai:"",ph:"mis. Idul Fitri, cuti bersama"}],
+    tombol:"Tandai libur",ok:([d,n])=>setLibur(d,n)});
+}
+/* ================= NAMA PAKET YANG RAPI =================
+   Nama produk WooCommerce panjang dan tidak seragam. Nama rapi disusun dari
+   empat bagian yang selalu sama urutannya: jenis · varian · bahasa · level,
+   supaya daftar pembelian bisa dibaca sekilas dan dikelompokkan dengan benar. */
+function jenisRapi(o){
+  const t=String((o&&o.produk)||"");
+  if(isCC(o))return "Conversation Club";
+  if(/semi\s*privat|semi\s*private/i.test(t))return "Semi Private";
+  if(beliReguler(o))return "Reguler";
+  return "Private";
+}
+function varianRapi(o){
+  const t=String((o&&o.produk)||"");
+  if(/bisnis|business/i.test(t))return "Business";
+  if(/prep|toefl|ielts|certification|sertifik|persiapan|abroad/i.test(t))return "Certification Prep";
+  if(/conversation|percakapan|convo/i.test(t)&&!isCC(o))return "Conversation";
+  return "General";
+}
+function levelRapi(o){
+  const t=String((o&&o.produk)||"");
+  let m=t.match(/\b([ABC][12](?:\.\d)?(?:\s*[-\/]\s*[ABC][12](?:\.\d)?)*)\b/);
+  if(m)return m[1].replace(/\s+/g,"");
+  m=t.match(/\b(HSK\s*\d+(?:\s*\+\s*\d+)?)\b/i);
+  if(m)return m[1].toUpperCase().replace(/\s+/g,"");
+  m=t.match(/\b(chuji\s*\w*)/i);
+  if(m)return m[1].replace(/\b\w/g,c=>c.toUpperCase());
+  m=t.match(/\bbundling\s+([A-Za-z0-9.\s+]+)/i);
+  if(m)return "Bundling "+m[1].trim();
+  return "";
+}
+function namaRapi(o){
+  if(o&&o.label)return o.label;                     // hasil koreksi manual
+  const bhs=progBaku(progBeli(o))||"";
+  const bagian=[jenisRapi(o),varianRapi(o),bhs,levelRapi(o)];
+  if(isCC(o))return ["Conversation Club",bhs,bulanPaket(o)+" Bulan"].filter(Boolean).join(" ");
+  return bagian.filter(Boolean).join(" ");
+}
+/* ================= REKAP CLUB PER PERIODE ================= */
+function ccPeriode(a,b){
+  const L=[];
+  Object.entries(U.beli||{}).forEach(([oid,o])=>{
+    if(!isCC(o)||!o.tgl||o.tgl<a||o.tgl>b)return;
+    L.push(Object.assign({oid},o));
+  });
+  const murid=new Set(L.map(o=>o.mid).filter(Boolean));
+  // ulang = murid ini sudah pernah beli club SEBELUM transaksi ini
+  let ulang=0;
+  L.forEach(o=>{
+    const sebelum=Object.values(U.beli||{}).some(x=>
+      isCC(x)&&x.mid&&x.mid===o.mid&&String(x.tgl)<String(o.tgl));
+    if(sebelum){o._ulang=true;ulang++;}
+  });
+  return {n:L.length,rp:L.reduce((a2,o)=>a2+(+o.nominal||0),0),
+    murid:murid.size,ulang,baru:L.length-ulang,
+    rasio:L.length?ulang/L.length:null,bulan:L.reduce((a2,o)=>a2+bulanPaket(o),0),list:L};
+}
 /* ================= KELAS REGULER: DIKELOMPOKKAN PER BATCH =================
    Nama produk reguler selalu menyebut batch-nya di belakang tanda hubung:
    "Kelas Reguler Bahasa Jerman - Bundling A1", "... - Chuji Shang (HSK 1)".
@@ -5315,8 +5418,10 @@ function ccMurid(id){
     const bln=bulanPaket(o);
     const mulai=(habis&&isoDari(habis)>=o.tgl)?isoDari(habis):o.tgl;   // perpanjang kalau masih aktif
     const d=tambahBulan(mulai,bln); d.setDate(d.getDate()+CC_TENGGANG);
+    const nLibur=liburAntara(mulai,isoDari(d));
+    if(nLibur)d.setDate(d.getDate()+nLibur);        // tanggal merah menambah masa berlaku
     habis=d;
-    return Object.assign({},o,{bln,mulai,habis:isoDari(d),ke:i});
+    return Object.assign({},o,{bln,mulai,habis:isoDari(d),ke:i,libur:nLibur});
   });
   const akhir=isoDari(habis);
   const hariIni=todayStr();
@@ -5344,28 +5449,54 @@ function renderCC(){
   const L=ccSemua();
   const habis=L.filter(x=>x.status==="habis"), segera=L.filter(x=>x.status==="segera");
   const q=(document.getElementById("ccCari").value||"").toLowerCase().trim();
+  // pemilih periode cut-off 26–25
+  const selP=document.getElementById("ccPeriod");
+  const ms=listJMonths();
+  if(!selP.dataset.isi||selP.options.length!==ms.length){
+    selP.innerHTML=ms.map(k=>`<option value="${k}">${periodLabel(k)}${k===monthNow()?" · berjalan":""}</option>`).join("");
+    selP.value=monthNow();selP.dataset.isi="1";
+  }
+  const [pa,pb]=periodRange(selP.value||monthNow());
+  const P=ccPeriode(pa,pb);
   document.getElementById("ccKpis").innerHTML=`
-    <div class="kpi hi"><div class="v">${L.length}</div><div class="l">Peserta Club</div></div>
+    <div class="kpi hi"><div class="v">${P.murid}</div><div class="l">Murid Beli Periode Ini</div></div>
+    <div class="kpi"><div class="v">${P.n}</div><div class="l">Transaksi Periode Ini</div>
+      <div class="sub" style="font-size:10px;opacity:.8">${P.bulan} bulan paket</div></div>
+    <div class="kpi"><div class="v" style="font-size:13px">${rp(P.rp)}</div><div class="l">Nominal Periode Ini</div>
+      <div class="sub" style="font-size:10px;opacity:.8">${P.n?rp(Math.round(P.rp/P.n)):"—"}/transaksi</div></div>
+    <div class="kpi"><div class="v" style="color:${P.rasio==null?"var(--ink-soft)":P.rasio>=.4?"#1C6047":P.rasio>=.2?"#8A5F14":"var(--red)"}">${P.rasio==null?"—":Math.round(P.rasio*1000)/10+"%"}</div>
+      <div class="l">Rasio Repurchase</div>
+      <div class="sub" style="font-size:10px;opacity:.8">${P.ulang} ulang / ${P.n} transaksi</div></div>
+    <div class="kpi"><div class="v" style="color:#1F6088">${P.baru}</div><div class="l">Pembeli Pertama Kali</div></div>
+    <div class="kpi"><div class="v">${L.length}</div><div class="l">Total Peserta · seluruh waktu</div></div>
     <div class="kpi"><div class="v" style="color:${segera.length?"#8A5F14":"#1C6047"}">${segera.length}</div>
       <div class="l">Segera Habis · ≤${CC_TENGGANG} hari</div></div>
     <div class="kpi"><div class="v" style="color:${habis.length?"#A0303D":"#1C6047"}">${habis.length}</div>
-      <div class="l">Sudah Lewat</div></div>
-    <div class="kpi"><div class="v" style="font-size:13px">${rp(L.reduce((a,x)=>a+x.rp,0))}</div><div class="l">Nilai Paket Club</div></div>`;
+      <div class="l">Sudah Lewat</div></div>`;
+  const lb=Object.entries(U.libur||{}).sort();
+  document.getElementById("ccLibur").innerHTML=`<div class="hint" style="margin:0">
+    <b>Hari libur</b> — tiap tanggal merah atau cuti bersama yang jatuh di dalam masa paket menambah 1 hari masa berlaku.
+    ${canEdit()?`<button class="btn ghost small" onclick="tambahLibur()">+ Tambah libur</button>`:""}
+    <div style="margin-top:4px">${lb.length?lb.map(([d,n])=>`<span class="aliaschip">${fmtD_(d)} · ${n}
+      ${canEdit()?`<button onclick="hapusLibur('${d}')" title="Hapus">✕</button>`:""}</span>`).join(" ")
+      :`<span style="color:var(--ink-soft)">Belum ada tanggal libur yang ditandai.</span>`}</div></div>`;
   let R=L;
   if(q)R=R.filter(x=>(x.nm+" "+x.id).toLowerCase().includes(q));
   const f=document.getElementById("ccFilter").value;
   if(f!=="all")R=R.filter(x=>x.status===f);
   box.innerHTML=R.length?`<div class="scroll">
-    <div class="mrow head" style="grid-template-columns:74px 1fr 120px 96px 92px">
-      <span>ID</span><span>Nama</span><span>Berakhir</span><span class="r">Sisa</span><span>Status</span></div>`+
-    R.map(x=>`<div class="mrow" style="grid-template-columns:74px 1fr 120px 96px 92px">
+    <div class="mrow head" style="grid-template-columns:74px 1fr 96px 120px 84px 92px">
+      <span>ID</span><span>Nama</span><span>Paket</span><span>Berakhir</span><span class="r">Sisa</span><span>Status</span></div>`+
+    R.map(x=>{const t=x.items[x.items.length-1];
+    return `<div class="mrow" style="grid-template-columns:74px 1fr 96px 120px 84px 92px">
       <span class="mid">${x.id}</span>
       <span><span class="nm" onclick="openMuridId('${x.id}')">${x.nm}</span>
-        <div class="sub">${x.items.length}× beli · ${x.bulan} bulan · ${rp(x.rp)}</div></span>
-      <span>${fmtD_(x.akhir)}<div class="sub">mulai ${fmtD_(x.items[0].tgl)}</div></span>
+        <div class="sub">${x.items.length}× beli · ${rp(x.rp)}</div></span>
+      <span><b>${t.bln} bulan</b><div class="sub">total ${x.bulan} bln${x.items.reduce((a2,o)=>a2+(o.libur||0),0)?" · +"+x.items.reduce((a2,o)=>a2+(o.libur||0),0)+" hr libur":""}</div></span>
+      <span>${fmtD_(x.akhir)}<div class="sub">beli ${fmtD_(t.tgl)}</div></span>
       <span class="r">${x.sisa<0?"lewat "+(-x.sisa)+" hr":x.sisa+" hr"}</span>
       <span><span class="mtag ${x.status==="habis"?"vakum":x.status==="segera"?"cuti":"aktif"}">${CC_LABEL[x.status]}</span></span>
-    </div>`).join("")+`</div>`
+    </div>`;}).join("")+`</div>`
    :`<div class="empty">${L.length?"Tidak ada yang cocok dengan saringan ini.":"Belum ada pembelian Conversation Club."}</div>`;
 }
 function exportCC(){
@@ -5378,9 +5509,21 @@ function exportCC(){
   });
   rows.push([]);
   rows.push(["RINCIAN PAKET"]);
-  rows.push(["Nomor Induk","Nama Murid","Tanggal Beli","Produk","Bulan","Mulai Berlaku","Berakhir","Nominal (Rp)"]);
+  rows.push(["Nomor Induk","Nama Murid","Tanggal Beli","Nama Paket","Produk Asli","Bulan",
+    "Mulai Berlaku","Berakhir","Tambahan Hari Libur","Nominal (Rp)"]);
   ccSemua().forEach(x=>x.items.forEach(o=>
-    rows.push([x.id,x.nm,o.tgl,o.produk||"",o.bln,o.mulai,o.habis,+o.nominal||0])));
+    rows.push([x.id,x.nm,o.tgl,namaRapi(o),o.produk||"",o.bln,o.mulai,o.habis,o.libur||0,+o.nominal||0])));
+  rows.push([]);
+  rows.push(["REKAP PER PERIODE (cut-off 26-25)"]);
+  rows.push(["Periode","Dari","Sampai","Murid","Transaksi","Bulan Paket","Nominal (Rp)",
+    "Rata per Transaksi","Repurchase","Pembeli Pertama","Rasio Repurchase (%)"]);
+  listJMonths().slice().reverse().forEach(k=>{
+    const [a2,b2]=periodRange(k), P2=ccPeriode(a2,b2);
+    if(!P2.n)return;
+    rows.push([periodLabel(k),a2,b2,P2.murid,P2.n,P2.bulan,P2.rp,
+      P2.n?Math.round(P2.rp/P2.n):"",P2.ulang,P2.baru,
+      P2.rasio==null?"":Math.round(P2.rasio*1000)/10]);
+  });
   unduhCSV(rows,"conversation_club_"+todayStr()+".csv");
   toast(ccSemua().length+" peserta club diekspor");
 }
@@ -8484,7 +8627,7 @@ function boot(){
   if(!ME)setTimeout(pickUser,300);
   undoStack=lget(UKEY,[]);
   classes=lget(CKEY,[]).map(normClass);U=lget(RKEY,{rates:{},tutors:{}});paid=lget(PKEY,{});queue=lget(QKEY,[]);
-  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};U.sub=U.sub||{};U.wk=U.wk||{};U.tid=U.tid||{};U.tstat=U.tstat||{};seedMingguan();
+  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};U.sub=U.sub||{};U.wk=U.wk||{};U.tid=U.tid||{};U.tstat=U.tstat||{};U.libur=U.libur||{};seedMingguan();
   // tidak ada injeksi data bawaan — kalau cache kosong, tunggu sinkron dari Sheet
   document.getElementById("cfgUrl").value=CFG.url;
   document.getElementById("cfgToken").value=CFG.token;
