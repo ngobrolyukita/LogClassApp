@@ -262,6 +262,8 @@
   @media(max-width:820px){
     .mrow{grid-template-columns:1fr 92px 96px;gap:6px}
     .mrow .kol3,.mrow .kol4{display:none}
+    .ccrow{grid-template-columns:1fr 104px!important}
+    .ccrow .cc3{display:none}
   }
   .beliрow{}
   .belirow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:7px 0;
@@ -770,6 +772,7 @@
         </select>
         <button class="btn ghost small" onclick="exportCC()">📦 Export CSV</button>
       </div>
+      <div id="ccChip"></div>
       <div id="ccList"></div>
     </div>
   </div>
@@ -5447,7 +5450,9 @@ function ccBadge(id){
 function renderCC(){
   const box=document.getElementById("ccList"); if(!box)return;
   const L=ccSemua();
-  const habis=L.filter(x=>x.status==="habis"), segera=L.filter(x=>x.status==="segera");
+  const habis=L.filter(x=>x.status==="habis"), segera=L.filter(x=>x.status==="segera"),
+        aktif=L.filter(x=>x.status==="aktif");
+  const f=(document.getElementById("ccFilter")||{}).value||"all";
   const q=(document.getElementById("ccCari").value||"").toLowerCase().trim();
   // pemilih periode cut-off 26–25
   const selP=document.getElementById("ccPeriod");
@@ -5468,10 +5473,11 @@ function renderCC(){
       <div class="l">Rasio Repurchase</div>
       <div class="sub" style="font-size:10px;opacity:.8">${P.ulang} ulang / ${P.n} transaksi</div></div>
     <div class="kpi"><div class="v" style="color:#1F6088">${P.baru}</div><div class="l">Pembeli Pertama Kali</div></div>
-    <div class="kpi"><div class="v">${L.length}</div><div class="l">Total Peserta · seluruh waktu</div></div>
-    <div class="kpi"><div class="v" style="color:${segera.length?"#8A5F14":"#1C6047"}">${segera.length}</div>
+    <div class="kpi${f==="all"?" on":""}" onclick="setCCFilter('all')" title="Tampilkan semua peserta"><div class="v">${L.length}</div><div class="l">Total Peserta · seluruh waktu</div></div>
+    <div class="kpi${f==="aktif"?" on":""}" onclick="setCCFilter('aktif')" title="Masih punya masa berlaku"><div class="v" style="color:#1C6047">${aktif.length}</div><div class="l">Masih Aktif</div></div>
+    <div class="kpi${f==="segera"?" on":""}" onclick="setCCFilter('segera')" title="Berakhir dalam ${CC_TENGGANG} hari atau kurang — perlu difollow up"><div class="v" style="color:${segera.length?"#8A5F14":"#1C6047"}">${segera.length}</div>
       <div class="l">Segera Habis · ≤${CC_TENGGANG} hari</div></div>
-    <div class="kpi"><div class="v" style="color:${habis.length?"#A0303D":"#1C6047"}">${habis.length}</div>
+    <div class="kpi${f==="habis"?" on":""}" onclick="setCCFilter('habis')" title="Masa berlakunya sudah lewat"><div class="v" style="color:${habis.length?"#A0303D":"#1C6047"}">${habis.length}</div>
       <div class="l">Sudah Lewat</div></div>`;
   const lb=Object.entries(U.libur||{}).sort();
   document.getElementById("ccLibur").innerHTML=`<div class="hint" style="margin:0">
@@ -5482,22 +5488,40 @@ function renderCC(){
       :`<span style="color:var(--ink-soft)">Belum ada tanggal libur yang ditandai.</span>`}</div></div>`;
   let R=L;
   if(q)R=R.filter(x=>(x.nm+" "+x.id).toLowerCase().includes(q));
-  const f=document.getElementById("ccFilter").value;
   if(f!=="all")R=R.filter(x=>x.status===f);
+  // yang paling mendesak selalu di atas
+  R=R.slice().sort((x,y)=>x.sisa-y.sisa);
+  const CC_KET={all:"semua peserta",aktif:"masih aktif",
+    segera:"segera habis — perlu difollow up",habis:"masa berlakunya sudah lewat"};
+  document.getElementById("ccChip").innerHTML=(f!=="all"||q)
+    ? `<div class="filterchip"><b>${R.length}</b> peserta · ${CC_KET[f]}${q?` · cari "${q}"`:""}
+        <button class="btn ghost small" onclick="resetCC()">✕ Tampilkan semua</button></div>`
+    : `<div class="hint" style="margin:6px 0 0">${R.length} peserta, diurutkan dari yang paling dekat habis.
+        Klik salah satu kotak angka di atas untuk menyaring.</div>`;
   box.innerHTML=R.length?`<div class="scroll">
-    <div class="mrow head" style="grid-template-columns:74px 1fr 96px 120px 84px 92px">
-      <span>ID</span><span>Nama</span><span>Paket</span><span>Berakhir</span><span class="r">Sisa</span><span>Status</span></div>`+
+    <div class="mrow head ccrow" style="grid-template-columns:1fr 96px 118px 104px">
+      <span>Murid</span><span class="cc3">Paket</span><span class="cc3">Berakhir</span><span class="r">Sisa</span></div>`+
     R.map(x=>{const t=x.items[x.items.length-1];
-    return `<div class="mrow" style="grid-template-columns:74px 1fr 96px 120px 84px 92px">
-      <span class="mid">${x.id}</span>
+    const lb=x.items.reduce((a2,o)=>a2+(o.libur||0),0);
+    return `<div class="mrow ccrow" style="grid-template-columns:1fr 96px 118px 104px">
       <span><span class="nm" onclick="openMuridId('${x.id}')">${x.nm}</span>
-        <div class="sub">${x.items.length}× beli · ${rp(x.rp)}</div></span>
-      <span><b>${t.bln} bulan</b><div class="sub">total ${x.bulan} bln${x.items.reduce((a2,o)=>a2+(o.libur||0),0)?" · +"+x.items.reduce((a2,o)=>a2+(o.libur||0),0)+" hr libur":""}</div></span>
-      <span>${fmtD_(x.akhir)}<div class="sub">beli ${fmtD_(t.tgl)}</div></span>
-      <span class="r">${x.sisa<0?"lewat "+(-x.sisa)+" hr":x.sisa+" hr"}</span>
-      <span><span class="mtag ${x.status==="habis"?"vakum":x.status==="segera"?"cuti":"aktif"}">${CC_LABEL[x.status]}</span></span>
+        <span class="mid" style="font-size:10px">${x.id}</span>
+        <div class="sub">${t.bln} bulan · berakhir ${fmtD_(x.akhir)} · ${x.items.length}× beli · ${rp(x.rp)}</div></span>
+      <span class="cc3"><b>${t.bln} bulan</b><div class="sub">total ${x.bulan} bln${lb?" · +"+lb+" hr libur":""}</div></span>
+      <span class="cc3">${fmtD_(x.akhir)}<div class="sub">beli ${fmtD_(t.tgl)}</div></span>
+      <span class="r"><span class="mtag ${x.status==="habis"?"vakum":x.status==="segera"?"cuti":"aktif"}">${x.sisa<0?"lewat "+(-x.sisa)+" hr":x.sisa+" hr"}</span></span>
     </div>`;}).join("")+`</div>`
    :`<div class="empty">${L.length?"Tidak ada yang cocok dengan saringan ini.":"Belum ada pembelian Conversation Club."}</div>`;
+}
+function setCCFilter(v){
+  const el=document.getElementById("ccFilter"); if(!el)return;
+  el.value=(el.value===v&&v!=="all")?"all":v;
+  renderCC();
+}
+function resetCC(){
+  const el=document.getElementById("ccFilter"); if(el)el.value="all";
+  const q=document.getElementById("ccCari"); if(q)q.value="";
+  renderCC();
 }
 function exportCC(){
   const rows=[["Nomor Induk","Nama Murid","Status","Mulai","Berakhir","Sisa Hari","Jumlah Paket",
