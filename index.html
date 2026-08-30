@@ -1604,6 +1604,7 @@ function lget(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;
 let _tunda=0, _kotor=false;
 function cacheAll(){
   if(typeof REKAP!=="undefined")REKAP=null;      // data berubah -> rekap dihitung ulang
+  if(typeof TOKEN!=="undefined")TOKEN=null;     // token belajar ikut dihitung ulang
   if(_tunda){_kotor=true;return true;}
   const a=lset(CKEY,classes),b=lset(RKEY,U),c=lset(PKEY,paid),d=lset(QKEY,queue);
   return a&&b&&c&&d;
@@ -5255,7 +5256,9 @@ function bangunToken(){
     let id=cacheK[k];
     if(id===undefined){id=idx[nkey(k)]||"";cacheK[k]=id;}
     if(!id||!TOKEN[id])return;
-    const prog=progBaku(c.lang||"")||c.lang||"(lain)";
+    /* Kunci harus sama bentuknya dengan pengelompokan pembelian ("German · Privat"),
+       kalau tidak, jam pemakaian membuat kelompok sendiri dan tokennya terlihat kosong. */
+    const prog=(progBaku(c.lang||"")||c.lang||"(lain)")+" · Privat";
     const per=TOKEN[id].per;
     // kalau programnya belum pernah dibeli, jamnya tetap dicatat sebagai pemakaian
     if(!per[prog])per[prog]={beli:0,praLog:0,pakai:0,n:0};
@@ -6565,7 +6568,7 @@ function exStatRows(a,b){
   const post=cs.filter(c=>c.ov==="Postponed");
   const jam=done.reduce((s,c)=>s+durasi(c.start,c.end),0);
   const gaji=done.reduce((s,c)=>s+feeOf(c,now),0);
-  const js=jualSum(a,b), ts=topupSum(a,b), tpd=topupPerDay(a,b);
+  const js=jualSum(a,b), ts=topupSum(a,b), tpd=topupPerDay(a,b), BHx=beliHarian(a,b);
   const hariAktif=new Set(done.map(c=>c.date)).size||1;
   const R=[];
   const sec=t=>{R.push([]);R.push(["=== "+t+" ==="]);};
@@ -6582,9 +6585,13 @@ function exStatRows(a,b){
    ["Tutor aktif",new Set(done.map(c=>c.tutor)).size],
    ["Murid aktif",new Set(done.map(c=>normName(c.cls||"").toLowerCase()).filter(Boolean)).size],
    ["Hari ada kelas",hariAktif],["Rata kelas per hari",Math.round(done.length/hariAktif*100)/100],
-   ["Transaksi penjualan",js.n],["Hari penjualan terisi",js.hari],
+   ["Transaksi penjualan",js.n],["Nominal penjualan (Rp)",js.rp],["Hari penjualan terisi",js.hari],
    ["Transaksi top up",ts.n],["Murid top up",ts.murid],
-   ["Rasio top up terhadap penjualan (%)",js.n?Math.round(ts.n/js.n*1000)/10:""]
+   ["Rasio top up terhadap penjualan (%)",js.n?Math.round(ts.n/js.n*1000)/10:""],
+   ["Pembelian tersambung ke murid",BHx.tot.n],["Nilai tersambung (Rp)",BHx.tot.rp],
+   ["Murid punya riwayat pembelian",BHx.tot.murid.size],
+   ["Murid token habis / tanpa token",Object.keys(U.murid||{}).filter(i2=>{
+      const t2=tokenMurid(i2);return t2&&(t2.status==="habis"||t2.status==="tanpa");}).length]
   ].forEach(r=>R.push(r));
 
   sec("PER HARI");
@@ -6654,17 +6661,66 @@ function exStatRows(a,b){
       (o.tipe==="topup"||o.tipe==="ulang")?"top up":"pembelian awal",o.produk||"",
       +o.nominal||0,+o.jam||"",o.sumber||o.metode||"",oid]));
 
+  sec("TOKEN BELAJAR PER MURID (kelas privat; reguler belum dihitung)");
+  R.push(["Nomor Induk","Nama Murid","Status Token","Program","Jam Dibeli","Jam Terpakai",
+    "Jam Sebelum Log","Sisa Jam","Jumlah Pembelian"]);
+  Object.keys(U.murid||{}).forEach(id=>{
+    const t=tokenMurid(id); if(!t)return;
+    Object.entries(t.per).forEach(([prog,x])=>{
+      if(x.beli<=0&&x.pakai<=0)return;
+      R.push([id,namaMid(id),x.reg?"reguler (ditunda)":t.status,prog,
+        x.reg?"":Math.round(x.beli*100)/100,
+        x.reg?"":Math.round(x.pakai*100)/100,
+        x.reg?"":Math.round((x.praLog||0)*100)/100,
+        x.reg?"":(x.sisa==null?"":Math.round(x.sisa*100)/100), x.n||0]);
+    });
+  });
+
+  sec("RINGKASAN PROGRAM (dari riwayat pembelian)");
+  R.push(["Program","Jumlah Pembelian","Pembelian Awal","Top Up","Nilai (Rp)","Rata per Transaksi","Murid"]);
+  const PR={};
+  Object.values(U.beli||{}).forEach(o=>{
+    if(!o.tgl||o.tgl<a||o.tgl>b)return;
+    const k=progBeli(o)+" · "+jenisKelas(o);
+    const x=PR[k]=PR[k]||{n:0,awal:0,tu:0,rp:0,m:new Set()};
+    x.n++;x.rp+=(+o.nominal||0);
+    if(o.tipe==="topup"||o.tipe==="ulang")x.tu++;else x.awal++;
+    if(o.mid)x.m.add(o.mid);
+  });
+  Object.entries(PR).sort((x,y)=>y[1].rp-x[1].rp).forEach(([k,x])=>
+    R.push([k,x.n,x.awal,x.tu,x.rp,x.n?Math.round(x.rp/x.n):"",x.m.size]));
+
+  sec("NILAI SEUMUR HIDUP PER MURID (seluruh waktu)");
+  R.push(["Nomor Induk","Nama Murid","Email","WhatsApp","Jumlah Pembelian","Total Belanja (Rp)",
+    "Rata per Pembelian","Program Diambil","Beli Pertama","Beli Terakhir","Jarak Antar Beli (hari)",
+    "Sesi Selesai","Jam","Status Murid"]);
+  semuaRekap().sort((x,y)=>y.belanja-x.belanja).forEach(r=>{
+    const L2=r.beliList||[];
+    let jarak="";
+    if(L2.length>1){let t2=0;for(let i=1;i<L2.length;i++)t2+=(new Date(L2[i].tgl)-new Date(L2[i-1].tgl))/86400000;
+      jarak=Math.round(t2/(L2.length-1));}
+    R.push([r.id,r.nm,r.m.email||"",r.m.wa?waTampil(r.m.wa):"",r.beli,r.belanja,
+      r.beli?Math.round(r.belanja/r.beli):"",beliPerProgram(r.id).map(g=>g.prog).join(" | "),
+      r.beli1||"",r.beliAkhir||"",jarak,r.sesi,r.jam,r.statusL]);
+  });
+
   sec("RASIO TOP UP PER PERIODE (cut-off 26-25, seluruh data)");
-  R.push(["Periode","Dari","Sampai","Transaksi Penjualan","Transaksi Top Up","Rasio (%)",
-    "Pembelian Tersambung","Nilai Tersambung (Rp)"]);
+  R.push(["Periode","Dari","Sampai","Transaksi Penjualan","Nominal Penjualan (Rp)",
+    "Transaksi Top Up","Rasio Top Up (%)","Pembelian Tersambung","Nilai Tersambung (Rp)",
+    "Murid Aktif","Kelas Selesai","Total Gaji (Rp)"]);
   const MO={};
   Object.entries(U.jual||{}).forEach(([d,r])=>{const k=periodKeyOf(d);(MO[k]=MO[k]||{j:0,t:0}).j+=(+r.n||0);});
   Object.values(U.topup||{}).forEach(arr=>(arr||[]).forEach(t=>{
     if(!t.tgl)return;const k=periodKeyOf(t.tgl);if(MO[k])MO[k].t++;}));
   Object.keys(MO).sort().forEach(k=>{const[pa,pb]=periodRange(k);
     const _rk=rekapPeriodeJual().find(x=>x.k===k)||{};
-    R.push([periodLabel(k),pa,pb,MO[k].j,MO[k].t,MO[k].j?Math.round(MO[k].t/MO[k].j*1000)/10:"",
-      _rk.beli||0,_rk.beliRp||0]);});
+    const _cs=classes.filter(c=>c.date>=pa&&c.date<=pb&&statusOf(c,now)==="Selesai");
+    const _tu=topupSum(pa,pb).n;
+    R.push([periodLabel(k),pa,pb,MO[k].j,_rk.rp||0,_tu,
+      MO[k].j?Math.round(_tu/MO[k].j*1000)/10:"",
+      _rk.beli||0,_rk.beliRp||0,
+      new Set(_cs.map(c=>normName(c.cls||"")).filter(Boolean)).size,
+      _cs.length,_cs.reduce((s2,c)=>s2+feeOf(c,now),0)]);});
   return R;
 }
 function exStat(){
@@ -7122,7 +7178,7 @@ function renderJual(){
     <div class="kpi"><div class="v" style="font-size:13px;color:#1C6047">${js.rp?rp(js.rp):"—"}</div><div class="l">Nominal Penjualan</div></div>
     <div class="kpi"><div class="v" style="font-size:13px">${js.n&&js.rp?rp(Math.round(js.rp/js.n)):"—"}</div><div class="l">Rata per Transaksi</div></div>
     <div class="kpi"><div class="v" style="color:#1F6088">${tuDipakai.toLocaleString("id-ID")}</div><div class="l">Transaksi Top Up</div>
-      <div class="sub" style="font-size:10px;color:var(--ink-soft)">catatan paket ${ts.n} · riwayat ${BH.tot.topup}</div></div>
+      <div class="sub" style="font-size:10px;color:var(--ink-soft)">riwayat pembelian ${BH.tot.topup} · catatan paket lama ${Math.max(0,ts.n-BH.tot.topup)}</div></div>
     <div class="kpi"><div class="v" style="color:${baru<0?"var(--red)":"#12212A"}">${baru.toLocaleString("id-ID")}</div><div class="l">Sisa (non top up)</div></div>
     <div class="kpi"><div class="v">${ts.murid}</div><div class="l">Murid Top Up</div></div>
     <div class="kpi"><div class="v" style="color:${js.hari>=hariLewat?"#1C6047":"#8A5F14"}">${js.hari}/${hariLewat}</div><div class="l">Hari Terisi</div></div>`;
@@ -7225,12 +7281,13 @@ function renderStats(){
     const o=TUALL[lc]=TUALL[lc]||{n:0,nama:normName(nm),tgl:[]};
     (U.topup[nm]||[]).forEach(t=>{o.n++;if(t.tgl)o.tgl.push(t.tgl);});
   });
-  // A. transaksi yang benar-benar terjadi di periode ini
-  let tuTrxP=0; const tuMuridP=new Set();
-  Object.entries(TUALL).forEach(([lc,o])=>{
-    const n=o.tgl.filter(d=>d>=pa_&&d<=pb_).length;
-    if(n){tuTrxP+=n;tuMuridP.add(lc);}
-  });
+  /* Sumbernya harus sama dengan card Rasio Top Up di bawah: riwayat pembelian
+     yang bertanda top up, ditambah catatan paket lama yang belum punya pembelian.
+     Sebelumnya bagian ini hanya membaca catatan paket, jadi angkanya berbeda. */
+  const _tu=topupSum(pa_,pb_);
+  const tuTrxP=_tu.n, tuMuridP={size:_tu.murid};
+  const _js=jualSum(pa_,pb_);
+  const rasioTrx=_js.n?tuTrxP/_js.n:null;
   // B. murid yang aktif di periode ini dan tercatat pernah top up (kumulatif)
   const muridLC=new Set(cs.map(c=>normName(c.cls||"").toLowerCase()).filter(Boolean));
   const everM=[...muridLC].filter(m=>TUALL[m]);
@@ -7244,7 +7301,9 @@ function renderStats(){
     <div class="kpi"><div class="v">${cr}%</div><div class="l">Completion Rate</div></div>
     <div class="kpi"><div class="v">${(Math.round(cs.length/hariAktif*10)/10).toLocaleString("id-ID")}</div><div class="l">Kelas / Hari</div></div>
     <div class="kpi" title="Murid yang punya catatan top up bertanggal di periode ini"><div class="v" style="color:#1F6088">${tuMuridP.size}</div><div class="l">Murid Top Up · periode ini</div></div>
-    <div class="kpi" title="Jumlah transaksi top up bertanggal di periode ini"><div class="v" style="color:#1F6088">${tuTrxP}</div><div class="l">Transaksi Top Up</div></div>
+    <div class="kpi" title="Transaksi top up bertanggal di periode ini — dari riwayat pembelian dan catatan paket lama yang belum punya pembelian"><div class="v" style="color:#1F6088">${tuTrxP}</div><div class="l">Transaksi Top Up</div></div>
+    <div class="kpi hi" title="${tuTrxP} transaksi top up dibagi ${_js.n} transaksi penjualan pada periode ini.${_js.n?"":" Jumlah transaksi penjualannya belum diisi di card Rasio Top Up di bawah."}"><div class="v">${rasioTrx==null?"—":Math.round(rasioTrx*1000)/10+"%"}</div><div class="l">Rasio Top Up Periode</div>
+      <div class="sub" style="font-size:10px;opacity:.8">${tuTrxP}/${_js.n||"?"} transaksi</div></div>
     <div class="kpi" title="Berapa persen murid aktif periode ini yang tercatat pernah top up (kumulatif, bukan hanya periode ini)"><div class="v" style="color:${everRate==null?"var(--ink-soft)":everRate>=.4?"#1C6047":everRate>=.2?"#8A5F14":"var(--red)"}">${everRate==null?"—":Math.round(everRate*100)+"%"}</div><div class="l">Rasio Loyalitas</div></div>`;
 
   // ringkasan + grafik top up
