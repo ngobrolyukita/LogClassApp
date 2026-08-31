@@ -763,7 +763,7 @@
       <div class="mini-kpis" id="ccKpis"></div>
       <div id="ccLibur" style="margin-top:9px"></div>
       <div class="searchrow" style="margin-top:9px">
-        <input type="text" id="ccCari" placeholder="Cari nama atau nomor induk..." oninput="renderCC()" style="flex:1;min-width:150px">
+        <input type="text" id="ccCari" placeholder="Cari nama, nomor induk, nomor HP, atau email..." oninput="renderCC()" style="flex:1;min-width:150px">
         <select id="ccFilter" onchange="renderCC()">
           <option value="all">Semua status</option>
           <option value="segera">Segera habis</option>
@@ -772,6 +772,7 @@
         </select>
         <button class="btn ghost small" onclick="exportCC()">📦 Export CSV</button>
       </div>
+      <div class="langbar" id="ccUrutBar"></div>
       <div id="ccChip"></div>
       <div id="ccList"></div>
     </div>
@@ -5430,7 +5431,13 @@ function ccMurid(id){
   const akhir=isoDari(habis);
   const hariIni=todayStr();
   const sisa=Math.round((new Date(akhir)-new Date(hariIni))/86400000);
+  const m2=(U.murid||{})[id]||{};
+  const hpBeli=[...new Set(L.map(o=>waNorm(o.hp||"")).filter(x=>x&&x.length>=9))];
+  const emBeli=[...new Set(L.map(o=>String(o.email||"").toLowerCase().trim()).filter(Boolean))];
   return {id,nm:namaMid(id),items,akhir,sisa,
+    hp:[waNorm(m2.wa||""),...hpBeli].filter(Boolean),
+    email:[String(m2.email||"").toLowerCase().trim(),...emBeli].filter(Boolean),
+    mulai:items[0].tgl,
     status:sisa<0?"habis":(sisa<=CC_TENGGANG?"segera":"aktif"),
     bulan:items.reduce((a,x)=>a+x.bln,0),
     rp:items.reduce((a,x)=>a+(+x.nominal||0),0)};
@@ -5487,11 +5494,35 @@ function renderCC(){
     <div style="margin-top:4px">${lb.length?lb.map(([d,n])=>`<span class="aliaschip">${fmtD_(d)} · ${n}
       ${canEdit()?`<button onclick="hapusLibur('${d}')" title="Hapus">✕</button>`:""}</span>`).join(" ")
       :`<span style="color:var(--ink-soft)">Belum ada tanggal libur yang ditandai.</span>`}</div></div>`;
+  /* Pencarian ikut nomor HP dan email dari data pembelian, bukan hanya dari
+     profil murid — nomor di WooCommerce sering lebih lengkap daripada di registry. */
   let R=L;
-  if(q)R=R.filter(x=>(x.nm+" "+x.id).toLowerCase().includes(q));
+  if(q){
+    const qNum=q.replace(/\D/g,"");
+    R=R.filter(x=>{
+      if((x.nm+" "+x.id).toLowerCase().includes(q))return true;
+      if(x.email.some(e=>e.includes(q)))return true;
+      if(qNum.length>=4){
+        const cari=waNorm(qNum);
+        return x.hp.some(h=>h.includes(cari)||h.includes(qNum));
+      }
+      return false;
+    });
+  }
   if(f!=="all")R=R.filter(x=>x.status===f);
-  // yang paling mendesak selalu di atas
-  R=R.slice().sort((x,y)=>x.sisa-y.sisa);
+  const urut={
+    sisa:(x,y)=>x.sisa-y.sisa,
+    lama:(x,y)=>String(x.mulai).localeCompare(String(y.mulai)),
+    baru:(x,y)=>String(y.mulai).localeCompare(String(x.mulai)),
+    nama:(x,y)=>x.nm.localeCompare(y.nm,"id"),
+    nilai:(x,y)=>y.rp-x.rp
+  }[ccUrut]||((x,y)=>x.sisa-y.sisa);
+  R=R.slice().sort(urut);
+  const URUT_LBL={sisa:"Paling dekat habis",lama:"Pembelian terlama",
+    baru:"Pembelian terbaru",nama:"Nama A–Z",nilai:"Belanja terbesar"};
+  document.getElementById("ccUrutBar").innerHTML=`<span class="lb-lbl">Urutkan:</span>`+
+    Object.entries(URUT_LBL).map(([k,v])=>`<span class="lchip${ccUrut===k?" on":""}"
+      onclick="setCCUrut('${k}')"><span class="bx">${ccUrut===k?"\u2713":""}</span>${v}</span>`).join("");
   const CC_KET={all:"semua peserta",aktif:"masih aktif",
     segera:"segera habis — perlu difollow up",habis:"masa berlakunya sudah lewat"};
   document.getElementById("ccChip").innerHTML=(f!=="all"||q)
@@ -5507,13 +5538,16 @@ function renderCC(){
     return `<div class="mrow ccrow" style="grid-template-columns:1fr 96px 118px 104px">
       <span><span class="nm" onclick="openMuridId('${x.id}')">${x.nm}</span>
         <span class="mid" style="font-size:10px">${x.id}</span>
-        <div class="sub">${t.bln} bulan · berakhir ${fmtD_(x.akhir)} · ${x.items.length}× beli · ${rp(x.rp)}</div></span>
+        <div class="sub">${t.bln} bulan · berakhir ${fmtD_(x.akhir)} · ${x.items.length}× beli · ${rp(x.rp)}</div>
+        <div class="sub">beli pertama ${fmtD_(x.mulai)}${x.hp.length?" · "+waTampil(x.hp[0]):""}</div></span>
       <span class="cc3"><b>${t.bln} bulan</b><div class="sub">total ${x.bulan} bln${lb?" · +"+lb+" hr libur":""}</div></span>
       <span class="cc3">${fmtD_(x.akhir)}<div class="sub">beli ${fmtD_(t.tgl)}</div></span>
       <span class="r"><span class="mtag ${x.status==="habis"?"vakum":x.status==="segera"?"cuti":"aktif"}">${x.sisa<0?"lewat "+(-x.sisa)+" hr":x.sisa+" hr"}</span></span>
     </div>`;}).join("")+`</div>`
    :`<div class="empty">${L.length?"Tidak ada yang cocok dengan saringan ini.":"Belum ada pembelian Conversation Club."}</div>`;
 }
+let ccUrut="sisa";
+function setCCUrut(v){ccUrut=v;renderCC();}
 function setCCFilter(v){
   const el=document.getElementById("ccFilter"); if(!el)return;
   el.value=(el.value===v&&v!=="all")?"all":v;
@@ -5530,7 +5564,7 @@ function exportCC(){
   ccSemua().forEach(x=>{
     const m=U.murid[x.id]||{};
     rows.push([x.id,x.nm,CC_LABEL[x.status],x.items[0].tgl,x.akhir,x.sisa,x.items.length,
-      x.bulan,x.rp,m.email||"",m.wa?waTampil(m.wa):""]);
+      x.bulan,x.rp,x.email[0]||m.email||"",x.hp.length?waTampil(x.hp[0]):(m.wa?waTampil(m.wa):"")]);
   });
   rows.push([]);
   rows.push(["RINCIAN PAKET"]);
