@@ -1702,23 +1702,33 @@ function jamPaket(o,c){
 const JAM_PAKET_BAWAAN=10;
 /* Log kelas baru dimulai 26 Juli 2026. Paket yang dibeli sebelum itu sudah terpakai
    sebagian tanpa jejak di log, jadi jamnya bisa dikoreksi lewat kolom "sudah terpakai". */
+/* Paket disusun sebagai antrean first-in first-out: paket yang dibeli lebih dulu
+   dipakai lebih dulu. Kolom "jam sudah terpakai sebelum log" mengurangi sisa paket
+   masing-masing, jadi paket lama yang sudah habis dilewati dan hitungan dimulai
+   dari paket pertama yang masih bersisa — bukan selalu dari pembelian pertama. */
 function paketMurid(nm,c){
   const id=midOf(nm);
-  const tuRec=tuList(nm).filter(t=>t.tgl).sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl)));
-  let awal=0, terpakai=0, tu=tuRec.map(t=>({tgl:t.tgl,jam:+t.jam>0?+t.jam:(+MEET.jamDefault||JAM_PAKET_BAWAAN)}));
+  const bhs=progBaku((c&&c.lang)||"");
+  let antre=[];
   if(id){
-    const g=beliPerProgram(id);
-    const cocok=g.find(x=>!c||!c.lang||x.prog===c.lang)||g[0];
-    if(cocok&&cocok.items.length){
-      awal=jamPaket(cocok.items[0],c);
-      terpakai=+cocok.items[0].dipakai||0;
-      // paket lanjutan diambil dari riwayat pembelian, lebih dipercaya daripada catatan manual
-      // riwayat pembelian selalu jadi acuan kalau ada — di sanalah jam paket dicatat
-      tu=cocok.items.slice(1).map(o=>({tgl:o.tgl,jam:jamPaket(o,c)}));
-    }
+    const g=beliPerProgram(id).filter(x=>!/Reguler|Conversation Club/.test(x.prog));
+    const cocok=(bhs&&g.find(x=>progBaku(x.prog)===bhs))||g[0];
+    if(cocok)antre=cocok.items
+      .filter(o=>!beliReguler(o)&&!isCC(o))
+      .map(o=>({tgl:o.tgl,jam:jamPaket(o,c),pakai:Math.max(0,+o.dipakai||0)}));
   }
-  if(!awal)awal=c&&isReg(c)?(+MEET.tReg||0):(+MEET.jamDefault||JAM_PAKET_BAWAAN);
-  return {awal,tu,terpakai};
+  if(!antre.length){
+    // tidak ada riwayat pembelian: pakai catatan paket manual seperti sebelumnya
+    const tuRec=tuList(nm).filter(t=>t.tgl).sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl)));
+    const bawaan=c&&isReg(c)?(+MEET.tReg||0):(+MEET.jamDefault||JAM_PAKET_BAWAAN);
+    return {awal:bawaan,terpakai:0,
+      tu:tuRec.map(t=>({tgl:t.tgl,jam:+t.jam>0?+t.jam:bawaan}))};
+  }
+  // paket yang jamnya sudah habis sebelum log dilewati
+  while(antre.length>1&&antre[0].pakai>=antre[0].jam)antre.shift();
+  const kini=antre[0];
+  return {awal:kini.jam,terpakai:Math.min(kini.pakai,kini.jam),
+    tu:antre.slice(1).map(x=>({tgl:x.tgl,jam:x.jam}))};
 }
 let MEET_DIAG={total:0,selesai:0,gagal:0,pesan:""};
 function buildMeet(){
