@@ -247,6 +247,13 @@
   .tok-tipis{background:#F4EAD4;color:#7A5310;border-color:#D8BE86}
   .tok-aman{background:#DCEBE3;color:#1C6047;border-color:#A6C4B4}
   .tok-reg{background:#E3EAE9;color:#5B6E77;border-color:#C6D2D1}
+  .dupbox{border:1px solid #DCB2B6;border-radius:9px;background:#fff;padding:8px 10px;margin-bottom:7px}
+  .duphead{font-size:10.5px;color:#8C2A34;font-weight:800;margin-bottom:4px}
+  .duppair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .dupside{min-width:0}
+  .dupside .link{font-weight:800;font-size:12.5px}
+  .dupside .sub{font-size:10.5px;color:var(--ink-soft)}
+  @media(max-width:560px){.duppair{grid-template-columns:1fr;gap:4px}}
   .aliaschip{display:inline-flex;align-items:center;gap:3px;background:var(--iris-tint);color:var(--iris-dark);
        border-radius:99px;padding:1px 4px 1px 9px;font-size:11px;font-weight:700;margin-right:3px}
   .aliaschip button{border:0;background:none;color:var(--red);cursor:pointer;font-size:12px;padding:0 3px;line-height:1}
@@ -518,7 +525,7 @@
   <div class="panel" id="p-tutor">
     <div class="datebar">
       <select id="fPeriod" onchange="renderAll()"></select>
-      <input type="text" id="tSearch" placeholder="Cari tutor, nomor induk (T-0043), atau nama murid..." oninput="renderTutorCards()" style="flex:1;min-width:150px">
+      <input type="text" id="tSearch" placeholder="Cari tutor, nomor induk (T-0043), atau nama murid..." oninput="tunda(renderTutorCards)" style="flex:1;min-width:150px">
       <select id="tSort" onchange="renderTutorCards()" title="Urutkan kartu tutor">
         <option value="gaji">↕ Gaji tertinggi</option>
         <option value="murid">↕ Murid terbanyak</option>
@@ -531,8 +538,14 @@
         <option value="nama">↕ Nama A–Z</option>
       </select>
     </div>
-    <div class="langbar" id="langBar" title="Centang satu atau beberapa bahasa"></div>
-    <div class="langbar" id="tStatBar"></div>
+    <div class="row-actions" style="margin:0 0 6px">
+      <button class="btn ghost small" id="btnSaring" onclick="toggleSaring()">⚙ Saringan</button>
+      <span id="saringRingkas" class="hint" style="margin:0"></span>
+    </div>
+    <div id="saringBox" style="display:none">
+      <div class="langbar" id="langBar" title="Centang satu atau beberapa bahasa"></div>
+      <div class="langbar" id="tStatBar"></div>
+    </div>
     <div class="rangerow" id="payRangeRow">
       <button class="btn ghost small" id="btnPayMode" onclick="togglePayMode()">📅 Rentang tanggal sendiri</button>
       <span id="payRangeCtl"></span>
@@ -565,7 +578,7 @@
       <div class="langbar" id="mLangBar"></div>
       <div class="langbar" id="mStatBar"></div>
       <div class="searchrow" style="margin-top:8px">
-        <input type="text" id="mCari" placeholder="Cari nama, ID, email, nomor HP, atau tutor..." oninput="renderMurid()" style="flex:1;min-width:150px">
+        <input type="text" id="mCari" placeholder="Cari nama, ID, email, nomor HP, atau tutor..." oninput="tunda(renderMurid)" style="flex:1;min-width:150px">
         <select id="mSort" onchange="renderMurid()">
           <option value="aktif">Urut: Terakhir aktif</option>
           <option value="nama">Urut: Nama A–Z</option>
@@ -763,7 +776,7 @@
       <div class="mini-kpis" id="ccKpis"></div>
       <div id="ccLibur" style="margin-top:9px"></div>
       <div class="searchrow" style="margin-top:9px">
-        <input type="text" id="ccCari" placeholder="Cari nama, nomor induk, nomor HP, atau email..." oninput="renderCC()" style="flex:1;min-width:150px">
+        <input type="text" id="ccCari" placeholder="Cari nama, nomor induk, nomor HP, atau email..." oninput="tunda(renderCC)" style="flex:1;min-width:150px">
         <select id="ccFilter" onchange="renderCC()">
           <option value="all">Semua status</option>
           <option value="segera">Segera habis</option>
@@ -1104,6 +1117,13 @@ function resolveName(input,pool,label){
 const rp=n=>"Rp "+Math.round(n).toLocaleString("id-ID");
 const pad=n=>String(n).padStart(2,"0");
 const todayStr=()=>{const d=new Date();return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());};
+/* Daftar bisa ribuan baris. Menghitung ulang tiap huruf membuat ketikan tersendat,
+   jadi render ditunda sampai ketikan berhenti sejenak. */
+let _tundaT=null;
+function tunda(fn,ms){
+  clearTimeout(_tundaT);
+  _tundaT=setTimeout(()=>{_tundaT=null;fn();},ms||200);
+}
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2600);}
 function durasi(s,e){if(!s||!e)return 0;const f=x=>{const[h,m]=x.split(":").map(Number);return h+m/60;};return Math.max(0,Math.round((f(e)-f(s))*100)/100);}
 function ratePerJam(t,c){
@@ -2846,12 +2866,34 @@ function renderLangBar(LPT){
       `<span class="bx">${langPilih.has(l)?"\u2713":""}</span>${l} <span class="n">${jml[l]}</span></span>`).join("")+
     (langPilih.size>1?`<button class="btn ghost small" onclick="resetLangSel()">✕ Hapus ${langPilih.size} saringan</button>`:"");
 }
+let saringBuka=lget("ny_saring_v1",false);
+function toggleSaring(){
+  saringBuka=!saringBuka;lset("ny_saring_v1",saringBuka);
+  const b=document.getElementById("saringBox");
+  if(b)b.style.display=saringBuka?"":"none";
+  const t=document.getElementById("btnSaring");
+  if(t)t.textContent=saringBuka?"⚙ Sembunyikan saringan":"⚙ Saringan";
+}
+/* Ringkasan saringan supaya tetap terlihat walau kotaknya dilipat */
+function ringkasSaring(){
+  const e=document.getElementById("saringRingkas"); if(!e)return;
+  const bagian=[];
+  bagian.push(langPilih.size?[...langPilih].join(" + "):"semua bahasa");
+  bagian.push(tStatFilter.size?[...tStatFilter].map(k=>TSTAT[k].l).join(" + ")
+    :(sembunyiFormer?"tanpa Former":"semua status"));
+  e.textContent=bagian.join(" · ");
+  const b=document.getElementById("saringBox");
+  if(b)b.style.display=saringBuka?"":"none";
+  const t=document.getElementById("btnSaring");
+  if(t)t.textContent=saringBuka?"⚙ Sembunyikan saringan":"⚙ Saringan";
+}
 function renderTutorCards(){
   const now=new Date(), key=document.getElementById("fPeriod").value;
   const q=(document.getElementById("tSearch").value||"").toLowerCase();
   const LPT=langPerTutor();
   renderLangBar(LPT);
   renderStatBar(allTutorNames());
+  ringkasSaring();
   const langAktif=[...langPilih];
   const langSel=langAktif.join(" + ");
   /* okT = tutor ini mengajar SALAH SATU bahasa yang dicentang (gabungan, bukan irisan).
@@ -3665,16 +3707,25 @@ function miripPersen(a,b){
 let DUP=null;
 function cekDuplikat(){
   if(DUP)return DUP;
+  /* Membandingkan semua nama satu lawan satu berarti jutaan perbandingan begitu
+     muridnya ribuan — itu yang membuat halaman terasa berat. Nama dikelompokkan dulu
+     berdasarkan tiga huruf pertama; salah ketik hampir selalu masih sekelompok. */
   const L=Object.entries(U.murid||{}).map(([id,m])=>({id,nm:m.nm,k:nkey(m.nm)}))
     .filter(x=>x.k.length>=4);
+  const blok={};
+  L.forEach(x=>{const b=x.k.slice(0,3);(blok[b]=blok[b]||[]).push(x);});
   DUP=[];
-  for(let i=0;i<L.length;i++)for(let j=i+1;j<L.length;j++){
-    const a=L[i],b=L[j];
-    if(Math.abs(a.k.length-b.k.length)>4)continue;
-    const p=miripPersen(a.k,b.k);
-    if(p>=85)DUP.push({a,b,p});
-  }
+  Object.values(blok).forEach(g=>{
+    if(g.length<2||g.length>400)return;         // blok raksasa dilewati, pasti bukan salah ketik
+    for(let i=0;i<g.length;i++)for(let j=i+1;j<g.length;j++){
+      const a=g[i],b=g[j];
+      if(Math.abs(a.k.length-b.k.length)>4)continue;
+      const p=miripPersen(a.k,b.k);
+      if(p>=85&&!dupDiabaikan(a.id,b.id))DUP.push({a,b,p});
+    }
+  });
   DUP.sort((x,y)=>y.p-x.p);
+  if(DUP.length>300)DUP=DUP.slice(0,300);
   return DUP;
 }
 
@@ -3780,6 +3831,19 @@ function lakukanPisah(id,alias,nmBaru){
   segarkanTipeBeli(idBaru);segarkanTipeBeli(id);
   renderAll();if(detailCtx)renderDetail();
   toast(nama+" sekarang "+idBaru+(ikut.length?" · "+ikut.length+" pembelian ikut pindah":""));
+}
+let dupBatas=8;
+/* Pasangan yang sudah dipastikan dua orang berbeda tidak perlu muncul terus. */
+function abaikanDup(a,b){
+  if(!guard())return;
+  const kunci=[a,b].sort().join("~");
+  const L=lget("ny_dupok_v1",[]);
+  if(!L.includes(kunci)){L.push(kunci);lset("ny_dupok_v1",L);}
+  DUP=null;renderMurid();
+  toast("Pasangan ini tidak akan ditampilkan lagi");
+}
+function dupDiabaikan(a,b){
+  return (lget("ny_dupok_v1",[])||[]).includes([a,b].sort().join("~"));
 }
 function gabungMurid(ke,dari){
   if(!guard())return;
@@ -4657,14 +4721,34 @@ function renderMurid(){
     (dup.length?`<div class="filterchip" style="background:#F6E1E3;border-color:#DCB2B6;display:block">
         <b>${dup.length} pasang nama sangat mirip</b> — mungkin satu orang yang namanya salah ketik.
         Periksa dulu; yang benar-benar sama tinggal digabung.
-        <div style="margin-top:6px">${dup.slice(0,8).map(d=>`<div class="belirow">
-          <span class="pr"><b>${d.a.nm}</b> <span style="color:var(--ink-soft)">${d.a.id}</span>
-            &nbsp;↔&nbsp; <b>${d.b.nm}</b> <span style="color:var(--ink-soft)">${d.b.id}</span>
-            <span class="chip">${d.p}% mirip</span></span>
-          <button class="btn ghost small" onclick="openMuridId('${d.a.id}')">Lihat</button>
-          <button class="btn small editonly" onclick="gabungMurid('${d.a.id}','${d.b.id}')">🔗 Gabungkan</button>
-        </div>`).join("")}
-        ${dup.length>8?`<div class="hint">… dan ${dup.length-8} pasang lagi</div>`:""}</div></div>`:"")+
+        <div style="margin-top:6px">${dup.slice(0,dupBatas).map(d=>{
+          const ra=rekapMurid(d.a.id)||{}, rb=rekapMurid(d.b.id)||{};
+          const ring=(id,r)=>`${r.sesi||0} sesi · ${r.beli||0}× beli${r.belanja?" · "+rp(r.belanja):""}`;
+          return `<div class="dupbox">
+          <div class="duphead"><b>${d.p}% mirip</b></div>
+          <div class="duppair">
+            <div class="dupside">
+              <span class="link" onclick="openMuridId('${d.a.id}')">${d.a.nm}</span>
+              <span class="mid">${d.a.id}</span>
+              <div class="sub">${ring(d.a.id,ra)}</div>
+            </div>
+            <div class="dupside">
+              <span class="link" onclick="openMuridId('${d.b.id}')">${d.b.nm}</span>
+              <span class="mid">${d.b.id}</span>
+              <div class="sub">${ring(d.b.id,rb)}</div>
+            </div>
+          </div>
+          <div class="row-actions editonly" style="margin-top:5px">
+            <button class="btn small" onclick="gabungMurid('${d.a.id}','${d.b.id}')"
+              title="Semua data ${d.b.nm} dipindah ke ${d.a.id}, lalu ${d.b.id} dihapus">🔗 Simpan ${d.a.id}</button>
+            <button class="btn small" onclick="gabungMurid('${d.b.id}','${d.a.id}')"
+              title="Semua data ${d.a.nm} dipindah ke ${d.b.id}, lalu ${d.a.id} dihapus">🔗 Simpan ${d.b.id}</button>
+            <button class="btn ghost small" onclick="abaikanDup('${d.a.id}','${d.b.id}')"
+              title="Dua orang berbeda — jangan tampilkan lagi">✓ Orang berbeda</button>
+          </div>
+        </div>`;}).join("")}
+        ${dup.length>dupBatas?`<button class="btn ghost small" onclick="dupBatas=999;renderMurid()">
+          Tampilkan ${dup.length-dupBatas} pasang lagi</button>`:""}</div></div>`:"")+
     (Object.keys(U.murid||{}).length?"":`<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86">
         <b>Registry masih kosong.</b> <button class="btn small editonly" onclick="bikinIdMurid()">🆔 Buat ID murid dari log kelas</button></div>`)+
     `<div class="hint" style="margin:4px 0 2px">
