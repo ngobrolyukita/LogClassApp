@@ -574,6 +574,10 @@
       </div>
       <div id="simpanWarn"></div>
       <div id="mWarn"></div>
+      <div class="card" style="margin:0 0 12px;border-color:#DCB2B6">
+        <h2>🔍 Beda Program — Belajar vs Pembelian</h2>
+        <div id="bedaBox"></div>
+      </div>
       <div class="mini-kpis" id="mKpis"></div>
       <div class="langbar" id="mLangBar"></div>
       <div class="langbar" id="mStatBar"></div>
@@ -1660,6 +1664,9 @@ let _tunda=0, _kotor=false;
 function cacheAll(){
   if(typeof REKAP!=="undefined")REKAP=null;      // data berubah -> rekap dihitung ulang
   if(typeof TOKEN!=="undefined")TOKEN=null;     // token belajar ikut dihitung ulang
+  if(typeof BIDX!=="undefined")BIDX=null;       // indeks pembelian
+  if(typeof LIDX!=="undefined")LIDX=null;       // indeks bahasa dari log
+  if(typeof BEDA!=="undefined")BEDA=null;
   if(_tunda){_kotor=true;return true;}
   const a=lset(CKEY,classes),b=lset(RKEY,U),c=lset(PKEY,paid),d=lset(QKEY,queue);
   return a&&b&&c&&d;
@@ -3568,7 +3575,8 @@ function muridIndex(){
     (m.al||[]).forEach(a=>{if(a&&!MIDX[a])MIDX[a]=id;}));
   return MIDX;
 }
-function lupakanIndex(){MIDX=null;REKAP=null;_hitNama=null;DUP=null;DUPT=null;IDX_KONTAK=null;TOKEN=null;}
+function lupakanIndex(){MIDX=null;REKAP=null;_hitNama=null;DUP=null;DUPT=null;
+  IDX_KONTAK=null;TOKEN=null;BIDX=null;LIDX=null;BEDA=null;}
 function midOf(nm){const i=muridIndex();return i[nkey(nm)]||i[nkey(pecahNama(nm).utama)]||"";}
 function muridOf(nm){const id=midOf(nm);return id?Object.assign({id},U.murid[id]):null;}
 function namaMid(id){const m=(U.murid||{})[id];return m?m.nm:id;}
@@ -3705,6 +3713,94 @@ function miripPersen(a,b){
   return mx?Math.round((1-jarakKata(a,b)/mx)*100):0;
 }
 let DUP=null;
+/* ================= PERIKSA BEDA PROGRAM =================
+   Bahasa yang dipelajari di log dan bahasa yang dibeli harus cocok. Kalau tidak,
+   biasanya salah satu dari tiga sebab: pembelian tersambung ke murid yang keliru,
+   nama produk tidak terbaca, atau kolom program pernah tersimpan salah oleh
+   versi lama. Ketiganya bisa ditemukan dari perbandingan ini. */
+let LIDX=null;
+function indeksBahasaLog(){
+  if(LIDX)return LIDX;
+  LIDX={};
+  const idx=muridIndex();
+  classes.forEach(c=>{
+    if(!c.cls||isReg(c))return;
+    const id=idx[nkey(c.cls)]; if(!id)return;
+    const b=progBaku(c.lang||""); if(!b)return;
+    (LIDX[id]=LIDX[id]||new Set()).add(b);
+  });
+  return LIDX;
+}
+function bahasaLog(id){return indeksBahasaLog()[id]||new Set();}
+function bahasaBeli(id){
+  const set=new Set();
+  beliMurid(id).forEach(o=>{if(isCC(o))return;const b=progBaku(progBeli(o));if(b)set.add(b);});
+  return set;
+}
+let BEDA=null;
+function cekBedaProgram(){
+  if(BEDA)return BEDA;
+  const out=[];
+  Object.keys(U.murid||{}).forEach(id=>{
+    const L=bahasaLog(id), B=bahasaBeli(id);
+    if(!L.size||!B.size)return;                       // tidak bisa dibandingkan
+    const sama=[...L].filter(x=>B.has(x));
+    if(sama.length)return;                            // ada yang cocok, dianggap wajar
+    out.push({id,nm:namaMid(id),log:[...L],beli:[...B],
+      items:beliMurid(id).filter(o=>!isCC(o))});
+  });
+  BEDA=out.sort((a,b)=>a.nm.localeCompare(b.nm,"id"));
+  return BEDA;
+}
+/* Program dihitung ulang dari nama produk — memperbaiki nilai yang tersimpan salah */
+function hitungUlangProgram(){
+  if(!guard())return;
+  const ubah=[];
+  Object.entries(U.beli||{}).forEach(([oid,o])=>{
+    const dari=progBaku(o.prog||""), ke=progOf(o.produk);
+    if(ke&&dari!==ke)ubah.push({oid,o,dari:dari||"(kosong)",ke});
+  });
+  if(!ubah.length)return toast("Semua program sudah sesuai nama produknya");
+  if(!confirm(ubah.length+" pembelian programnya tidak sesuai nama produk.\n\n"+
+    ubah.slice(0,8).map(x=>x.dari+" -> "+x.ke+" : "+(x.o.produk||"").slice(0,44)).join("\n")+
+    (ubah.length>8?"\n…":"")+"\n\nPerbaiki sekarang?"))return;
+  mulaiMassal();
+  const mids=new Set();
+  ubah.forEach(x=>{x.o.prog=x.ke;pushBELI(x.oid,x.o);if(x.o.mid)mids.add(x.o.mid);});
+  selesaiMassal();cacheAll();lupakanIndex();lupakanRekap();
+  mids.forEach(segarkanTipeBeli);
+  buildMeet();renderAll();
+  toast(ubah.length+" program pembelian diperbaiki dari nama produknya");
+}
+function exportBedaProgram(){
+  const L=cekBedaProgram();
+  const rows=[["Nomor Induk","Nama Murid","Bahasa di Log","Bahasa Dibeli","Tanggal Beli",
+    "Nama Produk","Program Tersimpan","Program dari Nama Produk","Nominal","Sumber","Order ID"]];
+  L.forEach(x=>x.items.forEach(o=>rows.push([x.id,x.nm,x.log.join(" | "),x.beli.join(" | "),
+    o.tgl,o.produk||"",progBaku(o.prog||"")||"(kosong)",progOf(o.produk)||"(tidak terbaca)",
+    +o.nominal||0,o.sumber||o.metode||"",o.oid])));
+  unduhCSV(rows,"beda_program_"+todayStr()+".csv");
+  toast(L.length+" murid dengan beda program diekspor");
+}
+function renderBedaProgram(){
+  const e=document.getElementById("bedaBox"); if(!e)return;
+  const L=cekBedaProgram();
+  if(!L.length){e.innerHTML=`<p class="note" style="margin:0">Semua murid yang punya kelas dan pembelian
+    bahasanya sudah cocok. 👍</p>`;return;}
+  e.innerHTML=`<p class="note" style="margin:0 0 8px"><b>${L.length} murid</b> bahasa yang dipelajari di log
+    tidak ada yang cocok dengan bahasa yang dibeli. Buka muridnya untuk melihat mana yang keliru —
+    biasanya pembeliannya tersambung ke orang lain, atau nama produknya tidak terbaca.</p>
+    <div class="row-actions" style="margin:0 0 8px">
+      <button class="btn small editonly" onclick="hitungUlangProgram()">🔧 Perbaiki program dari nama produk</button>
+      <button class="btn ghost small" onclick="exportBedaProgram()">📦 Export daftar (CSV)</button>
+    </div>
+    <div class="scroll" style="max-height:340px">${L.slice(0,40).map(x=>`<div class="belirow">
+      <span class="pr"><span class="link" onclick="openMuridId('${x.id}')">${x.nm}</span>
+        <span class="mid" style="font-size:10px">${x.id}</span>
+        <div class="sub">belajar <b>${x.log.join(", ")}</b> · beli <b style="color:var(--red)">${x.beli.join(", ")}</b></div>
+        <div class="sub" style="font-size:10px">${x.items.slice(0,2).map(o=>fmtD_(o.tgl)+" "+(o.produk||"")).join(" · ")}</div></span>
+    </div>`).join("")}${L.length>40?`<div class="hint">… dan ${L.length-40} murid lagi</div>`:""}</div>`;
+}
 function cekDuplikat(){
   if(DUP)return DUP;
   /* Membandingkan semua nama satu lawan satu berarti jutaan perbandingan begitu
@@ -3874,11 +3970,22 @@ function pushBELI(oid,o){
     rate:+nominal||0,lang:"v1~"+JSON.stringify(Object.assign({},sisa,
       {produk:o.produk||"",prog:o.prog||"",jam:+o.jam||0,dipakai:+o.dipakai||0}))}]});
 }
-function beliMurid(id){
-  return Object.entries(U.beli||{}).filter(([,o])=>o.mid===id)
-    .map(([oid,o])=>Object.assign({oid},o))
-    .sort((a,b)=>String(a.tgl).localeCompare(String(b.tgl)));
+/* beliMurid dipanggil untuk tiap murid di banyak tempat. Kalau tiap panggilan
+   menyapu seluruh pembelian, dengan 2.000 murid dan 3.000 pembelian itu jutaan
+   langkah tiap kali halaman digambar — inilah yang membuat app terasa berat.
+   Sekali kelompokkan, lalu pakai ulang sampai datanya berubah. */
+let BIDX=null;
+function beliIndex(){
+  if(BIDX)return BIDX;
+  BIDX={};
+  Object.entries(U.beli||{}).forEach(([oid,o])=>{
+    if(!o.mid)return;
+    (BIDX[o.mid]=BIDX[o.mid]||[]).push(Object.assign({oid},o));
+  });
+  Object.values(BIDX).forEach(a=>a.sort((x,y)=>String(x.tgl).localeCompare(String(y.tgl))));
+  return BIDX;
 }
+function beliMurid(id){return (beliIndex()[id]||[]).slice();}
 /* Jumlah top up sekarang punya dua sumber: catatan top up manual di panel murid,
    dan riwayat pembelian hasil impor. Yang dipakai adalah yang lebih lengkap —
    kalau riwayat pembeliannya sudah ada, itu yang lebih dipercaya karena bernilai rupiah. */
@@ -4710,7 +4817,7 @@ function semuaRekap(){return Object.values(bangunRekap());}
 function renderMurid(){
   const box=document.getElementById("mList"); if(!box)return;
   renderSimpanWarn();
-  isiMPeriod();
+  isiMPeriod();renderBedaProgram();
   const belum=muridBelumPunyaId();
   const w=document.getElementById("mWarn");
   const dup=cekDuplikat();
