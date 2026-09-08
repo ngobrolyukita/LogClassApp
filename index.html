@@ -799,9 +799,11 @@
   <div class="panel" id="p-reguler">
     <div class="card">
       <h2>🏫 Kelas Reguler</h2>
-      <p class="note" style="margin-top:0">Kohort diambil dari log kelas, pesertanya dari riwayat pembelian —
-        dicocokkan lewat nama batch di produk WooCommerce. Kelas reguler tidak memakai token jam;
-        yang dipantau di sini jadwalnya, tutornya, dan siapa saja yang terdaftar.</p>
+      <p class="note" style="margin-top:0">Daftar kelas diambil dari log, pesertanya dari riwayat pembelian.
+        <b>📌 Tandai pertemuan</b> dipakai sekali saja untuk menyetel nomor: pilih satu tanggal dan sebutkan
+        pada tanggal itu sudah pertemuan ke berapa — sesudahnya sistem menghitung sendiri mengikuti log yang masuk.
+        <b>＋ Daftarkan kelas</b> memberi nomor kelas, tutor penanggung jawab, target pertemuan, dan
+        menggabungkan beberapa ejaan nama yang sama di log jadi satu kartu.</p>
       <div class="mini-kpis" id="regKpis"></div>
       <div class="searchrow" style="margin-top:9px">
         <input type="text" id="regCari" placeholder="Cari kelas, bahasa, tutor, atau nama peserta..."
@@ -1873,9 +1875,8 @@ function meetBadge(c){
   /* Kelas reguler dihitung per PERTEMUAN: satu sesi selalu satu pertemuan,
      berapa pun durasinya. Targetnya dari tabel jumlah sesi per batch. */
   if(isReg(c)){
-    let k=REGN[c.id]; if(k==null)return "";
+    const k=nomorPertemuan(c); if(k==null)return "";
     const K=kelasDariCls(c.cls);
-    if(K&&+K.offset>0)k+=+K.offset;              // pertemuan yang sudah berjalan sebelum log
     const t=(K&&+K.target>0)?+K.target:targetSesiReg(c.cls);
     const lewat=t&&k>t;
     return `<span class="pert${t&&k>=t?" full":""}${lewat?" over":""}"
@@ -5712,6 +5713,82 @@ function hapusKelasReg(id){
   cacheAll();lupakanReg();renderReguler();
   toast(o.nm+" dihapus dari daftar kelas induk");
 }
+/* ---------- penanda pertemuan ----------
+   Cara paling mudah menyetel nomor pertemuan: tandai sekali "per tanggal sekian
+   sudah pertemuan ke sekian". Setelah itu sistem menghitung sendiri maju-mundur
+   dari titik itu mengikuti log, tanpa perlu diatur lagi. */
+function tandaiPertemuan(clsEnc){
+  if(!guard())return;
+  const cls=du(clsEnc);
+  const K=kelasDariCls(cls);
+  const sesi=sesiKohort(K?K.id:cls);
+  if(!sesi.length)return toast("Belum ada sesi Selesai di kelas ini");
+  const akhir=sesi[sesi.length-1];
+  const tt=(K&&K.tt)||null;
+  tanyaForm({
+    judul:"Tandai Pertemuan",
+    sub:(K?K.nm:cls),
+    pesan:"Isi satu titik acuan saja: pada tanggal itu kelas ini sudah sampai pertemuan ke berapa. "+
+      "Sesi setelahnya dihitung otomatis dari log, jadi tidak perlu diatur lagi setiap kali."+
+      (tt?"\n\nSekarang tertanda: "+fmtD_(tt.tgl)+" = pertemuan ke-"+tt.ke+".":"")+
+      "\n\nSesi terakhir di log: "+fmtD_(akhir.date)+".",
+    fields:[
+      {label:"Tanggal acuan",nilai:(tt&&tt.tgl)||akhir.date,tipe:"date",
+        hint:"— pilih tanggal sesi yang ada di log"},
+      {label:"Pada tanggal itu, pertemuan ke-",nilai:(tt&&tt.ke)||"",tipe:"number",
+        hint:"— kosongkan untuk menghapus penanda"}
+    ],
+    tombol:"Simpan penanda",
+    ok:([tgl,ke])=>simpanTanda(cls,tgl,ke)
+  });
+}
+function sesiKohort(kunci){
+  const K=(U.kelas||{})[kunci];
+  const nama=K?(K.alias||[K.nm]):[kunci];
+  return classes.filter(c=>isReg(c)&&nama.includes(c.cls)&&statusOf(c,new Date())==="Selesai")
+    .sort((a,b)=>a.date===b.date?String(a.start).localeCompare(String(b.start)):a.date.localeCompare(b.date));
+}
+function simpanTanda(cls,tgl,ke){
+  const t=jParseTgl(tgl)||normDate(tgl);
+  const n=+String(ke).replace(/\D/g,"")||0;
+  let K=kelasDariCls(cls), id=K?K.id:"";
+  if(!id){
+    // dibuatkan catatan kelas seadanya supaya penanda punya tempat menempel
+    id=idKelasBerikut();
+    const cs=classes.filter(c=>c.cls===cls&&isReg(c));
+    const tut=Object.entries(cs.reduce((a,c)=>{const x=tutorAsli(c);if(x)a[x]=(a[x]||0)+1;return a;},{}))
+      .sort((a,b)=>b[1]-a[1]).map(([x])=>x)[0]||"";
+    simpanKelasReg(id,{nm:cls,bhs:bahasaKohort(cls),lv:levelKohort(cls),tutor:tut,
+      batch:String((cs.map(c=>c.date).sort()[0])||"").slice(0,7),target:0,offset:0,
+      alias:[cls],by:meName(),at:new Date().toISOString()});
+    K=Object.assign({id},U.kelas[id]);
+  }
+  const o=U.kelas[id];
+  if(!n){delete o.tt;}
+  else{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(t))return toast("Tanggalnya belum benar");
+    o.tt={tgl:t,ke:n,by:meName(),at:new Date().toISOString()};
+  }
+  o.offset=0;
+  simpanKelasReg(id,o);
+  cacheAll();lupakanReg();buildMeet();renderAll();
+  toast(n?((K.nm||cls)+": "+fmtD_(t)+" = pertemuan ke-"+n+", sisanya dihitung otomatis")
+        :"Penanda pertemuan dihapus");
+}
+/* Nomor pertemuan sebuah sesi, sudah memperhitungkan penanda */
+function nomorPertemuan(c){
+  const dasar=REGN[c.id];
+  if(dasar==null)return null;
+  const K=kelasDariCls(c.cls);
+  if(!K)return dasar;
+  if(K.tt&&K.tt.tgl){
+    const sesi=sesiKohort(K.id);
+    let idx0=0;
+    sesi.forEach((x,i)=>{if(x.date<=K.tt.tgl)idx0=i+1;});
+    return dasar+((+K.tt.ke||0)-idx0);
+  }
+  return dasar+(+K.offset||0);
+}
 /* nama kohort di log -> kelas induk */
 let KIDX=null;
 function indeksKelasReg(){
@@ -5759,7 +5836,7 @@ function bikinKelasReg(dariCls){
       {label:"Target pertemuan",nilai:asal?targetSesiReg(asal):"",tipe:"number",
         hint:"— kosongkan agar dihitung dari tabel bahasa & hari main"},
       {label:"Pertemuan sudah berjalan sebelum log",nilai:"",tipe:"number",
-        hint:"— untuk batch yang mulai sebelum log kelas dipakai"}
+        hint:"— boleh dikosongkan; lebih mudah pakai 📌 Tandai pertemuan"}
     ],
     tombol:"Buat kelas",
     ok:(v)=>simpanBaruKelasReg(id,asal,v)
@@ -5784,8 +5861,9 @@ function ubahKelasReg(id){
   const jml=classes.filter(c=>isReg(c)&&(o.alias||[]).includes(c.cls)&&statusOf(c,new Date())==="Selesai").length;
   tanyaForm({
     judul:"Ubah Kelas Reguler",sub:id+" · "+o.nm,
-    pesan:jml+" pertemuan tercatat di log. Nomor pertemuan yang tampil = "+
-      "pertemuan sebelum log + yang tercatat di log.",
+    pesan:jml+" pertemuan tercatat di log."+
+      (o.tt?" Penanda: "+fmtD_(o.tt.tgl)+" = pertemuan ke-"+o.tt.ke+".":
+        " Nomor pertemuan diatur lewat tombol 📌 Tandai pertemuan."),
     fields:[
       {label:"Nama kelas",nilai:o.nm},
       {label:"Bahasa",nilai:o.bhs||"",pilihan:DATA.langs},
@@ -5794,7 +5872,6 @@ function ubahKelasReg(id){
       {label:"Batch bulan",nilai:o.batch||"",ph:"2026-09"},
       {label:"Target pertemuan",nilai:+o.target||"",tipe:"number",
         hint:"— kosongkan agar dihitung dari tabel"},
-      {label:"Pertemuan sudah berjalan sebelum log",nilai:+o.offset||"",tipe:"number"},
       {label:"Nama lain di log",nilai:(o.alias||[]).filter(a=>a!==o.nm).join(" | "),
         hint:"— pisahkan dengan tanda |, untuk ejaan berbeda di log"}
     ],
@@ -5802,7 +5879,7 @@ function ubahKelasReg(id){
     ok:(v)=>simpanUbahKelasReg(id,v)
   });
 }
-function simpanUbahKelasReg(id,[nm,bhs,lv,tutor,batch,target,offset,alias]){
+function simpanUbahKelasReg(id,[nm,bhs,lv,tutor,batch,target,alias]){
   const o=(U.kelas||{})[id]; if(!o)return;
   const nama=normName(nm||o.nm);
   o.nm=nama;
@@ -5811,7 +5888,6 @@ function simpanUbahKelasReg(id,[nm,bhs,lv,tutor,batch,target,offset,alias]){
   o.tutor=normName(tutor||"");
   o.batch=String(batch||"").trim();
   o.target=+String(target).replace(/\D/g,"")||0;
-  o.offset=+String(offset).replace(/\D/g,"")||0;
   o.alias=[...new Set([nama,...String(alias||"").split("|").map(x=>x.trim()).filter(Boolean)])];
   simpanKelasReg(id,o);
   cacheAll();lupakanReg();buildMeet();renderReguler();
@@ -6051,7 +6127,11 @@ function bangunReguler(){
     });
     o.rp=o.peserta.reduce((a,b)=>a+(+b.nominal||0),0);
     o.murid=o.roster.length||new Set(o.peserta.map(b=>b.mid).filter(Boolean)).size;
-    o.sudah=o.offset+o.selesai;                 // pertemuan ke berapa saat ini
+    const _ss=sesiKohort(o._id||o.cls);
+    const _akhir=_ss[_ss.length-1];
+    o.sudah=_akhir?(nomorPertemuan(_akhir)||o.selesai):o.offset+o.selesai;
+    o.tglAkhir=_akhir?_akhir.date:"";
+    o.tt=(K&&K.tt)||null;
     return o;
   }).sort((a,b)=>String(b.akhir).localeCompare(String(a.akhir)));
   const kepakai=new Set();
@@ -6072,7 +6152,7 @@ function renderReguler(){
     <div class="kpi"><div class="v">${daftar.reduce((a,x)=>a+x.murid,0)}</div><div class="l">Peserta Tersambung</div></div>
     <div class="kpi"><div class="v" style="font-size:13px">${rp(daftar.reduce((a,x)=>a+x.rp,0))}</div><div class="l">Nilai Pembelian</div></div>
     <div class="kpi"><div class="v">${daftar.reduce((a,x)=>a+x.selesai,0)}</div><div class="l">Sesi Selesai</div></div>
-    <div class="kpi"><div class="v" style="color:${daftar.filter(x=>!x.kid).length?"#8A5F14":"#1C6047"}">${daftar.filter(x=>!x.kid).length}</div><div class="l">Tanpa Kelas Induk</div></div>
+    <div class="kpi"><div class="v" style="color:${daftar.filter(x=>!x.kid).length?"#8A5F14":"#1C6047"}">${daftar.filter(x=>!x.kid).length}</div><div class="l">Belum Terdaftar</div></div>
     <div class="kpi"><div class="v" style="font-size:13px">${rp(daftar.reduce((a,x)=>a+x.fee,0))}</div><div class="l">Gaji Tutor</div></div>
     <div class="kpi${regF==="tanpa"?" on":""}" onclick="setRegF('tanpa')" title="Kelasnya jalan tapi belum ada pembelian yang cocok"><div class="v" style="color:${tanpa.length?"#8A5F14":"#1C6047"}">${tanpa.length}</div><div class="l">Tanpa Peserta</div></div>
     <div class="kpi"><div class="v" style="color:${yatim.length?"#8A5F14":"#1C6047"}">${yatim.length}</div><div class="l">Pembelian Tanpa Kelas</div></div>`;
@@ -6097,7 +6177,7 @@ function renderReguler(){
     x.peserta.map(b=>namaBeli(b)).join(" ")).toLowerCase().includes(q));
   box.innerHTML=R.length?R.map(x=>`<div class="regbox">
       <div class="reghead">
-        ${x.kid?`<span class="mid">${x.kid}</span>`:`<span class="tok tok-tipis">tanpa kelas induk</span>`}
+        ${x.kid?`<span class="mid">${x.kid}</span>`:`<span class="tok tok-tipis">belum terdaftar</span>`}
         <b>${x.K?x.K.nm:x.cls}</b>
         <span class="chip">${x.bahasa||"—"}</span>
         <span class="chip">${labelBulan(x.batch)}</span>
@@ -6112,11 +6192,16 @@ function renderReguler(){
       </div>
       <div class="sub" style="margin-bottom:5px">
         <b>Pertemuan ke-${x.sudah}${x.target?" dari "+x.target:""}</b>${x.target?` · sisa ${Math.max(0,x.target-x.sudah)}`:""}
-        ${x.offset?`<span class="chip" title="Pertemuan yang sudah berjalan sebelum log dipakai">${x.offset} sebelum log</span>`:""}
+        ${x.tglAkhir?`<span style="color:var(--ink-soft)">per ${fmtD_(x.tglAkhir)}</span>`:""}
         ${x.lv?`<span class="chip">${x.lv}</span>`:""}
-        ${x.kid&&canEdit()?`<button class="btn ghost small" onclick="ubahKelasReg('${x.kid}')" title="Ubah nama, tutor, target, atau pertemuan berjalan">✎ Ubah</button>`:""}
-        ${!x.kid&&canEdit()?`<button class="btn small" onclick="bikinKelasReg(du('${eu(x.cls)}'))" title="Buat catatan induk supaya punya nomor, tutor tetap, dan target">＋ Jadikan kelas induk</button>`:""}
+        ${canEdit()?`<button class="btn small" onclick="tandaiPertemuan(du('${eu(x.cls)}'))"
+          title="Tandai sekali: pada tanggal tertentu sudah pertemuan ke berapa. Sesudah itu dihitung otomatis dari log.">📌 Tandai pertemuan</button>`:""}
+        ${x.kid&&canEdit()?`<button class="btn ghost small" onclick="ubahKelasReg('${x.kid}')" title="Ubah nama, tutor, level, target, atau gabungkan ejaan lain di log">✎ Ubah data kelas</button>`:""}
+        ${!x.kid&&canEdit()?`<button class="btn ghost small" onclick="bikinKelasReg(du('${eu(x.cls)}'))"
+          title="Simpan sebagai data kelas: dapat nomor, tutor penanggung jawab, target, dan bisa menggabungkan ejaan lain di log">＋ Daftarkan kelas</button>`:""}
       </div>
+      ${x.tt?`<div class="sub" style="margin-bottom:5px;color:#1C6047">
+        📌 Ditandai: ${fmtD_(x.tt.tgl)} = pertemuan ke-${x.tt.ke}${x.tt.by?" · oleh "+x.tt.by:""} — sesudahnya dihitung otomatis</div>`:""}
       ${x.ejaan&&x.ejaan.size>1?`<div class="sub" style="margin-bottom:3px;color:#8A5F14">
         ${x.ejaan.size} ejaan di log digabung: ${[...x.ejaan].join(" · ")}</div>`:""}
       ${x.penanggung?`<div class="sub" style="margin-bottom:3px">Penanggung jawab:
