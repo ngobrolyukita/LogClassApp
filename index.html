@@ -247,6 +247,12 @@
   .tok-tipis{background:#F4EAD4;color:#7A5310;border-color:#D8BE86}
   .tok-aman{background:#DCEBE3;color:#1C6047;border-color:#A6C4B4}
   .tok-reg{background:#E3EAE9;color:#5B6E77;border-color:#C6D2D1}
+  .rosrow{display:flex;gap:8px;align-items:flex-start;padding:7px 8px;border-bottom:1px solid var(--line);cursor:pointer}
+  .rosrow.on{background:var(--iris-tint)}
+  .rosrow input{margin-top:2px}
+  .regbox{border:1px solid var(--line);border-left:3px solid var(--iris);border-radius:10px;
+        padding:10px 12px;margin-bottom:9px;background:#fff}
+  .reghead{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
   .dupbox{border:1px solid #DCB2B6;border-radius:9px;background:#fff;padding:8px 10px;margin-bottom:7px}
   .duphead{font-size:10.5px;color:#8C2A34;font-weight:800;margin-bottom:4px}
   .duppair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -454,6 +460,7 @@
     <button class="tab on" data-p="log">Log Kelas</button>
     <button class="tab" data-p="tutor">Tutor Card</button>
     <button class="tab" data-p="murid">Data Murid</button>
+    <button class="tab" data-p="reguler">Kelas Reguler</button>
     <button class="tab" data-p="club">Convo Club</button>
     <button class="tab" data-p="stat">Statistik</button>
     <button class="tab" data-p="master">Master Rate</button>
@@ -662,6 +669,31 @@
     </div>
   </div>
 
+  <div class="sheetov center" id="rosOv">
+    <div class="sheet">
+      <div class="sheet-head">
+        <div><div class="ttl">👥 Peserta Kelas</div><div class="sub" id="rosSub"></div></div>
+        <button class="btn ghost small" onclick="tutupOv('rosOv')">✕</button>
+      </div>
+      <div class="sheet-body">
+        <p class="note" style="margin-top:0">Daftar di bawah berisi semua murid yang punya pembelian kelas reguler.
+          Yang paling mungkin sudah ditaruh di atas: peserta yang sudah tersimpan, lalu yang paket bundling-nya
+          cocok dengan level kelas ini, lalu yang bahasanya sama. Pembagian grup memang ditentukan manual,
+          jadi centang sendiri siapa yang masuk.</p>
+        <div class="searchrow" style="margin-bottom:8px">
+          <input type="text" id="rosCari" placeholder="Cari nama, nomor induk, atau produk..."
+            oninput="tunda(gambarRoster,150)" style="flex:1;min-width:150px">
+          <span class="hint" id="rosHit" style="margin:0"></span>
+        </div>
+        <div id="rosList"></div>
+      </div>
+      <div class="sheet-foot">
+        <button class="btn" onclick="simpanRoster()">Simpan peserta</button>
+        <button class="btn ghost" onclick="tutupOv('rosOv')">Batal</button>
+      </div>
+    </div>
+  </div>
+
   <div class="sheetov center" id="askOv">
     <div class="sheet mini">
       <div class="sheet-head">
@@ -761,6 +793,26 @@
         <button class="btn" onclick="prosesImpor(false)">🔍 Periksa dulu</button>
         <button class="btn ghost" onclick="tutupImpor()">Batal</button>
       </div>
+    </div>
+  </div>
+
+  <div class="panel" id="p-reguler">
+    <div class="card">
+      <h2>🏫 Kelas Reguler</h2>
+      <p class="note" style="margin-top:0">Kohort diambil dari log kelas, pesertanya dari riwayat pembelian —
+        dicocokkan lewat nama batch di produk WooCommerce. Kelas reguler tidak memakai token jam;
+        yang dipantau di sini jadwalnya, tutornya, dan siapa saja yang terdaftar.</p>
+      <div class="mini-kpis" id="regKpis"></div>
+      <div class="searchrow" style="margin-top:9px">
+        <input type="text" id="regCari" placeholder="Cari kelas, bahasa, tutor, atau nama peserta..."
+          oninput="regQ=this.value;tunda(renderReguler)" style="flex:1;min-width:150px">
+        <select id="regBhs" onchange="renderReguler()"><option value="">Semua bahasa</option></select>
+        <select id="regBatch" onchange="renderReguler()"><option value="">Semua batch</option></select>
+        <button class="btn small editonly" onclick="bikinKelasReg()">＋ Buat Kelas</button>
+        <button class="btn ghost small" onclick="exportReguler()">📦 Export CSV</button>
+      </div>
+      <div id="regYatim" style="margin-top:9px"></div>
+      <div id="regList" style="margin-top:9px"></div>
     </div>
   </div>
 
@@ -1667,6 +1719,7 @@ function cacheAll(){
   if(typeof BIDX!=="undefined")BIDX=null;       // indeks pembelian
   if(typeof LIDX!=="undefined")LIDX=null;       // indeks bahasa dari log
   if(typeof BEDA!=="undefined")BEDA=null;
+  if(typeof RIDX!=="undefined")RIDX=null;       // indeks kelas reguler
   if(_tunda){_kotor=true;return true;}
   const a=lset(CKEY,classes),b=lset(RKEY,U),c=lset(PKEY,paid),d=lset(QKEY,queue);
   return a&&b&&c&&d;
@@ -1684,7 +1737,7 @@ const MKEY="ny_meet_v1";
 const RE_REG=/(^|\s)([ABC][12])[.\s]?\d?(\s|$)|HSK\s*\d|reguler|regular|conversation\s*club/i;
 // Nama kohort yang memuat bulan (mis. "A1.2 JULY") = angkatan, dihitung sejak awal.
 const RE_BLN=/\b(JAN|FEB|MAR|APR|MAY|MEI|JUN|JUNE|JUL|JULY|AUG|AGU|SEP|OCT|OKT|NOV|DEC|DES)\w*\b/i;
-let MEETCAP={};
+let MEETCAP={}, REGN={};
 let MEET={on:false,since:"2026-07-26",tReg:0,tPriv:0}, MEETN={}, MEETE={}, MEETB={}, MEETS={}, MEETSISA={};
 function isReg(c){return RE_REG.test(c.cls||"");}
 function isPriv(c){return !!(c.cls||"").trim()&&!isReg(c);}
@@ -1759,7 +1812,13 @@ function paketMurid(nm,c){
 }
 let MEET_DIAG={total:0,selesai:0,gagal:0,pesan:""};
 function buildMeet(){
-  MEETN={};MEETE={};MEETB={};MEETS={};MEETSISA={};MEETCAP={};if(!MEET.on)return;
+  MEETN={};MEETE={};MEETB={};MEETS={};MEETSISA={};MEETCAP={};
+  /* nomor pertemuan kelas reguler: urut per kohort, hanya sesi yang Selesai */
+  REGN={};
+  const _reg={};
+  classes.filter(c=>isReg(c)&&statusOf(c,new Date())==="Selesai")
+    .sort((a,b)=>a.date===b.date?String(a.start).localeCompare(String(b.start)):a.date.localeCompare(b.date))
+    .forEach(c=>{_reg[c.cls]=(_reg[c.cls]||0)+1;REGN[c.id]=_reg[c.cls];});if(!MEET.on)return;
   const now=new Date();
   const src=classes.filter(c=>c.cls&&c.date>=MEET.since&&statusOf(c,now)==="Selesai")
     .sort((a,b)=>a.date===b.date?(a.start<b.start?-1:1):(a.date<b.date?-1:1));
@@ -1811,6 +1870,19 @@ function meetTarget(c){
 }
 function meetBadge(c){
   if(!MEET.on)return "";
+  /* Kelas reguler dihitung per PERTEMUAN: satu sesi selalu satu pertemuan,
+     berapa pun durasinya. Targetnya dari tabel jumlah sesi per batch. */
+  if(isReg(c)){
+    let k=REGN[c.id]; if(k==null)return "";
+    const K=kelasDariCls(c.cls);
+    if(K&&+K.offset>0)k+=+K.offset;              // pertemuan yang sudah berjalan sebelum log
+    const t=(K&&+K.target>0)?+K.target:targetSesiReg(c.cls);
+    const lewat=t&&k>t;
+    return `<span class="pert${t&&k>=t?" full":""}${lewat?" over":""}"
+      title="Pertemuan ke-${k}${t?" dari "+t+" pertemuan batch ini":""}${lewat?" · SUDAH LEWAT TARGET":""}">P${k}${t?"/"+t:""}</span>`
+      +(t&&t-k<=2&&t-k>=0?`<span class="tup" style="background:#8A5F14"
+        title="Batch tinggal ${t-k} pertemuan lagi">sisa ${t-k}</span>`:"");
+  }
   const n=MEETN[c.id];if(n==null)return "";
   const t=meetTarget(c), sel=t&&n>=t, e=MEETE[c.id]||0;
   const sisa=MEETSISA[c.id];
@@ -2050,7 +2122,12 @@ async function api(body,timeoutMs){
 
   const teks=await r.text();
 
-  if(!r.ok)throw ErrKoneksi("Apps Script menjawab HTTP "+r.status+". Cek apakah deployment masih aktif.","http");
+  if(!r.ok)throw ErrKoneksi(r.status===404
+    ? "Apps Script menjawab HTTP 404 — URL deployment-nya sudah tidak berlaku. "+
+      "Buka Apps Script → Deploy → Kelola deployment → ikon pensil → Versi: New version → Deploy, "+
+      "lalu salin URL /exec yang baru ke kolom di atas. Membuat versi baru tanpa memperbarui URL di sini "+
+      "adalah penyebab 404 yang paling sering."
+    : "Apps Script menjawab HTTP "+r.status+". Cek apakah deployment masih aktif.","http");
 
   // Kalau akses deployment bukan "Anyone", Google mengirim halaman login HTML, bukan JSON.
   const awal=teks.trim().slice(0,80).toLowerCase();
@@ -2083,7 +2160,12 @@ async function tesKoneksi(){
   setSync("busy","Menguji koneksi…");
   const mulai=Date.now();
   try{
-    const j=await api({action:"getall"},30000);
+    // Tes cukup memanggil perintah paling ringan. Menarik seluruh data justru
+    // membuat tes gagal timeout padahal koneksinya sendiri sehat.
+    const j=await api({action:"ping"},20000).catch(async e=>{
+      if(/HTTP 404|404 —/.test(String(e&&e.message||"")))throw e;
+      return await api({action:"getall",limit:1},25000);   // skrip lama belum kenal ping
+    });
     const detik=((Date.now()-mulai)/1000).toFixed(1);
     log.push("BERHASIL dalam "+detik+" detik");
     log.push("Terbaca "+((j.classes||[]).length)+" baris kelas, "+((j.rates||[]).length)+" baris rate.");
@@ -2187,12 +2269,33 @@ async function fullSync(){
   setSync("busy","Mengambil data…");
   try{
     await flush();
-    const all=await api({action:"getall"},90000);
+    let all;
+    try{
+      all=await api({action:"getall"},120000);
+    }catch(e){
+      /* Sheet yang sudah besar sering tidak selesai dalam satu permintaan.
+         Dicoba lagi terpisah: rate dulu (lebih kecil), lalu kelas per potongan.
+         Skrip lama yang belum mengenal parameter ini akan mengembalikan semuanya —
+         hasilnya tetap benar, hanya tidak menghemat apa pun. */
+      if(!/tidak menjawab|timeout|Failed to fetch|NetworkError/i.test(String(e&&e.message||"")))throw e;
+      setSync("busy","Sheet besar — mengambil bertahap…");
+      const bagian=await api({action:"getall",only:"rates"},120000);
+      const kelas=[];
+      let hal=0,lagi=true;
+      while(lagi&&hal<40){
+        const p=await api({action:"getall",only:"classes",offset:hal*1500,limit:1500},120000);
+        const arr=p.classes||[];
+        kelas.push(...arr);
+        lagi=arr.length>=1500;hal++;
+        setSync("busy","Mengambil kelas… "+kelas.length.toLocaleString("id-ID"));
+      }
+      all={classes:kelas,rates:bagian.rates||[],paid:bagian.paid||[]};
+    }
     const raw=(all.classes||[]);
     // Sheet = satu-satunya sumber data. Tidak pernah ada pengisian otomatis.
     classes=raw.map(normClass).filter(c=>c.tutor&&/^\d{4}-\d{2}-\d{2}$/.test(c.date));
     if(raw.length&&!classes.length)toast("Data terbaca "+raw.length+" baris tapi format tanggalnya tidak dikenali — hubungi admin");
-    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{},sub:{},wk:{},tid:{},tstat:{},libur:{}};sisaJual=[];
+    U={rates:{},tutors:{},del:{},newTag:{},mstat:{},gtut:{},topup:{},jual:{},kontak:{},murid:{},beli:{},sub:{},wk:{},tid:{},tstat:{},libur:{},roster:{},kelas:{}};sisaJual=[];
     (all.rates||[]).forEach(r=>{
       const id=String(r.id||""), val=+r.rate;
       if(/^N:T-\d+$/.test(id)&&String(r.lang||"")==="v1"){                     // nomor induk tutor
@@ -2226,6 +2329,13 @@ async function fullSync(){
       if(id.slice(0,2)==="L:"){                                                 // tanggal merah / cuti bersama
         const d=id.slice(2);
         if(/^\d{4}-\d{2}-\d{2}$/.test(d))U.libur[d]=String(r.lang||"Libur");
+        return;}
+      if(id.slice(0,2)==="E:"&&/^v1~/.test(String(r.lang||""))){                // kelas reguler induk
+        try{U.kelas[id.slice(2)]=JSON.parse(String(r.lang).slice(3));}catch(e){}
+        return;}
+      if(id.slice(0,2)==="R:"&&/^v1~/.test(String(r.lang||""))){                // peserta kelas reguler
+        const cls=String(r.cls||id.slice(2));
+        try{U.roster[cls]=JSON.parse(String(r.lang).slice(3))||[];}catch(e){}
         return;}
       if(id.slice(0,2)==="Q:"){                                                 // status kepegawaian tutor
         const nm=id.slice(2), st=String(r.lang||"").trim();
@@ -2587,12 +2697,13 @@ function gambarPanel(p){
   if(p==="log")renderLog();
   else if(p==="tutor")renderTutorCards();
   else if(p==="murid")renderMurid();
+  else if(p==="reguler")renderReguler();
   else if(p==="club")renderCC();
   else if(p==="stat")renderStats();
   else if(p==="master")renderMaster();
 }
 /* semua panel digambar sekali — dipakai saat sinkronisasi penuh selesai */
-function gambarSemua(){["log","tutor","murid","club","stat","master"].forEach(gambarPanel);}
+function gambarSemua(){["log","tutor","murid","reguler","club","stat","master"].forEach(gambarPanel);}
 function renderFlagBtn(){
   const b=document.getElementById("btnFlag");if(!b)return;
   const n=classes.filter(c=>c.flag).length;
@@ -3576,7 +3687,7 @@ function muridIndex(){
   return MIDX;
 }
 function lupakanIndex(){MIDX=null;REKAP=null;_hitNama=null;DUP=null;DUPT=null;
-  IDX_KONTAK=null;TOKEN=null;BIDX=null;LIDX=null;BEDA=null;}
+  IDX_KONTAK=null;TOKEN=null;BIDX=null;LIDX=null;BEDA=null;RIDX=null;KIDX=null;}
 function midOf(nm){const i=muridIndex();return i[nkey(nm)]||i[nkey(pecahNama(nm).utama)]||"";}
 function muridOf(nm){const id=midOf(nm);return id?Object.assign({id},U.murid[id]):null;}
 function namaMid(id){const m=(U.murid||{})[id];return m?m.nm:id;}
@@ -5573,6 +5684,510 @@ function ccPeriode(a,b){
   return {n:L.length,rp:L.reduce((a2,o)=>a2+(+o.nominal||0),0),
     murid:murid.size,ulang,baru:L.length-ulang,
     rasio:L.length?ulang/L.length:null,bulan:L.reduce((a2,o)=>a2+bulanPaket(o),0),list:L};
+}
+/* ================= KELAS REGULER INDUK =================
+   Penamaan kohort di log tidak seragam, jadi satu batch bisa muncul dengan
+   beberapa ejaan. Kelas induk adalah satu catatan resmi per batch: punya nomor
+   induk sendiri, satu tutor penanggung jawab, target pertemuan, dan daftar nama
+   di log yang termasuk ke dalamnya. Semua tampilan mengacu ke sini. */
+function idKelasBerikut(){
+  let mx=0;
+  Object.keys(U.kelas||{}).forEach(k=>{const n=parseInt(String(k).replace(/\D/g,""),10);if(n>mx)mx=n;});
+  return "K-"+String(mx+1).padStart(4,"0");
+}
+function pushKELAS(id,o){
+  cacheAll();lupakanReg();
+  if(!CFG.url)return;
+  if(!o){push({action:"delrate",ids:["E:"+id]});return;}
+  push({action:"setrate",rows:[{id:"E:"+id,tutor:o.tutor||"",cls:o.nm||"",rate:+o.target||0,
+    lang:"v1~"+JSON.stringify(o)}]});
+}
+function simpanKelasReg(id,o){U.kelas=U.kelas||{};U.kelas[id]=o;pushKELAS(id,o);}
+function hapusKelasReg(id){
+  if(!guard())return;
+  const o=(U.kelas||{})[id]; if(!o)return;
+  if(!confirm("Hapus kelas induk "+id+" — "+o.nm+"?\n\nLog kelasnya tidak ikut terhapus, "+
+    "hanya catatan induknya. Peserta yang terdaftar juga hilang."))return;
+  delete U.kelas[id];pushKELAS(id,null);
+  cacheAll();lupakanReg();renderReguler();
+  toast(o.nm+" dihapus dari daftar kelas induk");
+}
+/* nama kohort di log -> kelas induk */
+let KIDX=null;
+function indeksKelasReg(){
+  if(KIDX)return KIDX;
+  KIDX={};
+  Object.entries(U.kelas||{}).forEach(([id,o])=>{
+    (o.alias||[]).forEach(a=>{if(a)KIDX[a]=id;});
+    if(o.nm)KIDX[o.nm]=KIDX[o.nm]||id;
+  });
+  return KIDX;
+}
+function kelasDariCls(cls){const id=indeksKelasReg()[cls];return id?Object.assign({id},U.kelas[id]):null;}
+/* Bulan batch dipakai untuk menyaring: diambil dari isian, kalau kosong dari sesi pertama */
+function batchBulan(o,tglAwal){
+  if(o&&o.batch)return o.batch;
+  return String(tglAwal||"").slice(0,7);
+}
+function labelBulan(k){
+  if(!/^\d{4}-\d{2}$/.test(String(k||"")))return "—";
+  return ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"][+k.slice(5,7)-1]+" "+k.slice(0,4);
+}
+/* ---------- buat & ubah kelas induk ---------- */
+function bikinKelasReg(dariCls){
+  if(!guard())return;
+  const asal=dariCls?du(dariCls):"";
+  const lv=asal?levelKohort(asal):"";
+  const bhs=asal?bahasaKohort(asal):"";
+  const cs=asal?classes.filter(c=>c.cls===asal&&isReg(c)):[];
+  const tgl=cs.map(c=>c.date).sort();
+  const tut=asal?Object.entries(cs.reduce((a,c)=>{const t=tutorAsli(c);if(t)a[t]=(a[t]||0)+1;return a;},{}))
+    .sort((a,b)=>b[1]-a[1]).map(([t])=>t)[0]||"":"";
+  const id=idKelasBerikut();
+  tanyaForm({
+    judul:asal?"Jadikan Kelas Induk":"Buat Kelas Reguler",
+    sub:"Nomor induk "+id+" dibuatkan otomatis",
+    pesan:asal?("Diambil dari log: "+asal+" · "+cs.length+" sesi tercatat.")
+      :"Kelas baru yang belum ada di log juga boleh dibuat — nanti sesinya menyusul.",
+    fields:[
+      {label:"Nama kelas",nilai:asal||"",ph:"mis. A1.1 GERMAN BATCH SEPTEMBER GROUP D"},
+      {label:"Bahasa",nilai:bhs,pilihan:DATA.langs},
+      {label:"Level",nilai:lv,ph:"A1.1 / HSK 1 / B2.2"},
+      {label:"Tutor penanggung jawab",nilai:tut,pilihan:allTutorNames()},
+      {label:"Batch bulan",nilai:batchBulan(null,tgl[0])||todayStr().slice(0,7),ph:"2026-09",
+        hint:"— dipakai untuk menyaring per batch"},
+      {label:"Target pertemuan",nilai:asal?targetSesiReg(asal):"",tipe:"number",
+        hint:"— kosongkan agar dihitung dari tabel bahasa & hari main"},
+      {label:"Pertemuan sudah berjalan sebelum log",nilai:"",tipe:"number",
+        hint:"— untuk batch yang mulai sebelum log kelas dipakai"}
+    ],
+    tombol:"Buat kelas",
+    ok:(v)=>simpanBaruKelasReg(id,asal,v)
+  });
+}
+function simpanBaruKelasReg(id,asal,[nm,bhs,lv,tutor,batch,target,offset]){
+  const nama=normName(nm||"");
+  if(!nama)return toast("Nama kelasnya kosong");
+  const o={nm:nama,bhs:progBaku(normName(bhs))||"",lv:String(lv||"").trim().toUpperCase(),
+    tutor:normName(tutor||""),batch:String(batch||"").trim(),
+    target:+String(target).replace(/\D/g,"")||0,
+    offset:+String(offset).replace(/\D/g,"")||0,
+    alias:[...new Set([nama,asal].filter(Boolean))],
+    by:meName(),at:new Date().toISOString()};
+  simpanKelasReg(id,o);
+  cacheAll();lupakanReg();buildMeet();renderReguler();
+  toast(nama+" dibuat dengan nomor induk "+id);
+}
+function ubahKelasReg(id){
+  if(!guard())return;
+  const o=(U.kelas||{})[id]; if(!o)return;
+  const jml=classes.filter(c=>isReg(c)&&(o.alias||[]).includes(c.cls)&&statusOf(c,new Date())==="Selesai").length;
+  tanyaForm({
+    judul:"Ubah Kelas Reguler",sub:id+" · "+o.nm,
+    pesan:jml+" pertemuan tercatat di log. Nomor pertemuan yang tampil = "+
+      "pertemuan sebelum log + yang tercatat di log.",
+    fields:[
+      {label:"Nama kelas",nilai:o.nm},
+      {label:"Bahasa",nilai:o.bhs||"",pilihan:DATA.langs},
+      {label:"Level",nilai:o.lv||""},
+      {label:"Tutor penanggung jawab",nilai:o.tutor||"",pilihan:allTutorNames()},
+      {label:"Batch bulan",nilai:o.batch||"",ph:"2026-09"},
+      {label:"Target pertemuan",nilai:+o.target||"",tipe:"number",
+        hint:"— kosongkan agar dihitung dari tabel"},
+      {label:"Pertemuan sudah berjalan sebelum log",nilai:+o.offset||"",tipe:"number"},
+      {label:"Nama lain di log",nilai:(o.alias||[]).filter(a=>a!==o.nm).join(" | "),
+        hint:"— pisahkan dengan tanda |, untuk ejaan berbeda di log"}
+    ],
+    tombol:"Simpan",
+    ok:(v)=>simpanUbahKelasReg(id,v)
+  });
+}
+function simpanUbahKelasReg(id,[nm,bhs,lv,tutor,batch,target,offset,alias]){
+  const o=(U.kelas||{})[id]; if(!o)return;
+  const nama=normName(nm||o.nm);
+  o.nm=nama;
+  o.bhs=progBaku(normName(bhs))||"";
+  o.lv=String(lv||"").trim().toUpperCase();
+  o.tutor=normName(tutor||"");
+  o.batch=String(batch||"").trim();
+  o.target=+String(target).replace(/\D/g,"")||0;
+  o.offset=+String(offset).replace(/\D/g,"")||0;
+  o.alias=[...new Set([nama,...String(alias||"").split("|").map(x=>x.trim()).filter(Boolean)])];
+  simpanKelasReg(id,o);
+  cacheAll();lupakanReg();buildMeet();renderReguler();
+  toast(nama+" diperbarui");
+}
+/* ================= TARGET PERTEMUAN KELAS REGULER =================
+   Kelas reguler dihitung PER PERTEMUAN, bukan per jam — satu sesi selalu satu
+   pertemuan berapa pun durasinya. Jumlah pertemuan satu batch berbeda-beda
+   menurut bahasa, level, dan hari mainnya, jadi disusun sebagai tabel. */
+function hariKohort(cls){
+  const set=new Set();
+  classes.forEach(c=>{if(c.cls===cls&&isReg(c))set.add(new Date(c.date+"T00:00:00").getDay());});
+  return set;
+}
+function polaHari(set){
+  const senRabJum=[1,3,5].filter(d=>set.has(d)).length>=2;
+  const selKam=[2,4].filter(d=>set.has(d)).length>=2;
+  const sabtu=set.has(6)&&set.size<=1;
+  if(sabtu)return "sabtu";
+  if(senRabJum)return "srj";
+  if(selKam)return "sk";
+  return "";
+}
+function levelKohort(cls){
+  const t=String(cls||"").toUpperCase();
+  let m=t.match(/\b([ABC][12]\.\d)\b/);            if(m)return m[1];
+  m=t.match(/\bHSK\s*(\d)\b/);                     if(m)return "HSK"+m[1];
+  m=t.match(/\b([ABC][12])\b/);                    if(m)return m[1];
+  return "";
+}
+function bahasaKohort(cls){
+  const c=classes.find(x=>x.cls===cls&&isReg(x)&&x.lang);
+  if(c)return progBaku(c.lang);
+  return progOf(cls)||"";
+}
+/* Tabel target pertemuan. Bisa dikoreksi manual per kelas lewat tombol ✎. */
+function targetSesiReg(cls){
+  const manual=+((U.roster||{})["#target#"+cls]||0);
+  if(manual>0)return manual;
+  const lv=levelKohort(cls), bhs=bahasaKohort(cls), pola=polaHari(hariKohort(cls));
+  const t=String(cls||"").toUpperCase();
+  if(bhs==="Spanish")return 30;
+  if(bhs==="Professional English"||/BISNIS|BUSINESS/.test(t))
+    return pola==="sabtu"?24:58;
+  if(bhs==="Mandarin"||bhs==="Mandarin Business"){
+    if(lv==="HSK1")return 25;
+    if(lv==="HSK2"||lv==="HSK3")return 35;
+    return 25;
+  }
+  if(bhs==="German"){
+    if(lv==="A1.1"||lv==="A1.2")
+      return pola==="sabtu"?9:(pola==="sk"?18:24);
+    if(["A2.1","A2.2","B1.1","B1.2"].includes(lv))return 30;
+    if(["B2.1","B2.2","B2.3"].includes(lv))return 30;
+    return 24;
+  }
+  return 0;
+}
+function setTargetReg(cls){
+  if(!guard())return;
+  tanyaForm({judul:"Target Pertemuan",sub:cls,
+    pesan:"Bawaannya "+(targetSesiReg(cls)||"—")+" pertemuan menurut bahasa, level, dan hari mainnya. "+
+      "Isi di sini kalau batch ini memang berbeda. Kosongkan untuk kembali ke bawaan.",
+    fields:[{label:"Jumlah pertemuan",nilai:+((U.roster||{})["#target#"+cls]||"")||"",tipe:"number"}],
+    tombol:"Simpan",
+    ok:([v])=>{
+      const n=+String(v).replace(/\D/g,"")||0;
+      U.roster=U.roster||{};
+      const k="#target#"+cls;
+      if(n>0)U.roster[k]=n; else delete U.roster[k];
+      pushROSTER(k,n>0?[n]:null);
+      cacheAll();lupakanReg();buildMeet();renderAll();
+      toast(n>0?cls+": target "+n+" pertemuan":"Target kembali ke bawaan");
+    }});
+}
+/* ================= BUNDLING =================
+   "Bundling A1" berarti satu level penuh: muridnya menjalani A1.1 lalu A1.2.
+   Di log yang tercatat sub-levelnya, jadi peserta bundling perlu ditandai. */
+function bundelDari(o){
+  const t=String((o&&o.produk)||"");
+  const m=t.match(/bundling\s*([ABC][12])\b/i);
+  return m?m[1].toUpperCase():"";
+}
+function subLevel(bundel){
+  return bundel?[bundel+".1",bundel+".2"]:[];
+}
+/* ================= DAFTAR PESERTA ================= */
+function pushROSTER(cls,arr){
+  cacheAll();lupakanReg();
+  if(!CFG.url)return;
+  if(!arr||!arr.length){push({action:"delrate",ids:["R:"+cls]});return;}
+  push({action:"setrate",rows:[{id:"R:"+cls,tutor:"",cls,rate:arr.length,
+    lang:"v1~"+JSON.stringify(arr)}]});
+}
+function rosterKelas(cls){return ((U.roster||{})[cls]||[]).filter(id=>U.murid[id]);}
+function setRoster(cls,arr){
+  if(!guard())return;
+  U.roster=U.roster||{};
+  const bersih=[...new Set(arr.filter(id=>U.murid[id]))];
+  if(bersih.length)U.roster[cls]=bersih; else delete U.roster[cls];
+  pushROSTER(cls,bersih);
+  renderReguler();
+  toast(cls+": "+bersih.length+" peserta tersimpan");
+}
+/* calon peserta: siapa pun yang punya pembelian reguler */
+function calonReguler(){
+  const per={};
+  Object.values(U.beli||{}).forEach(o=>{
+    if(!beliReguler(o)||isCC(o)||!o.mid||!U.murid[o.mid])return;
+    const x=per[o.mid]=per[o.mid]||{id:o.mid,nm:namaMid(o.mid),beli:[],bundel:""};
+    x.beli.push(o);
+    const bd=bundelDari(o); if(bd)x.bundel=bd;
+  });
+  return Object.values(per).sort((a,b)=>a.nm.localeCompare(b.nm,"id"));
+}
+let rosCtx=null, rosPilih=new Set();
+function kelolaRoster(clsEnc){
+  if(!guard())return;
+  const cls=du(clsEnc);
+  rosCtx=cls;
+  rosPilih=new Set(rosterKelas(cls));
+  const K0=(U.kelas||{})[cls];
+  document.getElementById("rosSub").textContent=K0?(cls+" · "+K0.nm):cls;
+  document.getElementById("rosCari").value="";
+  gambarRoster();
+  bukaOv("rosOv");
+}
+function gambarRoster(){
+  const box=document.getElementById("rosList"); if(!box||!rosCtx)return;
+  const q=(document.getElementById("rosCari").value||"").toLowerCase().trim();
+  const K=(U.kelas||{})[rosCtx];
+  const lv=(K&&K.lv)||levelKohort(rosCtx), bhs=(K&&K.bhs)||bahasaKohort(rosCtx);
+  let L=calonReguler();
+  // yang bundling levelnya cocok ditaruh di atas, lalu yang bahasanya sama
+  const skor=x=>{
+    let s2=0;
+    if(rosPilih.has(x.id))s2+=100;
+    if(x.bundel&&lv.startsWith(x.bundel))s2+=40;
+    if(x.beli.some(o=>progBaku(progBeli(o))===bhs))s2+=20;
+    const nmK=(K&&K.nm)||rosCtx;
+    if(x.beli.some(o=>miripPersen(kunciBatch(o.produk),kunciBatch(nmK))>=72))s2+=30;
+    return s2;
+  };
+  if(q)L=L.filter(x=>(x.nm+" "+x.id+" "+x.beli.map(o=>o.produk).join(" ")).toLowerCase().includes(q));
+  L=L.map(x=>({x,s:skor(x)})).sort((a,b)=>b.s-a.s||a.x.nm.localeCompare(b.x.nm,"id")).map(o=>o.x);
+  document.getElementById("rosHit").textContent=rosPilih.size+" dipilih · "+L.length+" calon";
+  box.innerHTML=L.slice(0,300).map(x=>{
+    const ada=rosPilih.has(x.id);
+    const bd=x.bundel?`<span class="tok tok-tipis" title="Beli paket bundling ${x.bundel} — menjalani ${subLevel(x.bundel).join(" lalu ")}">bundling ${x.bundel}</span>`:"";
+    return `<label class="rosrow${ada?" on":""}">
+      <input type="checkbox" ${ada?"checked":""} onchange="pilihRoster('${x.id}',this.checked)">
+      <span style="flex:1;min-width:0"><b>${x.nm}</b> <span class="mid" style="font-size:10px">${x.id}</span>${bd}
+        <div class="sub" style="font-size:10.5px">${x.beli.slice(0,2).map(o=>fmtD_(o.tgl)+" "+(o.produk||"")).join(" · ")}</div></span>
+    </label>`;}).join("")+(L.length>300?`<div class="hint">… ${L.length-300} lagi, persempit pencarian</div>`:"");
+}
+function pilihRoster(id,on){
+  if(on)rosPilih.add(id);else rosPilih.delete(id);
+  document.getElementById("rosHit").textContent=rosPilih.size+" dipilih";
+}
+function simpanRoster(){
+  if(!rosCtx)return;
+  setRoster(rosCtx,[...rosPilih]);
+  tutupOv("rosOv");rosCtx=null;
+}
+/* ================= KELAS REGULER =================
+   Di log, kelas reguler tercatat atas nama kohortnya ("A1.1 JERMAN JULY GROUP B"),
+   bukan nama murid — jadi peserta tidak bisa dibaca dari log. Yang tahu siapa
+   pesertanya adalah riwayat pembelian, karena nama produknya menyebut batch.
+   Tab ini menyambungkan keduanya: kohort dari log, peserta dari pembelian. */
+let RIDX=null;
+function lupakanReg(){RIDX=null;KIDX=null;}
+function kunciBatch(t){
+  return String(t||"").toLowerCase()
+    .replace(/kelas|reguler|regular|bahasa|group|grup|kelompok|batch|full\s*payment|cicilan|bundling/gi," ")
+    .replace(/jerman|german/gi,"de").replace(/spanyol|spanish/gi,"es")
+    .replace(/mandarin|chinese/gi,"zh").replace(/inggris|english/gi,"en")
+    .replace(/[^a-z0-9]+/g," ").trim().split(/\s+/).sort().join(" ");
+}
+function bangunReguler(){
+  if(RIDX)return RIDX;
+  const now=new Date();
+  const koh={};
+  classes.forEach(c=>{
+    if(!c.cls||!isReg(c))return;
+    /* Kalau kohort ini sudah punya kelas induk, semua ejaan namanya digabung
+       ke satu kartu — itu gunanya alias. */
+    const K0=kelasDariCls(c.cls);
+    const k=K0?K0.id:c.cls;
+    const o=koh[k]=koh[k]||{cls:K0?K0.nm:c.cls,n:0,selesai:0,batal:0,akan:0,jam:0,fee:0,
+      tutor:{},lang:{},tgl:[],slot:{},ejaan:new Set()};
+    o.ejaan.add(c.cls);
+    o.n++;
+    const st=statusOf(c,now);
+    if(st==="Selesai"){o.selesai++;o.jam+=durasi(c.start,c.end);o.fee+=feeOf(c,now);}
+    else if(c.ov==="Postponed")o.batal++;
+    else o.akan++;
+    const t=tutorAsli(c); if(t)o.tutor[t]=(o.tutor[t]||0)+1;
+    if(c.lang)o.lang[c.lang]=(o.lang[c.lang]||0)+1;
+    o.tgl.push(c.date);
+    const hari=["Min","Sen","Sel","Rab","Kam","Jum","Sab"][new Date(c.date+"T00:00:00").getDay()];
+    const sl=hari+" "+c.start+"–"+c.end; o.slot[sl]=(o.slot[sl]||0)+1;
+  });
+  // peserta dari riwayat pembelian
+  const beliReg=[];
+  Object.entries(U.beli||{}).forEach(([oid,o])=>{
+    if(!beliReguler(o)||isCC(o))return;
+    beliReg.push(Object.assign({oid},o,{batch:batchDari(o),kunci:kunciBatch(o.produk)}));
+  });
+  Object.entries(koh).forEach(([k,o])=>{o._id=/^K-\d+$/.test(k)?k:"";});
+  const daftar=Object.values(koh).map(o=>{
+    o.tgl.sort();
+    o.mulai=o.tgl[0]; o.akhir=o.tgl[o.tgl.length-1];
+    o.tutorUtama=Object.entries(o.tutor).sort((a,b)=>b[1]-a[1]).map(([t,n])=>({t,n}));
+    o.bahasa=Object.entries(o.lang).sort((a,b)=>b[1]-a[1]).map(([l])=>l)[0]||"";
+    o.jadwal=Object.entries(o.slot).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([sl])=>sl);
+    o.status=o.akan>0?"berjalan":"selesai";
+    const _Km=(U.kelas||{})[o._id];
+    const kk=kunciBatch((_Km&&_Km.nm)||o.cls);
+    o.peserta=beliReg.filter(b=>{
+      if(!kk||!b.kunci)return false;
+      return b.kunci===kk||miripPersen(b.kunci,kk)>=72;
+    });
+    /* Daftar peserta yang ditetapkan manual selalu menang — pembagian grup
+       ditentukan banyak hal yang tidak terbaca dari nama produk. */
+    const K=(U.kelas||{})[o._id]||kelasDariCls(o.cls);
+    o.K=K?Object.assign({id:o._id||indeksKelasReg()[o.cls]},K):null;
+    o.kid=o._id||(K?K.id:"");
+    o.roster=rosterKelas(K?K.id:o.cls);
+    o.target=(K&&+K.target>0)?+K.target:targetSesiReg(o.cls);
+    o.offset=K?(+K.offset||0):0;
+    o.lv=(K&&K.lv)||levelKohort(o.cls);
+    o.batch=batchBulan(K,o.tgl[0]);
+    o.penanggung=(K&&K.tutor)||"";
+    o.bundelan=o.roster.filter(id=>{
+      const b=beliMurid(id).find(x=>beliReguler(x)&&bundelDari(x));
+      return b&&o.lv.startsWith(bundelDari(b));
+    });
+    o.rp=o.peserta.reduce((a,b)=>a+(+b.nominal||0),0);
+    o.murid=o.roster.length||new Set(o.peserta.map(b=>b.mid).filter(Boolean)).size;
+    o.sudah=o.offset+o.selesai;                 // pertemuan ke berapa saat ini
+    return o;
+  }).sort((a,b)=>String(b.akhir).localeCompare(String(a.akhir)));
+  const kepakai=new Set();
+  daftar.forEach(o=>o.peserta.forEach(b=>kepakai.add(b.oid)));
+  RIDX={daftar,yatim:beliReg.filter(b=>!kepakai.has(b.oid))};
+  return RIDX;
+}
+let regF="all", regQ="";
+function setRegF(v){regF=(regF===v&&v!=="all")?"all":v;renderReguler();}
+function renderReguler(){
+  const box=document.getElementById("regList"); if(!box)return;
+  const {daftar,yatim}=bangunReguler();
+  const jalan=daftar.filter(x=>x.status==="berjalan");
+  const tanpa=daftar.filter(x=>!x.peserta.length);
+  document.getElementById("regKpis").innerHTML=`
+    <div class="kpi${regF==="all"?" on":""}" onclick="setRegF('all')"><div class="v">${daftar.length}</div><div class="l">Kelas Reguler</div></div>
+    <div class="kpi${regF==="berjalan"?" on":""}" onclick="setRegF('berjalan')" title="Masih punya jadwal yang belum jalan"><div class="v" style="color:#1C6047">${jalan.length}</div><div class="l">Sedang Berjalan</div></div>
+    <div class="kpi"><div class="v">${daftar.reduce((a,x)=>a+x.murid,0)}</div><div class="l">Peserta Tersambung</div></div>
+    <div class="kpi"><div class="v" style="font-size:13px">${rp(daftar.reduce((a,x)=>a+x.rp,0))}</div><div class="l">Nilai Pembelian</div></div>
+    <div class="kpi"><div class="v">${daftar.reduce((a,x)=>a+x.selesai,0)}</div><div class="l">Sesi Selesai</div></div>
+    <div class="kpi"><div class="v" style="color:${daftar.filter(x=>!x.kid).length?"#8A5F14":"#1C6047"}">${daftar.filter(x=>!x.kid).length}</div><div class="l">Tanpa Kelas Induk</div></div>
+    <div class="kpi"><div class="v" style="font-size:13px">${rp(daftar.reduce((a,x)=>a+x.fee,0))}</div><div class="l">Gaji Tutor</div></div>
+    <div class="kpi${regF==="tanpa"?" on":""}" onclick="setRegF('tanpa')" title="Kelasnya jalan tapi belum ada pembelian yang cocok"><div class="v" style="color:${tanpa.length?"#8A5F14":"#1C6047"}">${tanpa.length}</div><div class="l">Tanpa Peserta</div></div>
+    <div class="kpi"><div class="v" style="color:${yatim.length?"#8A5F14":"#1C6047"}">${yatim.length}</div><div class="l">Pembelian Tanpa Kelas</div></div>`;
+  // isi pilihan saringan dari data yang ada
+  const selB=document.getElementById("regBhs"), selM=document.getElementById("regBatch");
+  const bhsAda=[...new Set(daftar.map(x=>x.bahasa).filter(Boolean))].sort();
+  const btAda=[...new Set(daftar.map(x=>x.batch).filter(Boolean))].sort().reverse();
+  const isi=(el,arr,fmt)=>{
+    const v=el.value;
+    el.innerHTML=`<option value="">${el.id==="regBhs"?"Semua bahasa":"Semua batch"}</option>`+
+      arr.map(x=>`<option value="${x}">${fmt?fmt(x):x}</option>`).join("");
+    el.value=arr.includes(v)?v:"";
+  };
+  isi(selB,bhsAda);isi(selM,btAda,labelBulan);
+  let R=daftar;
+  if(regF==="berjalan")R=jalan;
+  if(regF==="tanpa")R=tanpa;
+  if(selB.value)R=R.filter(x=>x.bahasa===selB.value);
+  if(selM.value)R=R.filter(x=>x.batch===selM.value);
+  const q=regQ.toLowerCase().trim();
+  if(q)R=R.filter(x=>(x.cls+" "+x.bahasa+" "+Object.keys(x.tutor).join(" ")+" "+
+    x.peserta.map(b=>namaBeli(b)).join(" ")).toLowerCase().includes(q));
+  box.innerHTML=R.length?R.map(x=>`<div class="regbox">
+      <div class="reghead">
+        ${x.kid?`<span class="mid">${x.kid}</span>`:`<span class="tok tok-tipis">tanpa kelas induk</span>`}
+        <b>${x.K?x.K.nm:x.cls}</b>
+        <span class="chip">${x.bahasa||"—"}</span>
+        <span class="chip">${labelBulan(x.batch)}</span>
+        <span class="mtag ${x.status==="berjalan"?"aktif":"kelar"}">${x.status==="berjalan"?"berjalan":"selesai"}</span>
+        <span style="flex:1"></span>
+        <span class="rp">${rp(x.rp)}</span>
+      </div>
+      <div class="sub" style="margin:2px 0 5px">
+        ${x.selesai} sesi selesai${x.akan?` · ${x.akan} akan datang`:""}${x.batal?` · ${x.batal} postponed`:""}
+        · ${fmtP(Math.round(x.jam*100)/100)} jam · gaji ${rp(x.fee)}
+        <br>${fmtD_(x.mulai)} – ${fmtD_(x.akhir)}${x.jadwal.length?" · "+x.jadwal.join(" · "):""}
+      </div>
+      <div class="sub" style="margin-bottom:5px">
+        <b>Pertemuan ke-${x.sudah}${x.target?" dari "+x.target:""}</b>${x.target?` · sisa ${Math.max(0,x.target-x.sudah)}`:""}
+        ${x.offset?`<span class="chip" title="Pertemuan yang sudah berjalan sebelum log dipakai">${x.offset} sebelum log</span>`:""}
+        ${x.lv?`<span class="chip">${x.lv}</span>`:""}
+        ${x.kid&&canEdit()?`<button class="btn ghost small" onclick="ubahKelasReg('${x.kid}')" title="Ubah nama, tutor, target, atau pertemuan berjalan">✎ Ubah</button>`:""}
+        ${!x.kid&&canEdit()?`<button class="btn small" onclick="bikinKelasReg(du('${eu(x.cls)}'))" title="Buat catatan induk supaya punya nomor, tutor tetap, dan target">＋ Jadikan kelas induk</button>`:""}
+      </div>
+      ${x.ejaan&&x.ejaan.size>1?`<div class="sub" style="margin-bottom:3px;color:#8A5F14">
+        ${x.ejaan.size} ejaan di log digabung: ${[...x.ejaan].join(" · ")}</div>`:""}
+      ${x.penanggung?`<div class="sub" style="margin-bottom:3px">Penanggung jawab:
+        <span class="link" onclick="openTutor(du('${eu(x.penanggung)}'))">${x.penanggung}</span>${tutorTag(x.penanggung,true)}</div>`:""}
+      <div class="sub" style="margin-bottom:5px">Tutor di log: ${x.tutorUtama.length
+        ? x.tutorUtama.map(t=>`<span class="link" onclick="openTutor(du('${eu(t.t)}'))">${t.t}</span>${tutorTag(t.t,true)} <span style="color:var(--ink-soft)">(${t.n})</span>`).join(" · ")
+        : "—"}</div>
+      <div class="row-actions" style="margin-bottom:5px">
+        <button class="btn small editonly" onclick="kelolaRoster(du('${eu(x.kid||x.cls)}'))">👥 Kelola peserta</button>
+        ${x.bundelan.length?`<span class="tok tok-tipis" title="${x.bundelan.map(namaMid).join(", ")}">${x.bundelan.length} bundling</span>`:""}
+      </div>
+      ${x.roster.length?`<details open><summary style="cursor:pointer;font-size:12px;font-weight:700">
+          ${x.roster.length} peserta terdaftar</summary>
+        <div style="margin-top:5px">${x.roster.map(mid=>{
+          const bl=beliMurid(mid).filter(o=>beliReguler(o)&&!isCC(o));
+          const bd=bl.map(bundelDari).find(Boolean)||"";
+          return `<div class="belirow">
+            <span class="pr"><span class="link" onclick="openMuridId('${mid}')">${namaMid(mid)}</span>
+              <span class="mid" style="font-size:10px">${mid}</span>
+              ${bd?`<span class="tok tok-tipis" title="Paket bundling ${bd}: ${subLevel(bd).join(" lalu ")}">bundling ${bd}</span>`:""}
+              <div class="sub" style="font-size:10.5px">${bl.slice(0,1).map(o=>fmtD_(o.tgl)+" "+(o.produk||"")).join("")||"—"}</div></span>
+            <span class="rp">${rp(bl.reduce((a,o)=>a+(+o.nominal||0),0))}</span>
+          </div>`;}).join("")}</div></details>`
+        :(x.peserta.length?`<details><summary style="cursor:pointer;font-size:12px;font-weight:700">
+            ${x.peserta.length} pembelian cocok — belum ditetapkan sebagai peserta</summary>
+          <div style="margin-top:5px">${x.peserta.map(b=>`<div class="belirow">
+            <span class="tg">${fmtD_(b.tgl)}</span>
+            <span class="pr">${b.mid?`<span class="link" onclick="openMuridId('${b.mid}')">${namaBeli(b)}</span>`:namaBeli(b)}
+              <div class="sub" style="font-size:10.5px">${b.produk||""}</div></span>
+            <span class="rp">${rp(+b.nominal||0)}</span>
+          </div>`).join("")}</div></details>`
+          :`<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86">
+            Belum ada peserta. Klik <b>Kelola peserta</b> untuk menambahkan dari daftar pembeli reguler.</div>`)}
+    </div>`).join("")
+   :`<div class="empty">Tidak ada kelas reguler yang cocok.</div>`;
+  const yb=document.getElementById("regYatim");
+  yb.innerHTML=yatim.length?`<div class="filterchip" style="background:#F4EAD4;border-color:#D8BE86;display:block">
+    <b>${yatim.length} pembelian reguler belum ketemu kelasnya</b> — batch di nama produk tidak cocok dengan
+    nama kohort mana pun di log. Biasanya karena penamaan kelas di log berbeda dengan di WooCommerce.
+    <div class="scroll" style="max-height:220px;margin-top:6px">${yatim.slice(0,40).map(b=>`<div class="belirow">
+      <span class="tg">${fmtD_(b.tgl)}</span>
+      <span class="pr">${b.mid?`<span class="link" onclick="openMuridId('${b.mid}')">${namaBeli(b)}</span>`:namaBeli(b)}
+        <div class="sub" style="font-size:10.5px">${b.produk||""}</div></span>
+      <span class="rp">${rp(+b.nominal||0)}</span>
+    </div>`).join("")}${yatim.length>40?`<div class="hint">… dan ${yatim.length-40} lagi</div>`:""}</div></div>`:"";
+}
+function exportReguler(){
+  const {daftar,yatim}=bangunReguler();
+  const rows=[["Nomor Induk","Kelas","Nama di Log","Bahasa","Level","Batch","Penanggung Jawab","Status",
+    "Tutor di Log","Pertemuan Ke","Target","Sebelum Log","Sesi Selesai","Akan Datang","Postponed",
+    "Total Jam","Gaji Tutor","Mulai","Terakhir","Jadwal","Peserta","Pembelian","Nilai (Rp)"]];
+  daftar.forEach(x=>rows.push([x.kid,x.K?x.K.nm:x.cls,x.cls,x.bahasa,x.lv,labelBulan(x.batch),
+    x.penanggung,x.status,
+    x.tutorUtama.map(t=>t.t+" ("+t.n+")").join(" | "),
+    x.sudah,x.target,x.offset,x.selesai,x.akan,x.batal,Math.round(x.jam*100)/100,x.fee,x.mulai,x.akhir,
+    x.jadwal.join(" | "),x.murid,x.peserta.length,x.rp]));
+  rows.push([]);rows.push(["PESERTA PER KELAS"]);
+  rows.push(["Kelas","Nomor Induk Murid","Nama Murid","Bundling","Tanggal Beli","Produk","Nilai (Rp)"]);
+  daftar.forEach(x=>x.roster.forEach(mid=>{
+    const bl=beliMurid(mid).filter(o=>beliReguler(o)&&!isCC(o));
+    const bd=bl.map(bundelDari).find(Boolean)||"";
+    rows.push([x.kid||x.cls,mid,namaMid(mid),bd?"bundling "+bd:"",
+      bl[0]?bl[0].tgl:"",bl[0]?bl[0].produk:"",bl.reduce((a,o)=>a+(+o.nominal||0),0)]);
+  }));
+  if(yatim.length){
+    rows.push([]);rows.push(["PEMBELIAN REGULER TANPA KELAS DI LOG"]);
+    rows.push(["Nomor Induk","Nama Murid","Tanggal Beli","Produk","Batch Terbaca","Nominal (Rp)","Order ID"]);
+    yatim.forEach(b=>rows.push([b.mid||"",namaBeli(b),b.tgl,b.produk||"",b.batch,+b.nominal||0,b.oid]));
+  }
+  unduhCSV(rows,"kelas_reguler_"+todayStr()+".csv");
+  toast(daftar.length+" kelas reguler diekspor");
 }
 /* ================= KELAS REGULER: DIKELOMPOKKAN PER BATCH =================
    Nama produk reguler selalu menyebut batch-nya di belakang tanda hubung:
@@ -8960,7 +9575,7 @@ function boot(){
   if(!ME)setTimeout(pickUser,300);
   undoStack=lget(UKEY,[]);
   classes=lget(CKEY,[]).map(normClass);U=lget(RKEY,{rates:{},tutors:{}});paid=lget(PKEY,{});queue=lget(QKEY,[]);
-  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};U.sub=U.sub||{};U.wk=U.wk||{};U.tid=U.tid||{};U.tstat=U.tstat||{};U.libur=U.libur||{};seedMingguan();
+  U.rates=U.rates||{};U.tutors=U.tutors||{};U.del=U.del||{};U.newTag=U.newTag||{};U.mstat=U.mstat||U.cuti||{};U.gtut=U.gtut||{};U.topup=U.topup||{};U.jual=U.jual||{};U.kontak=U.kontak||{};U.murid=U.murid||{};U.beli=U.beli||{};U.sub=U.sub||{};U.wk=U.wk||{};U.tid=U.tid||{};U.tstat=U.tstat||{};U.libur=U.libur||{};U.roster=U.roster||{};U.kelas=U.kelas||{};seedMingguan();
   // tidak ada injeksi data bawaan — kalau cache kosong, tunggu sinkron dari Sheet
   document.getElementById("cfgUrl").value=CFG.url;
   document.getElementById("cfgToken").value=CFG.token;
