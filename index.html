@@ -685,6 +685,17 @@
             oninput="tunda(gambarRoster,150)" style="flex:1;min-width:150px">
           <span class="hint" id="rosHit" style="margin:0"></span>
         </div>
+        <div class="searchrow" style="margin-bottom:8px">
+          <input type="text" id="rosTambah" list="dlRosTambah" autocomplete="off"
+            placeholder="Tambah murid manual — ketik nama, boleh yang belum ada"
+            style="flex:1;min-width:170px"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();tambahMuridRoster();}">
+          <datalist id="dlRosTambah"></datalist>
+          <button class="btn small" onclick="tambahMuridRoster()">＋ Tambah</button>
+        </div>
+        <div class="hint" style="margin:-2px 0 8px">Daftar di bawah hanya berisi pembeli reguler.
+          Kotak ini untuk murid yang belum punya pembelian reguler, atau murid yang benar-benar baru —
+          nomor induknya dibuatkan otomatis.</div>
         <div id="rosList"></div>
       </div>
       <div class="sheet-foot">
@@ -5713,6 +5724,124 @@ function hapusKelasReg(id){
   cacheAll();lupakanReg();renderReguler();
   toast(o.nm+" dihapus dari daftar kelas induk");
 }
+/* ---------- ganti tutor untuk satu kelas reguler ----------
+   Selalu ada tutor yang berhalangan. Dua kemungkinan dibedakan:
+   - Sementara: tutor tetap tidak berubah, fee sesi itu masuk ke penggantinya
+   - Tetap    : penanggung jawab berganti, sesi sejak tanggal itu ikut pindah
+   Sesi yang sudah ditandai dibayar tidak pernah diubah. */
+function gantiTutorKelas(clsEnc){
+  if(!guard())return;
+  const cls=du(clsEnc);
+  const K=kelasDariCls(cls);
+  const nama=K?(K.alias||[K.nm]):[cls];
+  const cs=classes.filter(c=>isReg(c)&&nama.includes(c.cls))
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  if(!cs.length)return toast("Belum ada sesi di kelas ini");
+  const tutorKini=(K&&K.tutor)||Object.entries(cs.reduce((a,c)=>{const t=tutorAsli(c);if(t)a[t]=(a[t]||0)+1;return a;},{}))
+    .sort((a,b)=>b[1]-a[1]).map(([t])=>t)[0]||"";
+  tanyaForm({
+    judul:"Ganti Tutor Kelas",
+    sub:(K?K.nm:cls)+" · sekarang "+(tutorKini||"—"),
+    pesan:"Sementara = tutor tetapnya tidak berubah, fee sesi itu saja yang masuk ke pengganti. "+
+      "Tetap = penanggung jawab berganti dan sesi sejak tanggal mulai ikut pindah.\n\n"+
+      cs.length+" sesi tercatat, "+fmtD_(cs[0].date)+" – "+fmtD_(cs[cs.length-1].date)+".",
+    fields:[
+      {label:"Tutor pengganti",nilai:"",pilihan:allTutorNames().filter(t=>t!==tutorKini)},
+      {label:"Jenis",nilai:"sementara",pilihan:["sementara","tetap"]},
+      {label:"Mulai tanggal",nilai:todayStr(),tipe:"date"},
+      {label:"Sampai tanggal",nilai:"",tipe:"date",
+        hint:"— kosongkan berarti sampai sesi terakhir"},
+      {label:"Alasan",nilai:"",ph:"mis. tutor sakit, cuti, resign"}
+    ],
+    tombol:"Terapkan",
+    ok:(v)=>terapkanTutorKelas(cls,v)
+  });
+}
+function terapkanTutorKelas(cls,[tutor,jenis,dari,sampai,alasan]){
+  const baru=normName(tutor||"");
+  if(!baru)return toast("Pilih dulu tutor penggantinya");
+  const a=jParseTgl(dari)||normDate(dari);
+  const b=sampai?(jParseTgl(sampai)||normDate(sampai)):"9999-12-31";
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(a))return toast("Tanggal mulainya belum benar");
+  const tetap=/tetap/i.test(jenis);
+  const K=kelasDariCls(cls);
+  const nama=K?(K.alias||[K.nm]):[cls];
+  const semua=classes.filter(c=>isReg(c)&&nama.includes(c.cls)&&c.date>=a&&c.date<=b);
+  const kunci=semua.filter(c=>paidCover(tutorAsli(c),c.date));
+  const kena=semua.filter(c=>!paidCover(tutorAsli(c),c.date));
+  if(!kena.length)return toast("Tidak ada sesi yang bisa diubah di rentang itu"+
+    (kunci.length?" — "+kunci.length+" sesi sudah ditandai dibayar":""));
+  if(!allTutorNames().includes(baru)&&
+     !confirm('"'+baru+'" belum ada di daftar tutor.\n\nTambahkan sebagai tutor baru?'))return;
+  if(!confirm((tetap?"Pindahkan":"Tandai pengganti untuk")+" "+kena.length+" sesi\n\n"+
+    "kelas : "+(K?K.nm:cls)+"\n"+
+    "ke    : "+baru+"\n"+
+    "mulai : "+fmtD_(a)+(sampai?" s/d "+fmtD_(b):" dan seterusnya")+"\n"+
+    (kunci.length?"\n"+kunci.length+" sesi sudah dibayar, dilewati.\n":"")+
+    (tetap?"\nPenanggung jawab kelas ikut berganti.":"\nTutor tetapnya tidak berubah.")+
+    "\n\nLanjutkan?"))return;
+  snapshot("Ganti tutor kelas "+(K?K.nm:cls));
+  mulaiMassal();
+  const rows=[];
+  if(tetap){
+    kena.forEach(c=>{c.tutor=baru;stampBy(c,"ganti tutor kelas");rows.push(sheetRow(c));});
+    if(K){const o=U.kelas[K.id];o.tutor=baru;simpanKelasReg(K.id,o);}
+  }else{
+    kena.forEach(c=>{
+      const asli=tutorAsli(c);
+      U.sub=U.sub||{};
+      U.sub[String(c.id)]={as:asli,by:meName(),at:new Date().toISOString(),
+        note:alasan||"pengganti sementara",rate:0};
+      pushSUB(String(c.id),U.sub[String(c.id)]);
+      c.tutor=baru;stampBy(c,"pengganti");rows.push(sheetRow(c));
+    });
+  }
+  selesaiMassal();cacheAll();lupakanIndex();lupakanReg();
+  if(CFG.url)for(let i=0;i<rows.length;i+=150)push({action:"upsert",rows:rows.slice(i,i+150)});
+  buildMeet();renderAll();
+  toast(kena.length+" sesi "+(tetap?"pindah tetap":"dipegang sementara")+" oleh "+baru+
+    (kunci.length?" · "+kunci.length+" sesi sudah dibayar dilewati":""));
+}
+/* ---------- ubah nama kelas di log sekaligus ---------- */
+function ubahNamaKelasReg(id){
+  if(!guard())return;
+  const o=(U.kelas||{})[id]; if(!o)return;
+  const jml=classes.filter(c=>isReg(c)&&(o.alias||[]).includes(c.cls)).length;
+  tanyaForm({
+    judul:"Ubah Nama Kelas",sub:id+" · "+o.nm,
+    pesan:jml+" baris di log memakai nama ini"+((o.alias||[]).length>1
+      ? " ("+(o.alias||[]).length+" ejaan: "+(o.alias||[]).join(", ")+")":"")+
+      ". Semuanya akan diseragamkan jadi nama baru.",
+    fields:[{label:"Nama baru",nilai:o.nm,ph:"mis. A1.1 GERMAN BATCH SEPTEMBER GROUP D"}],
+    tombol:"Ubah di log",
+    ok:([v])=>terapkanNamaKelasReg(id,v)
+  });
+}
+function terapkanNamaKelasReg(id,nm){
+  const o=(U.kelas||{})[id]; if(!o)return;
+  const baru=normName(nm||"");
+  if(!baru||baru===o.nm)return;
+  const lama=o.alias||[o.nm];
+  const kena=classes.filter(c=>isReg(c)&&lama.includes(c.cls));
+  snapshot("Ubah nama kelas reguler");
+  mulaiMassal();
+  const rows=[];
+  kena.forEach(c=>{c.cls=baru;stampBy(c,"nama kelas");rows.push(sheetRow(c));});
+  // rate ikut nama baru supaya fee tidak jadi nol
+  lama.forEach(nm2=>effRateKeys().forEach(k=>{
+    const i=k.indexOf("|");
+    if(k.slice(i+1)===nm2){
+      const t=k.slice(0,i), r=ratePerJam(t,nm2);
+      if(r>0&&!rateExists(t,baru))setRate(t,baru,r,tutorLang(t));
+      removeRate(t,nm2);
+    }
+  }));
+  o.nm=baru;o.alias=[baru];simpanKelasReg(id,o);
+  selesaiMassal();cacheAll();lupakanIndex();lupakanReg();
+  if(CFG.url)for(let i=0;i<rows.length;i+=150)push({action:"upsert",rows:rows.slice(i,i+150)});
+  buildMeet();renderAll();
+  toast(kena.length+" baris log diseragamkan jadi "+baru);
+}
 /* ---------- penanda pertemuan ----------
    Cara paling mudah menyetel nomor pertemuan: tandai sekali "per tanggal sekian
    sudah pertemuan ke sekian". Setelah itu sistem menghitung sendiri maju-mundur
@@ -6012,6 +6141,10 @@ function kelolaRoster(clsEnc){
   const K0=(U.kelas||{})[cls];
   document.getElementById("rosSub").textContent=K0?(cls+" · "+K0.nm):cls;
   document.getElementById("rosCari").value="";
+  document.getElementById("rosTambah").value="";
+  document.getElementById("dlRosTambah").innerHTML=
+    Object.entries(U.murid||{}).sort((a,b)=>a[1].nm.localeCompare(b[1].nm,"id"))
+      .map(([i2,m])=>`<option value="${String(m.nm).replace(/"/g,"&quot;")}">${i2}</option>`).join("");
   gambarRoster();
   bukaOv("rosOv");
 }
@@ -6021,6 +6154,12 @@ function gambarRoster(){
   const K=(U.kelas||{})[rosCtx];
   const lv=(K&&K.lv)||levelKohort(rosCtx), bhs=(K&&K.bhs)||bahasaKohort(rosCtx);
   let L=calonReguler();
+  // peserta yang sudah dipilih tapi tidak punya pembelian reguler tetap ditampilkan
+  const ada=new Set(L.map(x=>x.id));
+  [...rosPilih].forEach(mid=>{
+    if(ada.has(mid)||!U.murid[mid])return;
+    L.push({id:mid,nm:namaMid(mid),beli:beliMurid(mid).filter(o=>!isCC(o)),bundel:"",manual:true});
+  });
   // yang bundling levelnya cocok ditaruh di atas, lalu yang bahasanya sama
   const skor=x=>{
     let s2=0;
@@ -6036,12 +6175,38 @@ function gambarRoster(){
   document.getElementById("rosHit").textContent=rosPilih.size+" dipilih · "+L.length+" calon";
   box.innerHTML=L.slice(0,300).map(x=>{
     const ada=rosPilih.has(x.id);
-    const bd=x.bundel?`<span class="tok tok-tipis" title="Beli paket bundling ${x.bundel} — menjalani ${subLevel(x.bundel).join(" lalu ")}">bundling ${x.bundel}</span>`:"";
+    const bd=(x.bundel?`<span class="tok tok-tipis" title="Beli paket bundling ${x.bundel} — menjalani ${subLevel(x.bundel).join(" lalu ")}">bundling ${x.bundel}</span>`:"")
+      +(x.manual?`<span class="tok tok-reg" title="Ditambahkan manual — belum punya pembelian kelas reguler">manual</span>`:"");
     return `<label class="rosrow${ada?" on":""}">
       <input type="checkbox" ${ada?"checked":""} onchange="pilihRoster('${x.id}',this.checked)">
       <span style="flex:1;min-width:0"><b>${x.nm}</b> <span class="mid" style="font-size:10px">${x.id}</span>${bd}
         <div class="sub" style="font-size:10.5px">${x.beli.slice(0,2).map(o=>fmtD_(o.tgl)+" "+(o.produk||"")).join(" · ")}</div></span>
     </label>`;}).join("")+(L.length>300?`<div class="hint">… ${L.length-300} lagi, persempit pencarian</div>`:"");
+}
+/* Menambah murid yang tidak muncul di daftar pembeli reguler — termasuk yang
+   benar-benar baru. Pembagian grup sering ditentukan hal di luar data pembelian. */
+function tambahMuridRoster(){
+  const el=document.getElementById("rosTambah");
+  const v=normName(el.value||"");
+  if(!v)return toast("Ketik dulu nama muridnya");
+  let id=midOf(v);
+  if(!id){
+    const k=nkey(v);let best=null,sc=0;
+    Object.entries(U.murid||{}).forEach(([i2,m])=>{const p2=miripPersen(k,nkey(m.nm));if(p2>sc){sc=p2;best={id:i2,nm:m.nm,p:p2};}});
+    if(best&&best.p>=85&&confirm("Maksudnya "+best.nm+" ("+best.id+")?\n\n"+
+      "OK = pakai murid itu · Batal = daftarkan "+v+" sebagai murid baru"))id=best.id;
+  }
+  if(!id){
+    if(!guard())return;
+    id=idBerikut();
+    const m=muridBaru(v);m.daftar=todayStr();
+    U.murid=U.murid||{};U.murid[id]=m;pushMURID(id,m);
+    cacheAll();lupakanIndex();
+    toast(v+" terdaftar dengan nomor "+id);
+  }
+  rosPilih.add(id);
+  el.value="";
+  gambarRoster();
 }
 function pilihRoster(id,on){
   if(on)rosPilih.add(id);else rosPilih.delete(id);
@@ -6196,7 +6361,9 @@ function renderReguler(){
         ${x.lv?`<span class="chip">${x.lv}</span>`:""}
         ${canEdit()?`<button class="btn small" onclick="tandaiPertemuan(du('${eu(x.cls)}'))"
           title="Tandai sekali: pada tanggal tertentu sudah pertemuan ke berapa. Sesudah itu dihitung otomatis dari log.">📌 Tandai pertemuan</button>`:""}
-        ${x.kid&&canEdit()?`<button class="btn ghost small" onclick="ubahKelasReg('${x.kid}')" title="Ubah nama, tutor, level, target, atau gabungkan ejaan lain di log">✎ Ubah data kelas</button>`:""}
+        ${x.kid&&canEdit()?`<button class="btn ghost small" onclick="ubahKelasReg('${x.kid}')" title="Ubah bahasa, level, tutor penanggung jawab, target, atau gabungkan ejaan lain di log">✎ Ubah data</button>`:""}
+        ${x.kid&&canEdit()?`<button class="btn ghost small" onclick="ubahNamaKelasReg('${x.kid}')" title="Ganti nama kelas di seluruh baris log sekaligus">✎ Nama di log</button>`:""}
+        ${canEdit()?`<button class="btn ghost small" onclick="gantiTutorKelas(du('${eu(x.cls)}'))" title="Tutor berhalangan — sementara atau tetap">⇄ Ganti tutor</button>`:""}
         ${!x.kid&&canEdit()?`<button class="btn ghost small" onclick="bikinKelasReg(du('${eu(x.cls)}'))"
           title="Simpan sebagai data kelas: dapat nomor, tutor penanggung jawab, target, dan bisa menggabungkan ejaan lain di log">＋ Daftarkan kelas</button>`:""}
       </div>
