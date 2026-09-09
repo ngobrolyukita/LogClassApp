@@ -3887,6 +3887,13 @@ function hitungUlangProgram(){
     const dari=progBaku(o.prog||""), ke=progOf(o.produk);
     if(!ke||dari===ke)return;
     if(o.pkunci){dikunci++;return;}            // sudah dikoreksi manual, jangan ditimpa
+    /* Log berasal dari live schedule WordPress. Kalau program yang tersimpan
+       sudah cocok dengan bahasa yang dipelajari murid, nama produk tidak boleh
+       membatalkannya — nama produk sering keliru, log tidak. */
+    if(o.mid){
+      const L=bahasaLog(o.mid);
+      if(L.size&&L.has(dari)){dikunci++;return;}
+    }
     ubah.push({oid,o,dari:dari||"(kosong)",ke});
   });
   if(!ubah.length)return toast(dikunci
@@ -3908,6 +3915,24 @@ function hitungUlangProgram(){
 /* Log diimpor dari live schedule WordPress, jadi bahasanya yang dianggap benar.
    Dipakai untuk murid yang hanya belajar SATU bahasa — kalau lebih dari satu,
    tidak bisa ditebak pembelian mana untuk bahasa mana, jadi dilewati. */
+/* Setelah data dirapikan, sebaiknya dikunci sekali. Tanpa ini, tombol perbaikan
+   massal berikutnya bisa mengembalikannya lagi ke tebakan dari nama produk. */
+function kunciCocok(){
+  if(!guard())return;
+  const kena=[];
+  Object.entries(U.beli||{}).forEach(([oid,o])=>{
+    if(o.pkunci||!o.mid)return;
+    const L=bahasaLog(o.mid), dari=progBaku(progBeli(o));
+    if(L.size&&L.has(dari)&&dari!==progOf(o.produk))kena.push({oid,o});
+  });
+  if(!kena.length)return toast("Tidak ada yang perlu dikunci — semuanya sudah aman");
+  if(!confirm(kena.length+" pembelian programnya sudah cocok dengan bahasa di log "+
+    "tapi berbeda dari tebakan nama produk.\n\nKunci supaya tidak bisa ditimpa perbaikan massal?"))return;
+  mulaiMassal();
+  kena.forEach(x=>{x.o.pkunci=1;pushBELI(x.oid,x.o);});
+  selesaiMassal();cacheAll();lupakanIndex();renderAll();
+  toast(kena.length+" pembelian dikunci");
+}
 function samakanDenganLog(){
   if(!guard())return;
   const ubah=[]; let dikunci=0;
@@ -3931,7 +3956,10 @@ function samakanDenganLog(){
     "\n\nNama produknya tidak diubah, hanya kolom programnya.\nLanjutkan?"))return;
   mulaiMassal();
   const mids=new Set();
-  ubah.forEach(x=>{if(!x.o)return;x.o.prog=x.ke;pushBELI(x.oid,x.o);if(x.o.mid)mids.add(x.o.mid);});
+  ubah.forEach(x=>{if(!x.o)return;
+    x.o.prog=x.ke;
+    x.o.pkunci=1;                    // log yang benar — jangan sampai ditimpa lagi
+    pushBELI(x.oid,x.o);if(x.o.mid)mids.add(x.o.mid);});
   selesaiMassal();cacheAll();lupakanIndex();lupakanRekap();
   mids.forEach(segarkanTipeBeli);
   buildMeet();renderAll();
@@ -3958,6 +3986,7 @@ function renderBedaProgram(){
     <div class="row-actions" style="margin:0 0 8px">
       <button class="btn small editonly" onclick="hitungUlangProgram()">🔧 Perbaiki dari nama produk</button>
       <button class="btn small editonly" onclick="samakanDenganLog()" title="Log berasal dari live schedule WordPress, jadi bahasanya yang dianggap benar">🎯 Samakan dengan bahasa di log</button>
+      <button class="btn ghost small editonly" onclick="kunciCocok()" title="Kunci semua pembelian yang programnya sudah cocok dengan bahasa di log, supaya tidak bisa ditimpa perbaikan massal">🔒 Kunci yang sudah cocok</button>
       <button class="btn ghost small" onclick="exportBedaProgram()">📦 Export daftar (CSV)</button>
     </div>
     <div class="scroll" style="max-height:340px">${L.slice(0,40).map(x=>`<div class="belirow">
