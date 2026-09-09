@@ -2099,10 +2099,15 @@ function undoLast(){
 }
 
 /* ---------- sinkron cloud ---------- */
+function __q(){return queue||[];}
 function setSync(state,txt){
   const d=document.getElementById("syncDot");
   d.className="dot "+(state||"");
-  document.getElementById("syncText").textContent=txt;
+  /* Jumlah antrean selalu ikut ditampilkan. Perubahan yang belum terkirim adalah
+     penyebab utama koreksi terlihat "berubah lagi" setelah sinkron. */
+  const n=(typeof queue!=="undefined"&&queue&&queue.length)||0;
+  document.getElementById("syncText").textContent=
+    (txt||"")+((n&&state!=="busy")?" · ⚠ "+n+" belum terkirim":"");
 }
 /* Kesalahan koneksi dibungkus supaya pesannya jelas, bukan cuma "Failed to fetch". */
 function ErrKoneksi(pesan,sebab){const e=new Error(pesan);e.sebab=sebab||"lain";return e;}
@@ -2285,6 +2290,18 @@ async function fullSync(){
   setSync("busy","Mengambil data…");
   try{
     await flush();
+    /* Sinkron penuh menimpa seluruh data lokal dengan isi Sheet. Kalau masih ada
+       perubahan yang belum terkirim — misalnya karena Apps Script sempat 404 atau
+       timeout — menimpanya berarti membuang koreksi yang sudah dikerjakan.
+       Inilah sebab paling sering "sudah dibetulkan tapi berubah lagi". */
+    if(queue.length){
+      setSync("err",queue.length+" perubahan belum terkirim");
+      alert("SINKRON DIBATALKAN\n\n"+queue.length+" perubahan masih menunggu dikirim ke Google Sheet "+
+        "(koneksi sedang bermasalah).\n\nKalau sinkron diteruskan, semua koreksi itu akan hilang "+
+        "tertimpa data lama dari Sheet.\n\nPerbaiki koneksinya dulu di panel Koneksi, "+
+        "lalu tekan Sinkron Ulang lagi. Datamu aman selama app ini tidak dibersihkan.");
+      return;
+    }
     let all;
     try{
       all=await api({action:"getall"},120000);
