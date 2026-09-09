@@ -583,6 +583,10 @@
       <div id="simpanWarn"></div>
       <div id="mWarn"></div>
       <div class="card" style="margin:0 0 12px;border-color:#DCB2B6">
+        <h2>🔗 Pembelian Salah Sambung</h2>
+        <div id="salahBox"></div>
+      </div>
+      <div class="card" style="margin:0 0 12px;border-color:#DCB2B6">
         <h2>🔍 Beda Program — Belajar vs Pembelian</h2>
         <div id="bedaBox"></div>
       </div>
@@ -3720,7 +3724,7 @@ function muridIndex(){
   return MIDX;
 }
 function lupakanIndex(){MIDX=null;REKAP=null;_hitNama=null;DUP=null;DUPT=null;
-  IDX_KONTAK=null;TOKEN=null;BIDX=null;LIDX=null;BEDA=null;RIDX=null;KIDX=null;}
+  IDX_KONTAK=null;TOKEN=null;BIDX=null;LIDX=null;BEDA=null;RIDX=null;KIDX=null;SALAH=null;}
 function midOf(nm){const i=muridIndex();return i[nkey(nm)]||i[nkey(pecahNama(nm).utama)]||"";}
 function muridOf(nm){const id=midOf(nm);return id?Object.assign({id},U.murid[id]):null;}
 function namaMid(id){const m=(U.murid||{})[id];return m?m.nm:id;}
@@ -3857,6 +3861,154 @@ function miripPersen(a,b){
   return mx?Math.round((1-jarakKata(a,b)/mx)*100):0;
 }
 let DUP=null;
+/* ================= PEMBELIAN SALAH SAMBUNG =================
+   Saat impor, nama pembeli ikut disimpan di catatan pembelian. Kalau nama itu
+   berbeda dari nama murid tempat pembelian menempel — dan bukan salah satu
+   aliasnya — kemungkinan besar transaksinya tersambung ke orang yang keliru,
+   biasanya karena pencocokan nama massal. Ini sebabnya ada murid yang punya
+   riwayat pembelian bahasa yang tidak pernah ia beli. */
+let SALAH=null;
+function cekSalahSambung(){
+  if(SALAH)return SALAH;
+  /* Kemiripan tidak boleh dinilai dari nama saja. Email dan nomor HP jauh lebih
+     dapat dipercaya, dan bahasa yang dibeli vs yang dipelajari di log memberi
+     petunjuk tambahan. Kalau tidak ada satu pun yang menyambung, barulah bisa
+     disimpulkan ini memang orang lain. */
+  const out=[];
+  Object.entries(U.beli||{}).forEach(([oid,o])=>{
+    if(!o.mid||!o.nm)return;
+    const m=(U.murid||{})[o.mid]; if(!m)return;
+    const k=nkey(o.nm);
+    if(!k)return;
+    if(k===nkey(m.nm))return;
+    if((m.al||[]).includes(k))return;
+    const p=miripPersen(k,nkey(m.nm));
+    const eB=String(o.email||"").toLowerCase().trim();
+    const wB=waNorm(o.hp||"");
+    const eM=new Set(), wM=new Set();
+    if(m.email)eM.add(String(m.email).toLowerCase().trim());
+    if(m.wa)wM.add(waNorm(m.wa));
+    beliMurid(o.mid).forEach(x=>{
+      if(x.oid===oid)return;
+      if(x.email)eM.add(String(x.email).toLowerCase().trim());
+      if(x.hp)wM.add(waNorm(x.hp));
+    });
+    if((eB&&eM.has(eB))||(wB&&wB.length>=9&&wM.has(wB)))return;   // kontak sama = orang yang sama
+    const L=bahasaLog(o.mid);
+    const bhs=progBaku(progBaku(o.prog||"")||progOf(o.produk));
+    const bahasaNyambung=!!(L&&L.size&&bhs&&L.has(bhs));
+    const adaKontakDuaBelah=!!((eB||wB)&&(eM.size||wM.size));
+    let yakin;
+    if(p>=85)yakin="mungkin sama";
+    else if(bahasaNyambung)yakin="perlu dicek";
+    else if(adaKontakDuaBelah)yakin="pasti beda";
+    else if(p<60)yakin="pasti beda";
+    else yakin="perlu dicek";
+    out.push({oid,o,mid:o.mid,nmMurid:m.nm,nmBeli:o.nm,p,yakin,
+      alasan:[(p<60?"nama beda jauh":(p>=85?"nama mirip":"nama agak beda")),
+        (adaKontakDuaBelah?"email/HP tidak sama":((eB||wB)?"kontak murid kosong":"tanpa kontak")),
+        (bahasaNyambung?"bahasa cocok dengan log":"bahasa tidak cocok")].join(" · "),
+      tujuan:(cocokkanPembeli(o.nm,o.email,o.hp)||{}).mid||""});
+  });
+  const rank={"pasti beda":0,"perlu dicek":1,"mungkin sama":2};
+  SALAH=out.sort((a,b)=>(rank[a.yakin]-rank[b.yakin])||(a.p-b.p));
+  return SALAH;
+}
+function lepasBeli(oid){
+  if(!guard())return;
+  const o=(U.beli||{})[oid]; if(!o)return;
+  const tujuan=midOf(o.nm||"");
+  const pesan=tujuan
+    ? "Pindahkan ke "+namaMid(tujuan)+" ("+tujuan+")?"
+    : "Nama pembelinya belum terdaftar sebagai murid. Daftarkan sebagai murid baru?";
+  if(!confirm("Pembelian "+fmtD_(o.tgl)+" · "+(o.produk||"")+"\n"+
+    "atas nama: "+o.nm+"\nsekarang menempel di: "+namaMid(o.mid)+"\n\n"+pesan))return;
+  const lama=o.mid;
+  let baru=tujuan;
+  if(!baru){
+    baru=idBerikut();
+    const m=muridBaru(o.nm);
+    m.daftar=o.tgl||todayStr();
+    m.email=o.email||"";m.wa=waNorm(o.hp||"");
+    U.murid=U.murid||{};U.murid[baru]=m;pushMURID(baru,m);
+  }
+  o.mid=baru;pushBELI(oid,o);
+  cacheAll();lupakanIndex();lupakanRekap();SALAH=null;
+  [lama,baru].forEach(segarkanTipeBeli);
+  buildMeet();renderAll();
+  toast("Pembelian dipindah ke "+namaMid(baru)+" ("+baru+")");
+}
+function lepasSemuaSalah(){
+  if(!guard())return;
+  const L=cekSalahSambung().filter(x=>x.yakin==="pasti beda");
+  if(!L.length)return toast("Tidak ada yang pasti beda orang — sisanya perlu diperiksa satu per satu");
+  if(!confirm(L.length+" pembelian dipastikan milik orang lain — namanya berbeda, "+
+    "email dan nomor HP tidak cocok, dan bahasanya tidak nyambung dengan log murid itu.\n\n"+
+    L.slice(0,6).map(x=>x.nmBeli+" → menempel di "+x.nmMurid).join("\n")+
+    (L.length>6?"\n…":"")+
+    "\n\nPindahkan semuanya ke murid yang namanya sesuai? "+
+    "Yang belum terdaftar akan dibuatkan nomor induk baru."))return;
+  mulaiMassal();
+  const mids=new Set();
+  L.forEach(x=>{
+    const o=U.beli[x.oid]; if(!o)return;
+    mids.add(o.mid);
+    let baru=midOf(o.nm||"");
+    if(!baru){
+      baru=idBerikut();
+      const m=muridBaru(o.nm);m.daftar=o.tgl||todayStr();
+      m.email=o.email||"";m.wa=waNorm(o.hp||"");
+      U.murid[baru]=m;pushMURID(baru,m);lupakanIndex();
+    }
+    o.mid=baru;pushBELI(x.oid,o);mids.add(baru);
+  });
+  selesaiMassal();cacheAll();lupakanIndex();lupakanRekap();SALAH=null;
+  mids.forEach(segarkanTipeBeli);
+  buildMeet();renderAll();
+  toast(L.length+" pembelian dipindah ke murid yang benar");
+}
+function renderSalahSambung(){
+  const e=document.getElementById("salahBox"); if(!e)return;
+  const L=cekSalahSambung();
+  if(!L.length){e.innerHTML=`<p class="note" style="margin:0">Semua pembelian menempel di murid
+    yang namanya cocok. 👍</p>`;return;}
+  const jelas=L.filter(x=>x.yakin==="pasti beda").length;
+  const WARNA={"pasti beda":["#F6E1E3","#8C2A34"],"perlu dicek":["#F4EAD4","#7A5310"],
+    "mungkin sama":["#DEEAF2","#1F6088"]};
+  e.innerHTML=`<p class="note" style="margin:0 0 8px"><b>${L.length} pembelian</b> nama pembelinya
+    berbeda dari murid tempatnya menempel. Biasanya akibat pencocokan nama massal saat impor —
+    inilah sebabnya ada murid yang punya riwayat pembelian bahasa yang tidak pernah ia beli.
+    Penilaiannya bukan dari nama saja: <b>email</b>, <b>nomor HP</b>, dan <b>bahasa yang dipelajari di log</b>
+    ikut diperiksa. Yang kontaknya sama dianggap orang yang sama dan tidak muncul di sini.
+    ${jelas?`<b>${jelas}</b> dipastikan milik orang lain.`:""}</p>
+    ${jelas?`<div class="row-actions" style="margin:0 0 8px">
+      <button class="btn small editonly" onclick="lepasSemuaSalah()">🔗 Pindahkan ${jelas} yang pasti beda orang</button>
+      <button class="btn ghost small" onclick="exportSalahSambung()">📦 Export daftar</button>
+    </div>`:`<div class="row-actions" style="margin:0 0 8px">
+      <button class="btn ghost small" onclick="exportSalahSambung()">📦 Export daftar</button></div>`}
+    <div class="scroll" style="max-height:340px">${L.slice(0,50).map(x=>`<div class="belirow">
+      <span class="tg">${fmtD_(x.o.tgl)}</span>
+      <span class="pr"><b>${x.nmBeli}</b>
+        <span class="chip" style="background:${WARNA[x.yakin][0]};color:${WARNA[x.yakin][1]}">${x.yakin}</span>
+        <span class="chip">${x.p}% mirip</span>
+        <div class="sub">menempel di <span class="link" onclick="openMuridId('${x.mid}')">${x.nmMurid}</span>
+          <span class="mid" style="font-size:10px">${x.mid}</span></div>
+        <div class="sub" style="font-size:10.5px">${x.o.produk||""}</div>
+        <div class="sub" style="font-size:10px;color:var(--ink-soft)">${x.alasan}</div></span>
+      <span class="rp">${rp(+x.o.nominal||0)}</span>
+      ${canEdit()?`<button class="btn ghost small" onclick="lepasBeli(du('${eu(x.oid)}'))"
+        title="${x.tujuan?"Pindahkan ke "+namaMid(x.tujuan):"Daftarkan pembelinya sebagai murid baru"}">🔗 Pindahkan</button>`:""}
+    </div>`).join("")}${L.length>50?`<div class="hint">… dan ${L.length-50} lagi</div>`:""}</div>`;
+}
+function exportSalahSambung(){
+  const rows=[["Order ID","Tanggal","Nama Pembeli","Menempel di Murid","Nomor Induk","Kemiripan (%)",
+    "Kesimpulan","Alasan","Produk","Program","Nominal","Email","HP","Murid Tujuan"]];
+  cekSalahSambung().forEach(x=>rows.push([x.oid,x.o.tgl,x.nmBeli,x.nmMurid,x.mid,x.p,x.yakin,x.alasan,
+    x.o.produk||"",progBeli(x.o),+x.o.nominal||0,x.o.email||"",x.o.hp||"",
+    x.tujuan?namaMid(x.tujuan)+" ("+x.tujuan+")":"(belum terdaftar)"]));
+  unduhCSV(rows,"pembelian_salah_sambung_"+todayStr()+".csv");
+  toast(rows.length-1+" baris diekspor");
+}
 /* ================= PERIKSA BEDA PROGRAM =================
    Bahasa yang dipelajari di log dan bahasa yang dibeli harus cocok. Kalau tidak,
    biasanya salah satu dari tiga sebab: pembelian tersambung ke murid yang keliru,
@@ -5040,7 +5192,7 @@ function semuaRekap(){return Object.values(bangunRekap());}
 function renderMurid(){
   const box=document.getElementById("mList"); if(!box)return;
   renderSimpanWarn();
-  isiMPeriod();renderBedaProgram();
+  isiMPeriod();renderSalahSambung();renderBedaProgram();
   /* Setiap murid yang muncul di log seharusnya punya riwayat pembelian.
      Pemisah ini yang membuat sisanya kelihatan dan bisa dicatat manual. */
   {
