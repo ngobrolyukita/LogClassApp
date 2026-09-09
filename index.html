@@ -609,6 +609,7 @@
         <button class="btn small editonly" onclick="tambahMuridManual()">👤 Tambah Murid</button>
       <button class="btn small editonly" onclick="bukaCatatBeliBaru()">➕ Catat Pembelian</button>
       <button class="btn ghost small editonly" onclick="bukaImporBeli()">📥 Import Pembelian</button>
+      <button class="btn ghost small editonly" onclick="hapusBeliMassal()" style="color:var(--red)" title="Buang lapisan hasil impor lalu muat ulang dari WooCommerce">🧹 Reset Pembelian</button>
       </div>
       <div id="mChip"></div>
       <div id="mList"></div>
@@ -3861,6 +3862,67 @@ function miripPersen(a,b){
   return mx?Math.round((1-jarakKata(a,b)/mx)*100):0;
 }
 let DUP=null;
+/* ================= RESET RIWAYAT PEMBELIAN =================
+   Pencocokan nama massal pada impor-impor awal menyambungkan banyak transaksi
+   ke murid yang keliru, dan tiap impor berikutnya menumpuk di atas kesalahan itu.
+   Memperbaikinya satu per satu mengejar gejala; lebih bersih membuang lapisan
+   hasil impor lalu memuat ulang dari WooCommerce yang datanya benar.
+   Pembelian yang dicatat manual tidak ikut dibuang. */
+function hapusBeliMassal(){
+  if(!guard())return;
+  const semua=Object.entries(U.beli||{});
+  if(!semua.length)return toast("Belum ada riwayat pembelian sama sekali");
+  const impor=semua.filter(([,o])=>String(o.sumber||"").toLowerCase()==="woocommerce");
+  const manual=semua.length-impor.length;
+  const nilai=impor.reduce((a,[,o])=>a+(+o.nominal||0),0);
+  tanyaForm({
+    judul:"Reset Riwayat Pembelian",
+    sub:semua.length+" pembelian tersimpan",
+    pesan:impor.length+" berasal dari impor WooCommerce ("+rp(nilai)+")\n"+
+      manual+" dicatat manual\n\n"+
+      "Dipakai untuk memulai ulang: buang lapisan impor yang tersambung ke murid keliru, "+
+      "lalu impor ulang per hari dari WooCommerce.\n\n"+
+      "Yang TIDAK tersentuh: "+classes.length.toLocaleString("id-ID")+" baris log kelas, "+
+      "gaji tutor, status dibayar, data murid dan nomor induknya, catatan paket, "+
+      "kelas reguler beserta pesertanya, dan rasio penjualan harian.",
+    fields:[{label:"Cakupan",nilai:"hanya hasil impor",
+      pilihan:["hanya hasil impor","semua termasuk manual"]}],
+    tombol:"Hapus",
+    ok:([v])=>lakukanHapusBeli(/manual/i.test(v))
+  });
+}
+function lakukanHapusBeli(ikutManual){
+  const semua=Object.entries(U.beli||{});
+  const kena=semua.filter(([,o])=>ikutManual||String(o.sumber||"").toLowerCase()==="woocommerce");
+  if(!kena.length)return toast("Tidak ada yang cocok dengan cakupan itu");
+  if(!confirm("Hapus "+kena.length+" riwayat pembelian?\n\n"+
+    "Tidak bisa dibatalkan lewat sinkron — hanya lewat Undo selama app belum ditutup.\n\n"+
+    "Sesudah ini, impor ulang dari WooCommerce per hari mulai dari tanggal pertama log."))return;
+  const jumlahKelasSebelum=classes.length;
+  snapshot("Reset riwayat pembelian");
+  mulaiMassal();
+  const mids=new Set();
+  kena.forEach(([oid,o])=>{
+    if(o.mid)mids.add(o.mid);
+    delete U.beli[oid];
+    pushBELI(oid,null);
+  });
+  mids.forEach(id=>{const m=U.murid[id];if(!m)return;
+    const L=Object.values(U.beli||{}).filter(x=>x.mid===id).map(x=>x.tgl).filter(Boolean).sort();
+    const b1=L[0]||"";
+    if((m.beli1||"")!==b1){m.beli1=b1;simpanMurid(id,m);}
+  });
+  selesaiMassal();cacheAll();lupakanIndex();lupakanRekap();
+  buildMeet();renderAll();
+  /* Penjagaan: reset hanya boleh menyentuh baris pembelian. Kalau jumlah baris log
+     berubah, ada yang salah dan harus ketahuan sekarang — bukan saat gaji dihitung. */
+  if(classes.length!==jumlahKelasSebelum){
+    alert("PERINGATAN: jumlah baris log berubah dari "+jumlahKelasSebelum+" jadi "+classes.length+
+      ".\n\nItu tidak seharusnya terjadi. Tekan Undo sekarang dan laporkan.");
+  }
+  toast(kena.length+" riwayat pembelian dihapus · "+classes.length+" baris log utuh · "+
+    "siap diimpor ulang dari WooCommerce");
+}
 /* ================= PEMBELIAN SALAH SAMBUNG =================
    Saat impor, nama pembeli ikut disimpan di catatan pembelian. Kalau nama itu
    berbeda dari nama murid tempat pembelian menempel — dan bukan salah satu
@@ -7227,13 +7289,14 @@ function simpanImpor(){
   /* Murid baru didaftarkan lebih dulu supaya pembeliannya punya nomor induk.
      Dikelompokkan per orang (email > nomor HP > nama) agar satu pembeli yang
      memesan beberapa kali tidak menjadi beberapa murid. */
-  const kunciBaru={}, dibuat=[];
+  const kunciBaru={}, dibuat=[]; let digabung=0;
   perluBaru.forEach(x=>{
     const e=String(x.email||"").toLowerCase().trim(), w=waNorm(x.hp||"");
     const k=e||(w.length>=9?w:"nm:"+nkey(x.nama));
     if(!kunciBaru[k]){
       const sudah=cocokkanPembeli(x.nama,x.email,x.hp);
-      if(sudah.mid)kunciBaru[k]=sudah.mid;
+      const ketat=sudah.mid||cariMuridKetat(x.nama,x.email,x.hp);
+      if(ketat){kunciBaru[k]=ketat;digabung++;}
       else{
         const id=idBerikut(), m=muridBaru(x.nama);
         m.email=e;m.wa=w;m.daftar=x.tgl||todayStr();m.beli1=x.tgl||"";
@@ -7276,6 +7339,7 @@ function simpanImpor(){
       "Sambungkan dulu ke Google Sheet lewat ⚙️ Pengaturan, lalu impor ulang.");
   }else{
     toast(cocok.length+" pembelian tersimpan"+(nBaru?" · "+nBaru+" murid baru didaftarkan":"")+
+      (digabung?" · "+digabung+" disatukan ke murid yang sudah ada":"")+
       (sisa?" · "+sisa+" belum dicocokkan":""));
   }
 }
@@ -7362,6 +7426,39 @@ function indeksKontak(){
   return IDX_KONTAK;
 }
 function lupakanKontak(){IDX_KONTAK=null;}
+/* Sebelum membuat murid baru, cari sekali lagi dengan ejaan yang dilonggarkan.
+   Daftar murid berasal dari log; nama yang sama sering ditulis sedikit berbeda di
+   WooCommerce (spasi, gelar, singkatan). Tanpa ini, satu orang bisa punya dua
+   nomor induk — satu dari log, satu dari impor. */
+function cariMuridKetat(nama,email,hp){
+  const persis=midOf(nama); if(persis)return persis;
+  /* Gelar dan sapaan dibuang: "Nur Aini S.Pd" dan "Nur Aini" satu orang.
+     Nama yang satu merupakan awalan nama lainnya juga dianggap sama, karena
+     WooCommerce sering memuat nama lengkap sedangkan log memakai nama panggilan. */
+  const GELAR=/\b(spd|se|sh|st|skom|ssi|ssos|mm|mpd|msi|sked|dr|drs|ir|prof|hj|amd)\b/gi;
+  const rapat=x=>nkey(String(x).replace(/\./g," ")).replace(GELAR," ").replace(/\s+/g,"");
+  const k=rapat(nama);
+  if(k.length<4)return "";
+  const e=String(email||"").toLowerCase().trim(), w=waNorm(hp||"");
+  let best="",sc=0;
+  Object.entries(U.murid||{}).forEach(([id,m])=>{
+    if(sc>=100)return;
+    const r=rapat(m.nm);
+    if(r===k){best=id;sc=100;return;}
+    if(r.length>=6&&k.length>=6&&(r.startsWith(k)||k.startsWith(r))){best=id;sc=100;return;}
+    const p=miripPersen(nkey(nama),nkey(m.nm));
+    if(p>sc){sc=p;best=id;}
+  });
+  if(!best)return "";
+  if(sc>=100)return best;
+  if(sc>=92){
+    const m=U.murid[best];
+    const eM=String(m.email||"").toLowerCase().trim(), wM=waNorm(m.wa||"");
+    const bentrok=(e&&eM&&e!==eM)||(w&&wM&&w!==wM);
+    if(!bentrok)return best;
+  }
+  return "";
+}
 function cocokkanPembeli(nama,email,hp){
   const IX=indeksKontak();
   const e=String(email||"").toLowerCase().trim(), w=waNorm(hp||"");
