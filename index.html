@@ -3882,15 +3882,21 @@ function cekBedaProgram(){
 /* Program dihitung ulang dari nama produk — memperbaiki nilai yang tersimpan salah */
 function hitungUlangProgram(){
   if(!guard())return;
-  const ubah=[];
+  const ubah=[]; let dikunci=0;
   Object.entries(U.beli||{}).forEach(([oid,o])=>{
     const dari=progBaku(o.prog||""), ke=progOf(o.produk);
-    if(ke&&dari!==ke)ubah.push({oid,o,dari:dari||"(kosong)",ke});
+    if(!ke||dari===ke)return;
+    if(o.pkunci){dikunci++;return;}            // sudah dikoreksi manual, jangan ditimpa
+    ubah.push({oid,o,dari:dari||"(kosong)",ke});
   });
-  if(!ubah.length)return toast("Semua program sudah sesuai nama produknya");
+  if(!ubah.length)return toast(dikunci
+    ? "Tidak ada yang perlu diperbaiki · "+dikunci+" pembelian dikunci karena sudah dikoreksi manual"
+    : "Semua program sudah sesuai nama produknya");
   if(!confirm(ubah.length+" pembelian programnya tidak sesuai nama produk.\n\n"+
     ubah.slice(0,8).map(x=>x.dari+" -> "+x.ke+" : "+(x.o.produk||"").slice(0,44)).join("\n")+
-    (ubah.length>8?"\n…":"")+"\n\nPerbaiki sekarang?"))return;
+    (ubah.length>8?"\n…":"")+
+    (dikunci?"\n\n"+dikunci+" pembelian dilewati karena sudah dikoreksi manual.":"")+
+    "\n\nPerbaiki sekarang?"))return;
   mulaiMassal();
   const mids=new Set();
   ubah.forEach(x=>{x.o.prog=x.ke;pushBELI(x.oid,x.o);if(x.o.mid)mids.add(x.o.mid);});
@@ -3904,20 +3910,24 @@ function hitungUlangProgram(){
    tidak bisa ditebak pembelian mana untuk bahasa mana, jadi dilewati. */
 function samakanDenganLog(){
   if(!guard())return;
-  const ubah=[];
+  const ubah=[]; let dikunci=0;
   cekBedaProgram().forEach(x=>{
     if(x.log.length!==1)return;                 // ambigu, biarkan diperiksa manual
     const benar=x.log[0];
     x.items.forEach(o=>{
       if(beliReguler(o)||isCC(o))return;        // reguler & club punya aturan sendiri
+      if(o.pkunci){dikunci++;return;}           // koreksi manual tidak ditimpa
       const dari=progBaku(progBeli(o));
       if(dari!==benar)ubah.push({oid:o.oid,o:U.beli[o.oid],nm:x.nm,dari,ke:benar});
     });
   });
-  if(!ubah.length)return toast("Tidak ada yang bisa disamakan otomatis — sisanya perlu diperiksa manual");
+  if(!ubah.length)return toast(dikunci
+    ? dikunci+" pembelian dikunci karena sudah dikoreksi manual — sisanya perlu diperiksa satu per satu"
+    : "Tidak ada yang bisa disamakan otomatis — sisanya perlu diperiksa manual");
   if(!confirm(ubah.length+" pembelian akan diubah mengikuti bahasa di log:\n\n"+
     ubah.slice(0,8).map(x=>x.nm+": "+x.dari+" -> "+x.ke).join("\n")+
     (ubah.length>8?"\n…":"")+
+    (dikunci?"\n\n"+dikunci+" pembelian dilewati karena sudah dikoreksi manual.":"")+
     "\n\nNama produknya tidak diubah, hanya kolom programnya.\nLanjutkan?"))return;
   mulaiMassal();
   const mids=new Set();
@@ -4202,7 +4212,12 @@ function simpanEditBeli(oid,[tgl,prog,jenis,jam,label,nominal,dipakai]){
   const t=jParseTgl(tgl)||normDate(tgl);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(t))return toast("Tanggalnya belum benar");
   o.tgl=t;
-  o.prog=progBaku(normName(prog))||progBeli(o);
+  const progBaru=progBaku(normName(prog))||progBeli(o);
+  /* Program yang diubah manual dikunci: tombol perbaikan massal tidak boleh
+     menimpanya lagi. Sebelumnya koreksi manual bisa hilang begitu tombol
+     "Perbaiki dari nama produk" ditekan — itu yang membuat data kembali salah. */
+  if(progBaru!==progOf(o.produk))o.pkunci=1; else delete o.pkunci;
+  o.prog=progBaru;
   const tipeBaru=/top/i.test(jenis)?"topup":"awal";
   if(o.tipe!==tipeBaru)o.kunci=1;              // ditetapkan manual, jangan ditimpa lagi
   o.tipe=tipeBaru;
@@ -5196,9 +5211,9 @@ function blokMurid(nama){
         <b style="font-size:12px">Catatan Paket Lama</b>
         <div class="hint" style="margin:2px 0 5px">Dicatat tim sebelum riwayat pembelian ada, dan belum ketemu transaksinya.
           Tetap dipakai untuk hitungan jam. Kalau transaksinya sudah dicatat di atas, catatan ini boleh dihapus.</div>
-        ${sisa.map(x=>`<div class="belirow">
+        ${sisa.slice().sort((a,b)=>String(a.t.tgl).localeCompare(String(b.t.tgl))).map((x,i)=>`<div class="belirow">
           <span class="tg">${x.t.tgl?fmtD_(x.t.tgl):"—"}</span>
-          <span class="pr">Top up ke-${x.t.ke}${+x.t.jam>0?" · "+x.t.jam+" jam":""}
+          <span class="pr">Catatan ke-${i+1}${+x.t.jam>0?" · "+x.t.jam+" jam":""}
             <div class="sub" style="color:var(--ink-soft);font-size:10.5px">${x.t.note||""}${x.t.by?" · dicatat "+x.t.by:""}</div></span>
           ${canEdit()?`<button class="btn ghost small" onclick="hapusTU(du('${eu(nmM)}'),${x.t.seq})" title="Hapus catatan paket ini">✕</button>`:""}
         </div>`).join("")}
@@ -5239,6 +5254,7 @@ function blokMurid(nama){
       g.items.slice().reverse().map(o=>`<div class="belirow">
         <span class="tg">${fmtD_(o.tgl)}</span>
         <span class="pr">${o.produk||"—"} ${labelTipe(o)}
+          ${o.pkunci?`<span class="tok tok-aman" title="Program dikoreksi manual — tidak akan ditimpa perbaikan massal">🔒 dikunci</span>`:""}
           ${beliReguler(o)
             ? `<span class="chip" style="background:#E3EAE9;color:#5B6E77" title="Kelas reguler — tokennya belum dihitung">reguler</span>`
             : `<span class="chip"${+o.jam>0?"":' style="background:#F4EAD4;color:#7A5310" title="Jam paket belum diisi — dianggap paket bawaan, klik ✎ untuk koreksi"'}>${+o.jam>0?o.jam:(MEET.jamDefault||JAM_PAKET_BAWAAN)} jam${+o.jam>0?"":"?"}</span>`}
