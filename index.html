@@ -428,6 +428,7 @@
     <div class="row-actions">
       <button class="btn" onclick="saveCfg()">Simpan & Hubungkan</button>
       <button class="btn ghost" onclick="fullSync()">Sinkron Ulang</button>
+      <button class="btn ghost" onclick="kirimSekarang()">📤 Kirim Antrean</button>
       <button class="btn ghost" onclick="tesKoneksi()">🔍 Tes Koneksi</button>
     </div>
     <p class="note">Sebelum terhubung, dashboard jalan dalam mode lokal (data di browser ini saja). Setelah terhubung, semua data pindah & tersimpan di Google Sheet kamu — awet dan bisa dibuka dari perangkat mana pun.</p>
@@ -2250,8 +2251,32 @@ function ambilBatch(){
    macet selamanya di operasi itu. Sekarang operasi bermasalah disingkirkan
    setelah beberapa kali gagal supaya perubahan lain tetap bisa terkirim. */
 const BATAS_GAGAL=4;
+/* Antrean yang sudah terlanjur menumpuk — misalnya ribuan penghapusan satu-satu —
+   digabung dulu jadi beberapa permintaan besar sebelum dikirim. */
+function padatkanAntrean(){
+  if(queue.length<50)return 0;
+  const hasil=[], sebelum=queue.length;
+  let i=0;
+  while(i<queue.length){
+    const a=queue[i];
+    if(a.action==="delrate"&&Array.isArray(a.ids)){
+      let ids=a.ids.slice();i++;
+      while(i<queue.length&&queue[i].action==="delrate"&&Array.isArray(queue[i].ids)
+            &&ids.length+queue[i].ids.length<=BATCH_ROWS){ids=ids.concat(queue[i].ids);i++;}
+      hasil.push({action:"delrate",ids});
+    }else if(a.action==="setrate"&&Array.isArray(a.rows)){
+      let rows=a.rows.slice();i++;
+      while(i<queue.length&&queue[i].action==="setrate"&&Array.isArray(queue[i].rows)
+            &&rows.length+queue[i].rows.length<=BATCH_ROWS){rows=rows.concat(queue[i].rows);i++;}
+      hasil.push({action:"setrate",rows});
+    }else{hasil.push(a);i++;}
+  }
+  if(hasil.length<sebelum){queue.length=0;queue.push(...hasil);lset(QKEY,queue);}
+  return sebelum-hasil.length;
+}
 async function flush(){
   if(flushing||!CFG.url||!queue.length)return;
+  padatkanAntrean();
   flushing=true;
   try{
     while(queue.length){
@@ -2289,6 +2314,15 @@ async function flush(){
     }
     setSync("ok","Tersinkron · Google Sheets");
   }finally{flushing=false;}
+}
+/* Dipakai kalau antrean menumpuk: dipadatkan lalu dikirim, tanpa menarik ulang data. */
+async function kirimSekarang(){
+  if(!CFG.url)return toast("Isi URL & token dulu di panel Koneksi");
+  if(!queue.length)return toast("Tidak ada yang menunggu dikirim");
+  const hemat=padatkanAntrean();
+  toast(queue.length+" permintaan menunggu"+(hemat?" (dipadatkan dari "+(queue.length+hemat)+")":"")+" — mengirim…");
+  await flush();
+  toast(queue.length?queue.length+" masih tersisa — coba lagi":"Semua perubahan sudah terkirim");
 }
 async function fullSync(){
   if(!CFG.url){toast("Isi URL & token dulu di panel Koneksi");return;}
@@ -3902,11 +3936,16 @@ function lakukanHapusBeli(ikutManual){
   snapshot("Reset riwayat pembelian");
   mulaiMassal();
   const mids=new Set();
+  /* Menghapus satu per satu membuat ribuan permintaan menumpuk di antrean.
+     Baris dibuang lokal dulu, lalu dikirim sebagai beberapa permintaan besar. */
+  const idsHapus=[];
   kena.forEach(([oid,o])=>{
     if(o.mid)mids.add(o.mid);
     delete U.beli[oid];
-    pushBELI(oid,null);
+    idsHapus.push("B:"+oid);
   });
+  if(CFG.url)for(let i=0;i<idsHapus.length;i+=200)
+    push({action:"delrate",ids:idsHapus.slice(i,i+200)});
   mids.forEach(id=>{const m=U.murid[id];if(!m)return;
     const L=Object.values(U.beli||{}).filter(x=>x.mid===id).map(x=>x.tgl).filter(Boolean).sort();
     const b1=L[0]||"";
