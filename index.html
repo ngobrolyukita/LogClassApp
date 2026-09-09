@@ -571,6 +571,7 @@
   <div class="panel" id="p-murid">
     <div class="card">
       <h2>🎓 Data Murid</h2>
+      <div class="langbar" id="mBeliTab"></div>
       <div class="rangerow" id="mRangeRow">
         <span>Periode</span>
         <select id="mPeriod" onchange="setMPeriod(this.value)"></select>
@@ -811,6 +812,8 @@
     <div class="card">
       <h2>🏫 Kelas Reguler</h2>
       <p class="note" style="margin-top:0">Daftar kelas diambil dari log, pesertanya dari riwayat pembelian.
+        <b>English Conversation Club tidak ditampilkan di sini</b> — punya tab sendiri karena dihitung
+        per masa berlaku, bukan per pertemuan.
         <b>📌 Tandai pertemuan</b> dipakai sekali saja untuk menyetel nomor: pilih satu tanggal dan sebutkan
         pada tanggal itu sudah pertemuan ke berapa — sesudahnya sistem menghitung sendiri mengikuti log yang masuk.
         <b>＋ Daftarkan kelas</b> memberi nomor kelas, tutor penanggung jawab, target pertemuan, dan
@@ -824,6 +827,7 @@
         <button class="btn small editonly" onclick="bikinKelasReg()">＋ Buat Kelas</button>
         <button class="btn ghost small" onclick="exportReguler()">📦 Export CSV</button>
       </div>
+      <div class="langbar" id="regTab" style="margin-top:9px"></div>
       <div id="regYatim" style="margin-top:9px"></div>
       <div id="regList" style="margin-top:9px"></div>
     </div>
@@ -3895,6 +3899,34 @@ function hitungUlangProgram(){
   buildMeet();renderAll();
   toast(ubah.length+" program pembelian diperbaiki dari nama produknya");
 }
+/* Log diimpor dari live schedule WordPress, jadi bahasanya yang dianggap benar.
+   Dipakai untuk murid yang hanya belajar SATU bahasa — kalau lebih dari satu,
+   tidak bisa ditebak pembelian mana untuk bahasa mana, jadi dilewati. */
+function samakanDenganLog(){
+  if(!guard())return;
+  const ubah=[];
+  cekBedaProgram().forEach(x=>{
+    if(x.log.length!==1)return;                 // ambigu, biarkan diperiksa manual
+    const benar=x.log[0];
+    x.items.forEach(o=>{
+      if(beliReguler(o)||isCC(o))return;        // reguler & club punya aturan sendiri
+      const dari=progBaku(progBeli(o));
+      if(dari!==benar)ubah.push({oid:o.oid,o:U.beli[o.oid],nm:x.nm,dari,ke:benar});
+    });
+  });
+  if(!ubah.length)return toast("Tidak ada yang bisa disamakan otomatis — sisanya perlu diperiksa manual");
+  if(!confirm(ubah.length+" pembelian akan diubah mengikuti bahasa di log:\n\n"+
+    ubah.slice(0,8).map(x=>x.nm+": "+x.dari+" -> "+x.ke).join("\n")+
+    (ubah.length>8?"\n…":"")+
+    "\n\nNama produknya tidak diubah, hanya kolom programnya.\nLanjutkan?"))return;
+  mulaiMassal();
+  const mids=new Set();
+  ubah.forEach(x=>{if(!x.o)return;x.o.prog=x.ke;pushBELI(x.oid,x.o);if(x.o.mid)mids.add(x.o.mid);});
+  selesaiMassal();cacheAll();lupakanIndex();lupakanRekap();
+  mids.forEach(segarkanTipeBeli);
+  buildMeet();renderAll();
+  toast(ubah.length+" pembelian disamakan dengan bahasa di log");
+}
 function exportBedaProgram(){
   const L=cekBedaProgram();
   const rows=[["Nomor Induk","Nama Murid","Bahasa di Log","Bahasa Dibeli","Tanggal Beli",
@@ -3914,7 +3946,8 @@ function renderBedaProgram(){
     tidak ada yang cocok dengan bahasa yang dibeli. Buka muridnya untuk melihat mana yang keliru —
     biasanya pembeliannya tersambung ke orang lain, atau nama produknya tidak terbaca.</p>
     <div class="row-actions" style="margin:0 0 8px">
-      <button class="btn small editonly" onclick="hitungUlangProgram()">🔧 Perbaiki program dari nama produk</button>
+      <button class="btn small editonly" onclick="hitungUlangProgram()">🔧 Perbaiki dari nama produk</button>
+      <button class="btn small editonly" onclick="samakanDenganLog()" title="Log berasal dari live schedule WordPress, jadi bahasanya yang dianggap benar">🎯 Samakan dengan bahasa di log</button>
       <button class="btn ghost small" onclick="exportBedaProgram()">📦 Export daftar (CSV)</button>
     </div>
     <div class="scroll" style="max-height:340px">${L.slice(0,40).map(x=>`<div class="belirow">
@@ -4798,7 +4831,8 @@ function subBadge(c){
 let mLang=new Set(), mStat=new Set(), mBatas=100;
 /* Periode di tab Data Murid: "all" = seluruh waktu, "custom" = rentang tanggal sendiri,
    selain itu kunci periode cut-off 26–25. Angka sesi, jam, dan top up ikut rentang ini. */
-let mPeriod="all", mFrom="", mTo="";
+let mPeriod="all", mFrom="", mTo="", mBeliTab="semua";
+function setMBeliTab(v){mBeliTab=v;mBatas=100;renderMurid();}
 function mRange(){
   if(mPeriod==="all")return ["0000-01-01","9999-12-31"];
   if(mPeriod==="custom")return (mFrom&&mTo)?(mFrom<=mTo?[mFrom,mTo]:[mTo,mFrom]):periodRange(monthNow());
@@ -4941,6 +4975,20 @@ function renderMurid(){
   const box=document.getElementById("mList"); if(!box)return;
   renderSimpanWarn();
   isiMPeriod();renderBedaProgram();
+  /* Setiap murid yang muncul di log seharusnya punya riwayat pembelian.
+     Pemisah ini yang membuat sisanya kelihatan dan bisa dicatat manual. */
+  {
+    const semuaId=Object.keys(U.murid||{});
+    const adaBeli=semuaId.filter(i2=>beliMurid(i2).length).length;
+    const el=document.getElementById("mBeliTab");
+    if(el)el.innerHTML=[["semua","Semua",semuaId.length],
+      ["ada","Ada riwayat pembelian",adaBeli],
+      ["belum","Belum ada pembelian",semuaId.length-adaBeli]]
+      .map(([k,l,n])=>`<span class="lchip${mBeliTab===k?" on":""}" onclick="setMBeliTab('${k}')">
+        <span class="bx">${mBeliTab===k?"\u2713":""}</span>${l} <span class="n">${n}</span></span>`).join("")+
+      `<span class="hint" style="margin-left:6px">Murid yang belum punya pembelian perlu dicatat manual
+        lewat ＋ Catat Pembelian.</span>`;
+  }
   const belum=muridBelumPunyaId();
   const w=document.getElementById("mWarn");
   const dup=cekDuplikat();
@@ -4987,6 +5035,8 @@ function renderMurid(){
       · saat impor jadwal, tambah kelas manual, atau sinkron. Nama mirip tidak digabung sendiri — ditandai di sini dulu.</div>`;
 
   let R=semuaRekap();
+  if(mBeliTab==="ada")R=R.filter(r=>r.beli>0);
+  else if(mBeliTab==="belum")R=R.filter(r=>!r.beli);
   // chip bahasa
   const bhsSet=new Set();R.forEach(r=>r.bahasa.forEach(b=>bhsSet.add(b)));
   const bhs=[...bhsSet].sort((a,b)=>a.localeCompare(b,"id"));
@@ -5715,14 +5765,62 @@ function pushKELAS(id,o){
     lang:"v1~"+JSON.stringify(o)}]});
 }
 function simpanKelasReg(id,o){U.kelas=U.kelas||{};U.kelas[id]=o;pushKELAS(id,o);}
-function hapusKelasReg(id){
+/* Dua tingkat penghapusan yang sengaja dibedakan: melepas catatan kelas saja
+   (log tetap utuh) atau ikut menghapus seluruh baris log-nya. Yang kedua
+   menghapus dasar perhitungan gaji, jadi diminta konfirmasi terpisah. */
+function hapusKelasReg(clsEnc){
   if(!guard())return;
-  const o=(U.kelas||{})[id]; if(!o)return;
-  if(!confirm("Hapus kelas induk "+id+" — "+o.nm+"?\n\nLog kelasnya tidak ikut terhapus, "+
-    "hanya catatan induknya. Peserta yang terdaftar juga hilang."))return;
-  delete U.kelas[id];pushKELAS(id,null);
-  cacheAll();lupakanReg();renderReguler();
-  toast(o.nm+" dihapus dari daftar kelas induk");
+  const cls=du(clsEnc);
+  const K=kelasDariCls(cls);
+  const nama=K?(K.alias||[K.nm]):[cls];
+  const cs=classes.filter(c=>isReg(c)&&nama.includes(c.cls));
+  const now=new Date();
+  const selesai=cs.filter(c=>statusOf(c,now)==="Selesai");
+  const dibayar=selesai.filter(c=>paidCover(tutorAsli(c),c.date));
+  const fee=selesai.reduce((a,c)=>a+feeOf(c,now),0);
+  tanyaForm({
+    judul:"Hapus Kelas",
+    sub:(K?K.id+" · "+K.nm:cls),
+    pesan:cs.length+" baris di log"+(K?" ("+(K.alias||[]).length+" ejaan)":"")+
+      " · "+selesai.length+" sesi Selesai · gaji tercatat "+rp(fee)+
+      (dibayar.length?"\n\n"+dibayar.length+" sesi sudah ditandai dibayar.":"")+
+      "\n\nPilih cakupannya:\n"+
+      "• catatan saja — kelas hilang dari daftar, log dan gaji tetap utuh\n"+
+      "• beserta log — seluruh baris kelas ini ikut dihapus dari log; "+
+      "gaji tutor periode berjalan akan berubah",
+    fields:[{label:"Cakupan",nilai:"catatan saja",pilihan:["catatan saja","beserta log"]}],
+    tombol:"Hapus",
+    ok:([v])=>lakukanHapusKelas(cls,/log/i.test(v))
+  });
+}
+function lakukanHapusKelas(cls,ikutLog){
+  const K=kelasDariCls(cls);
+  const nama=K?(K.alias||[K.nm]):[cls];
+  const cs=classes.filter(c=>isReg(c)&&nama.includes(c.cls));
+  const now=new Date();
+  const dibayar=cs.filter(c=>statusOf(c,now)==="Selesai"&&paidCover(tutorAsli(c),c.date));
+  if(ikutLog){
+    if(dibayar.length&&!confirm(dibayar.length+" sesi sudah ditandai DIBAYAR.\n\n"+
+      "Menghapusnya membuat catatan gaji tidak lagi cocok dengan yang sudah ditransfer.\n\nTetap hapus?"))return;
+    if(!confirm("Hapus "+cs.length+" baris log kelas "+(K?K.nm:cls)+"?\n\n"+
+      "Ini tidak bisa dibatalkan lewat sinkron — hanya lewat Undo selama app belum ditutup."))return;
+  }
+  snapshot("Hapus kelas "+(K?K.nm:cls));
+  mulaiMassal();
+  if(ikutLog){
+    const ids=cs.map(c=>String(c.id));
+    classes=classes.filter(c=>!ids.includes(String(c.id)));
+    ids.forEach(i=>{U.del[i]=1;});
+    if(CFG.url)for(let i=0;i<ids.length;i+=200)push({action:"delete",ids:ids.slice(i,i+200)});
+  }
+  if(K){
+    delete U.kelas[K.id];pushKELAS(K.id,null);
+    delete U.roster[K.id];pushROSTER(K.id,null);
+  }
+  delete U.roster[cls];pushROSTER(cls,null);
+  selesaiMassal();cacheAll();lupakanIndex();lupakanReg();buildMeet();renderAll();
+  toast(ikutLog?(cs.length+" baris log dihapus · kelas "+(K?K.nm:cls)+" dihapus")
+       :("Kelas "+(K?K.nm:cls)+" dilepas dari daftar · log tetap utuh"));
 }
 /* ---------- ganti tutor untuk satu kelas reguler ----------
    Selalu ada tutor yang berhalangan. Dua kemungkinan dibedakan:
@@ -6237,6 +6335,8 @@ function bangunReguler(){
   const koh={};
   classes.forEach(c=>{
     if(!c.cls||!isReg(c))return;
+    // Conversation Club punya tab dan mekanisme sendiri (berbasis masa berlaku)
+    if(isClub(c)||/conversation\s*(club|class)|convo\s*club/i.test(c.cls))return;
     /* Kalau kohort ini sudah punya kelas induk, semua ejaan namanya digabung
        ke satu kartu — itu gunanya alias. */
     const K0=kelasDariCls(c.cls);
@@ -6259,12 +6359,20 @@ function bangunReguler(){
   const beliReg=[];
   Object.entries(U.beli||{}).forEach(([oid,o])=>{
     if(!beliReguler(o)||isCC(o))return;
+    if(/conversation\s*(club|class)|convo\s*club/i.test(String(o.produk||"")))return;
     beliReg.push(Object.assign({oid},o,{batch:batchDari(o),kunci:kunciBatch(o.produk)}));
+  });
+  /* Kelas yang sudah didaftarkan tapi belum punya baris log — atau yang lognya
+     baru menyusul — tetap harus tampil, kalau tidak ia terlihat seperti hilang. */
+  Object.entries(U.kelas||{}).forEach(([kid,K])=>{
+    if(koh[kid])return;
+    koh[kid]={cls:K.nm,n:0,selesai:0,batal:0,akan:0,jam:0,fee:0,
+      tutor:{},lang:K.bhs?{[K.bhs]:1}:{},tgl:[],slot:{},ejaan:new Set([K.nm])};
   });
   Object.entries(koh).forEach(([k,o])=>{o._id=/^K-\d+$/.test(k)?k:"";});
   const daftar=Object.values(koh).map(o=>{
     o.tgl.sort();
-    o.mulai=o.tgl[0]; o.akhir=o.tgl[o.tgl.length-1];
+    o.mulai=o.tgl[0]||""; o.akhir=o.tgl[o.tgl.length-1]||"";
     o.tutorUtama=Object.entries(o.tutor).sort((a,b)=>b[1]-a[1]).map(([t,n])=>({t,n}));
     o.bahasa=Object.entries(o.lang).sort((a,b)=>b[1]-a[1]).map(([l])=>l)[0]||"";
     o.jadwal=Object.entries(o.slot).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([sl])=>sl);
@@ -6277,10 +6385,14 @@ function bangunReguler(){
     });
     /* Daftar peserta yang ditetapkan manual selalu menang — pembagian grup
        ditentukan banyak hal yang tidak terbaca dari nama produk. */
-    const K=(U.kelas||{})[o._id]||kelasDariCls(o.cls);
-    o.K=K?Object.assign({id:o._id||indeksKelasReg()[o.cls]},K):null;
-    o.kid=o._id||(K?K.id:"");
-    o.roster=rosterKelas(K?K.id:o.cls);
+    /* Objek kelas yang tersimpan tidak membawa id-nya sendiri, jadi id dicari
+       sekali di sini dan dipakai seterusnya — kalau tidak, daftar pesertanya
+       dicari dengan kunci kosong dan selalu terlihat kosong. */
+    const kidNow=o._id||indeksKelasReg()[o.cls]||"";
+    const K=kidNow?Object.assign({id:kidNow},(U.kelas||{})[kidNow]):null;
+    o.K=K;
+    o.kid=kidNow;
+    o.roster=rosterKelas(kidNow||o.cls);
     o.target=(K&&+K.target>0)?+K.target:targetSesiReg(o.cls);
     o.offset=K?(+K.offset||0):0;
     o.lv=(K&&K.lv)||levelKohort(o.cls);
@@ -6304,7 +6416,8 @@ function bangunReguler(){
   RIDX={daftar,yatim:beliReg.filter(b=>!kepakai.has(b.oid))};
   return RIDX;
 }
-let regF="all", regQ="";
+let regF="all", regQ="", regTab="semua";
+function setRegTab(v){regTab=v;renderReguler();}
 function setRegF(v){regF=(regF===v&&v!=="all")?"all":v;renderReguler();}
 function renderReguler(){
   const box=document.getElementById("regList"); if(!box)return;
@@ -6319,7 +6432,7 @@ function renderReguler(){
     <div class="kpi"><div class="v">${daftar.reduce((a,x)=>a+x.selesai,0)}</div><div class="l">Sesi Selesai</div></div>
     <div class="kpi"><div class="v" style="color:${daftar.filter(x=>!x.kid).length?"#8A5F14":"#1C6047"}">${daftar.filter(x=>!x.kid).length}</div><div class="l">Belum Terdaftar</div></div>
     <div class="kpi"><div class="v" style="font-size:13px">${rp(daftar.reduce((a,x)=>a+x.fee,0))}</div><div class="l">Gaji Tutor</div></div>
-    <div class="kpi${regF==="tanpa"?" on":""}" onclick="setRegF('tanpa')" title="Kelasnya jalan tapi belum ada pembelian yang cocok"><div class="v" style="color:${tanpa.length?"#8A5F14":"#1C6047"}">${tanpa.length}</div><div class="l">Tanpa Peserta</div></div>
+    <div class="kpi${regF==="tanpa"?" on":""}" onclick="setRegF('tanpa')" title="Kelasnya jalan tapi belum ada peserta terdaftar"><div class="v" style="color:${tanpa.length?"#8A5F14":"#1C6047"}">${tanpa.length}</div><div class="l">Tanpa Peserta</div></div>
     <div class="kpi"><div class="v" style="color:${yatim.length?"#8A5F14":"#1C6047"}">${yatim.length}</div><div class="l">Pembelian Tanpa Kelas</div></div>`;
   // isi pilihan saringan dari data yang ada
   const selB=document.getElementById("regBhs"), selM=document.getElementById("regBatch");
@@ -6332,9 +6445,18 @@ function renderReguler(){
     el.value=arr.includes(v)?v:"";
   };
   isi(selB,bhsAda);isi(selM,btAda,labelBulan);
-  let R=daftar;
-  if(regF==="berjalan")R=jalan;
-  if(regF==="tanpa")R=tanpa;
+  // pemisah: sudah didaftarkan vs masih mentah dari log
+  const sudah=daftar.filter(x=>x.kid), belum=daftar.filter(x=>!x.kid);
+  document.getElementById("regTab").innerHTML=
+    [["semua","Semua",daftar.length],["sudah","Sudah terdaftar",sudah.length],
+     ["belum","Belum terdaftar",belum.length]]
+    .map(([k,l,n])=>`<span class="lchip${regTab===k?" on":""}" onclick="setRegTab('${k}')">
+      <span class="bx">${regTab===k?"\u2713":""}</span>${l} <span class="n">${n}</span></span>`).join("")+
+    (belum.length?`<span class="hint" style="margin-left:6px">Kelas baru di log yang belum didaftarkan
+      muncul di sini sebagai pengingat.</span>`:"");
+  let R=regTab==="sudah"?sudah:(regTab==="belum"?belum:daftar);
+  if(regF==="berjalan")R=R.filter(x=>x.status==="berjalan");
+  if(regF==="tanpa")R=R.filter(x=>!x.roster.length);
   if(selB.value)R=R.filter(x=>x.bahasa===selB.value);
   if(selM.value)R=R.filter(x=>x.batch===selM.value);
   const q=regQ.toLowerCase().trim();
@@ -6351,9 +6473,10 @@ function renderReguler(){
         <span class="rp">${rp(x.rp)}</span>
       </div>
       <div class="sub" style="margin:2px 0 5px">
-        ${x.selesai} sesi selesai${x.akan?` · ${x.akan} akan datang`:""}${x.batal?` · ${x.batal} postponed`:""}
+        ${x.n?`${x.selesai} sesi selesai${x.akan?` · ${x.akan} akan datang`:""}${x.batal?` · ${x.batal} postponed`:""}
         · ${fmtP(Math.round(x.jam*100)/100)} jam · gaji ${rp(x.fee)}
-        <br>${fmtD_(x.mulai)} – ${fmtD_(x.akhir)}${x.jadwal.length?" · "+x.jadwal.join(" · "):""}
+        <br>${fmtD_(x.mulai)} – ${fmtD_(x.akhir)}${x.jadwal.length?" · "+x.jadwal.join(" · "):""}`
+        :`<span style="color:#8A5F14">Belum ada sesi di log untuk kelas ini.</span>`}
       </div>
       <div class="sub" style="margin-bottom:5px">
         <b>Pertemuan ke-${x.sudah}${x.target?" dari "+x.target:""}</b>${x.target?` · sisa ${Math.max(0,x.target-x.sudah)}`:""}
@@ -6364,6 +6487,7 @@ function renderReguler(){
         ${x.kid&&canEdit()?`<button class="btn ghost small" onclick="ubahKelasReg('${x.kid}')" title="Ubah bahasa, level, tutor penanggung jawab, target, atau gabungkan ejaan lain di log">✎ Ubah data</button>`:""}
         ${x.kid&&canEdit()?`<button class="btn ghost small" onclick="ubahNamaKelasReg('${x.kid}')" title="Ganti nama kelas di seluruh baris log sekaligus">✎ Nama di log</button>`:""}
         ${canEdit()?`<button class="btn ghost small" onclick="gantiTutorKelas(du('${eu(x.cls)}'))" title="Tutor berhalangan — sementara atau tetap">⇄ Ganti tutor</button>`:""}
+        ${canEdit()?`<button class="btn ghost small" onclick="hapusKelasReg(du('${eu(x.cls)}'))" title="Lepas dari daftar, atau hapus sekalian baris log-nya" style="color:var(--red)">🗑 Hapus</button>`:""}
         ${!x.kid&&canEdit()?`<button class="btn ghost small" onclick="bikinKelasReg(du('${eu(x.cls)}'))"
           title="Simpan sebagai data kelas: dapat nomor, tutor penanggung jawab, target, dan bisa menggabungkan ejaan lain di log">＋ Daftarkan kelas</button>`:""}
       </div>
