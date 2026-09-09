@@ -4245,7 +4245,12 @@ function simpanEditBeli(oid,[tgl,prog,jenis,jam,label,nominal,dipakai]){
   /* Program yang diubah manual dikunci: tombol perbaikan massal tidak boleh
      menimpanya lagi. Sebelumnya koreksi manual bisa hilang begitu tombol
      "Perbaiki dari nama produk" ditekan — itu yang membuat data kembali salah. */
-  if(progBaru!==progOf(o.produk))o.pkunci=1; else delete o.pkunci;
+  /* Dikunci kalau pilihanmu berbeda dari yang akan disimpulkan sendiri oleh sistem
+     (log kalau tunggal, kalau tidak dari nama produk). Dengan begitu pilihan manual
+     selalu menang, termasuk ketika kamu justru ingin melawan bahasa di log. */
+  const tanpaKunci=Object.assign({},o,{pkunci:0,prog:""});
+  const otomatis=progBeli(tanpaKunci);
+  if(progBaru!==otomatis)o.pkunci=1; else delete o.pkunci;
   o.prog=progBaru;
   const tipeBaru=/top/i.test(jenis)?"topup":"awal";
   if(o.tipe!==tipeBaru)o.kunci=1;              // ditetapkan manual, jangan ditimpa lagi
@@ -5283,7 +5288,8 @@ function blokMurid(nama){
       g.items.slice().reverse().map(o=>`<div class="belirow">
         <span class="tg">${fmtD_(o.tgl)}</span>
         <span class="pr">${o.produk||"—"} ${labelTipe(o)}
-          ${o.pkunci?`<span class="tok tok-aman" title="Program dikoreksi manual — tidak akan ditimpa perbaikan massal">🔒 dikunci</span>`:""}
+          ${o.pkunci?`<span class="tok tok-aman" title="Program dikoreksi manual — tidak akan ditimpa perbaikan massal">🔒 dikunci</span>`
+            :(progIkutLog(o)?`<span class="tok tok-tipis" title="Nama produknya menyebut ${progOf(o.produk)||"bahasa lain"}, tapi di log murid ini belajar ${progBeli(o)}. Log yang dipakai.">ikut log</span>`:"")}
           ${beliReguler(o)
             ? `<span class="chip" style="background:#E3EAE9;color:#5B6E77" title="Kelas reguler — tokennya belum dihitung">reguler</span>`
             : `<span class="chip"${+o.jam>0?"":' style="background:#F4EAD4;color:#7A5310" title="Jam paket belum diisi — dianggap paket bawaan, klik ✎ untuk koreksi"'}>${+o.jam>0?o.jam:(MEET.jamDefault||JAM_PAKET_BAWAAN)} jam${+o.jam>0?"":"?"}</span>`}
@@ -5652,7 +5658,29 @@ function progOf(teks){
   return "Lainnya";
 }
 /* program sebuah pembelian: yang tersimpan dulu, kalau kosong ditebak dari nama produk */
-function progBeli(o){return progBaku(o.prog)||progOf(o.produk);}
+/* Log berasal dari live schedule WordPress, jadi bahasanya yang dianggap benar.
+   Kalau murid hanya belajar SATU bahasa di log, program pembeliannya mengikuti
+   bahasa itu — tidak perlu menunggu tombol perbaikan dijalankan. Nama produk
+   sering keliru; log tidak. Yang dikunci manual dan kelas reguler/club dikecualikan
+   karena punya aturan sendiri. */
+function progBeli(o){
+  const simpan=progBaku(o.prog)||progOf(o.produk);
+  if(!o||o.pkunci)return simpan;
+  if(beliReguler(o)||isCC(o))return simpan;
+  if(!o.mid)return simpan;
+  const L=bahasaLog(o.mid);
+  if(L&&L.size===1){
+    const b=[...L][0];
+    if(b&&b!==simpan)return b;
+  }
+  return simpan;
+}
+/* apakah program yang tampil berasal dari log, bukan dari yang tersimpan */
+function progIkutLog(o){
+  if(!o||o.pkunci||beliReguler(o)||isCC(o)||!o.mid)return false;
+  const L=bahasaLog(o.mid);
+  return !!(L&&L.size===1&&[...L][0]!==(progBaku(o.prog)||progOf(o.produk)));
+}
 /* susun ulang tipe & urutan top up — dihitung per program, bukan per murid */
 /* Top up hanya berlaku dalam satu kelompok yang sama: bahasa DAN jenis kelasnya.
    Joned yang sudah privat Jerman lalu membeli reguler Jerman bukan top up —
