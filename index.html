@@ -2504,6 +2504,8 @@ function removeClass(id){
   if(CFG.url)push({action:"delete",ids:[String(id)]});
 }
 function setRate(tutor,cls,rate,lang){
+  // rate negatif tidak masuk akal dan membuat gaji ikut minus
+  if(+rate<0){toast("Rate tidak boleh negatif");return;}
   const key=cls?tutor+"|"+cls:"T:"+tutor;
   delete U.del[key];
   if(cls)U.rates[key]=rate;
@@ -9655,6 +9657,17 @@ function hapusRateTutor(){
         "Hapus semua rate "+nm,"tutor itu tidak punya baris rate");
     }});
 }
+/* hapus rate satu tutor yang tidak dipakai kelas mana pun */
+function hapusRateNganggur(tutor){
+  const dipakai=new Set();
+  classes.forEach(c=>{if(tutorAsli(c)===tutor||c.tutor===tutor)dipakai.add(c.cls||"");});
+  borongHapusRate(daftarRate().filter(r=>r.t===tutor&&r.c&&!dipakai.has(r.c)),
+    "Hapus rate "+tutor+" yang tidak dipakai kelas mana pun","semua rate tutor ini masih terpakai");
+}
+function hapusRateNolTutor(tutor){
+  borongHapusRate(daftarRate().filter(r=>r.t===tutor&&!(r.v>0)),
+    "Hapus rate "+tutor+" yang belum diisi","semua rate tutor ini sudah punya nilai");
+}
 function askRemoveRate(tutor,cls){
   const pakai=classes.filter(c=>c.tutor===tutor&&(cls?c.cls===cls:true)).length;
   if(!confirm("Hapus baris rate:\n"+tutor+(cls?" | "+cls:" (default tutor)")+
@@ -10018,12 +10031,35 @@ function renderDetail(){
     Object.entries(U.rates).forEach(([k,v])=>{const[t,c]=k.split("|");if(t===name)rates.push({c,v,user:1});});
     Object.entries(DATA.rates).forEach(([k,v])=>{const[t,c]=k.split("|");if(t===name&&U.rates[k]==null)rates.push({c,v,user:0});});
     const def=(U.tutors[name]&&U.tutors[name].rate)||(DATA.tutors[name]&&DATA.tutors[name].rate)||0;
+    /* Baris rate yang tidak dipakai kelas mana pun ditandai supaya jelas mana
+       yang aman dihapus — biasanya sisa nama kelas lama yang sudah diganti. */
+    const dipakai=new Set();
+    classes.forEach(c=>{if(tutorAsli(c)===name||c.tutor===name)dipakai.add(c.cls||"");});
+    const nganggur=rates.filter(r=>r.c&&!dipakai.has(r.c));
+    const nol=rates.filter(r=>!(r.v>0));
     html+=`<div class="card"><h2>Rate ${name}</h2>
+      ${canEdit()&&(nganggur.length||nol.length)?`<div class="row-actions" style="margin:0 0 8px">
+        ${nganggur.length?`<button class="btn ghost small" onclick="hapusRateNganggur(du('${eu(name)}'))"
+          title="${nganggur.map(r=>r.c).slice(0,12).join(", ")}">🗑 Hapus ${nganggur.length} rate tanpa kelas</button>`:""}
+        ${nol.length?`<button class="btn ghost small" onclick="hapusRateNolTutor(du('${eu(name)}'))">🗑 Hapus ${nol.length} rate kosong</button>`:""}
+      </div>`:""}
       <div class="studrow"><div>(default tutor)</div>
-        <div><b>${def?rp(def)+"/jam":"—"}</b> <button class="btn ghost small" onclick="editRate(du('${eu(name)}'),'',${def})">Edit</button></div></div>`+
-      rates.sort((a,b)=>a.c.localeCompare(b.c)).map(r=>`<div class="studrow">
-        <div>${r.c}${r.user?' <span class="st selesai" style="font-size:9px">koreksi</span>':''}</div>
-        <div><b>${rp(r.v)}/jam</b> <button class="btn ghost small" onclick="editRate(du('${eu(name)}'),du('${eu(r.c)}'),${r.v})">Edit</button></div></div>`).join("")+`</div>`;
+        <div><b>${def?rp(def)+"/jam":"—"}</b>
+          <button class="btn ghost small" onclick="editRate(du('${eu(name)}'),'',${def})">Edit</button>
+          ${canEdit()&&def?`<button class="btn ghost small" style="color:var(--red)"
+            onclick="askRemoveRate(du('${eu(name)}'),'')" title="Hapus rate default">✕</button>`:""}
+        </div></div>`+
+      rates.sort((a,b)=>a.c.localeCompare(b.c)).map(r=>{
+        const tanpa=r.c&&!dipakai.has(r.c);
+        return `<div class="studrow"${tanpa?' style="background:#F4EAD4"':''}>
+        <div>${r.c}${r.user?' <span class="st selesai" style="font-size:9px">koreksi</span>':''}
+          ${tanpa?'<span class="tok tok-tipis" title="Tidak ada kelas tutor ini yang memakai nama itu">tanpa kelas</span>':''}
+          ${!(r.v>0)?'<span class="tok tok-habis" title="Rate belum diisi — fee kelasnya jadi Rp 0">kosong</span>':''}</div>
+        <div><b>${r.v>0?rp(r.v)+"/jam":"—"}</b>
+          <button class="btn ghost small" onclick="editRate(du('${eu(name)}'),du('${eu(r.c)}'),${r.v})">Edit</button>
+          ${canEdit()?`<button class="btn ghost small" style="color:var(--red)"
+            onclick="askRemoveRate(du('${eu(name)}'),du('${eu(r.c)}'))" title="Hapus baris rate ini">✕</button>`:""}
+        </div></div>`;}).join("")+`</div>`;
   }else{
     // catatan status murid — bisa diubah oleh yang punya akses edit
     const r0=mstatNow(name), st0=r0&&r0.ada?r0.st:"aktif", adaCat=!!(r0&&r0.ada);
