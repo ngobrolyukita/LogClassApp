@@ -1003,6 +1003,19 @@
       </div>
       <div class="row-actions"><button class="btn" onclick="saveRate()">Simpan Rate</button></div>
     </div>
+    <div class="card">
+      <h2>🗑 Hapus Rate</h2>
+      <p class="note" style="margin-top:0">Baris rate yang tidak terpakai membuat Daftar Rate panjang
+        dan menyulitkan pencarian. Menghapus rate tidak menghapus kelas mana pun — fee kelas yang
+        memakainya jadi Rp 0 dan ditandai <b>rate?</b> sampai diisi lagi.</p>
+      <div class="row-actions">
+        <button class="btn ghost small editonly" onclick="hapusRateKosong()">Hapus rate yang belum diisi</button>
+        <button class="btn ghost small editonly" onclick="hapusRateTakTerpakai()">Hapus rate tanpa kelas</button>
+        <button class="btn ghost small editonly" onclick="hapusRateTutor()">Hapus semua rate satu tutor…</button>
+      </div>
+      <div id="rateHapusInfo" class="hint" style="margin-top:6px"></div>
+    </div>
+
     <div class="card" id="cardTid">
       <h2>🆔 Nomor Induk Tutor</h2>
       <div class="row-actions" style="margin:0 0 8px">
@@ -9568,12 +9581,79 @@ function terapkanRename(type,oldName,vRaw){
   }
   const rows=[];
   affC.forEach(c=>{ if(isT)c.tutor=v; else c.cls=v; rows.push(sheetRow(c)); });
-  cacheAll();lupakanIndex();
+  /* Nama di log berubah, tapi catatan murid punya namanya sendiri. Tanpa ini,
+     daftar di tab Data Murid tetap menampilkan nama lama. */
+  if(!isT){
+    const idLama=midOf(oldName), idBaru=midOf(v);
+    if(idLama&&idBaru&&idLama!==idBaru){
+      gabungMurid(idBaru,idLama);            // nama tujuan sudah punya nomor induk sendiri
+    }else if(idLama){
+      const m=U.murid[idLama];
+      if(m){
+        m.nm=v;
+        m.al=[...new Set([...(m.al||[]),nkey(oldName),nkey(v)])].filter(Boolean);
+        simpanMurid(idLama,m);
+      }
+    }
+    // nama pembeli di riwayat ikut diperbarui supaya tidak terbaca salah sambung
+    Object.entries(U.beli||{}).forEach(([oid,o])=>{
+      if(o.mid&&o.mid===idLama&&nkey(o.nm||"")===nkey(oldName)){o.nm=v;pushBELI(oid,o);}
+    });
+  }
+  cacheAll();lupakanIndex();lupakanRekap();
   if(CFG.url)for(let i=0;i<rows.length;i+=150)push({action:"upsert",rows:rows.slice(i,i+150)});
   refreshTutorList();
   if(detailCtx&&detailCtx.name===oldName)detailCtx.name=v;
   renderAll();if(detailCtx)renderDetail();
   toast("Diubah: "+oldName+" → "+v+" ("+affC.length+" kelas)");
+}
+/* ---- hapus rate massal ---- */
+function daftarRate(){
+  const out=[];
+  Object.entries(U.rates||{}).forEach(([k,v])=>{const i=k.indexOf("|");
+    out.push({t:k.slice(0,i),c:k.slice(i+1),v:+v||0});});
+  Object.entries(DATA.rates).forEach(([k,v])=>{const i=k.indexOf("|");
+    if(U.rates[k]==null&&!U.del[k])out.push({t:k.slice(0,i),c:k.slice(i+1),v:+v||0});});
+  return out;
+}
+function borongHapusRate(L,judul,ket){
+  if(!guard())return;
+  if(!L.length)return toast("Tidak ada rate yang cocok — "+ket);
+  if(!confirm(judul+"\n\n"+L.length+" baris rate akan dihapus.\n\n"+
+    L.slice(0,8).map(r=>r.t+(r.c?" | "+r.c:" (default)")+(r.v?" · "+rp(r.v):" · belum diisi")).join("\n")+
+    (L.length>8?"\n…":"")+
+    "\n\nKelas tidak ikut terhapus. Fee kelas yang memakainya jadi Rp 0 sampai rate baru diisi.\n\nLanjutkan?"))return;
+  snapshot("Hapus rate massal");
+  mulaiMassal();
+  L.forEach(r=>removeRate(r.t,r.c));
+  selesaiMassal();cacheAll();renderAll();
+  const e=document.getElementById("rateHapusInfo");
+  if(e)e.textContent=L.length+" baris rate dihapus barusan.";
+  toast(L.length+" baris rate dihapus");
+}
+function hapusRateKosong(){
+  borongHapusRate(daftarRate().filter(r=>!(r.v>0)),
+    "Hapus rate yang belum diisi","semua rate sudah punya nilai");
+}
+function hapusRateTakTerpakai(){
+  const pakai=new Set();
+  classes.forEach(c=>{pakai.add(c.tutor+"|"+(c.cls||""));pakai.add(c.tutor+"|");});
+  borongHapusRate(daftarRate().filter(r=>!pakai.has(r.t+"|"+r.c)),
+    "Hapus rate yang tidak dipakai kelas mana pun","semua rate masih terpakai");
+}
+function hapusRateTutor(){
+  if(!guard())return;
+  tanyaForm({judul:"Hapus Rate Satu Tutor",sub:"Semua baris rate milik tutor ini",
+    pesan:"Dipakai saat tutor sudah tidak mengajar, atau rate-nya perlu disusun ulang dari awal. "+
+      "Kelas dan riwayat gajinya tidak ikut terhapus.",
+    fields:[{label:"Tutor",nilai:"",pilihan:allTutorNames()}],
+    tombol:"Lanjut",
+    ok:([t])=>{
+      const nm=normName(t||"");
+      if(!nm)return toast("Pilih dulu tutornya");
+      borongHapusRate(daftarRate().filter(r=>r.t===nm),
+        "Hapus semua rate "+nm,"tutor itu tidak punya baris rate");
+    }});
 }
 function askRemoveRate(tutor,cls){
   const pakai=classes.filter(c=>c.tutor===tutor&&(cls?c.cls===cls:true)).length;
