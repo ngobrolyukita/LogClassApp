@@ -608,6 +608,8 @@
         </select>
         <button class="btn ghost small" onclick="exportMurid()">📦 Export CSV</button>
         <button class="btn small editonly" onclick="tambahMuridManual()">👤 Tambah Murid</button>
+      <button class="btn ghost small editonly" onclick="hapusMuridKosong()" style="color:var(--red)"
+        title="Murid tanpa kelas di log dan tanpa riwayat pembelian — biasanya sisa salah input">🗑 Hapus Murid Kosong</button>
       <button class="btn small editonly" onclick="bukaCatatBeliBaru()">➕ Catat Pembelian</button>
       <button class="btn ghost small editonly" onclick="bukaImporBeli()">📥 Import Pembelian</button>
       <button class="btn ghost small editonly" onclick="hapusBeliMassal()" style="color:var(--red)" title="Buang lapisan hasil impor lalu muat ulang dari WooCommerce">🧹 Reset Pembelian</button>
@@ -4421,6 +4423,81 @@ function abaikanDup(a,b){
 function dupDiabaikan(a,b){
   return (lget("ny_dupok_v1",[])||[]).includes([a,b].sort().join("~"));
 }
+/* ================= HAPUS MURID =================
+   Murid yang tidak punya satu pun kelas di log biasanya hasil salah input atau
+   nama yang sama terdaftar dua kali. Yang punya kelas TIDAK bisa dihapus, karena
+   penomoran otomatis akan membuatnya lagi dari log — jadi penghapusannya percuma
+   dan malah membingungkan. Untuk yang begitu, pakai Gabungkan. */
+function kelasMurid(id){
+  const nm=namaMid(id), m=(U.murid||{})[id];
+  const al=new Set([nkey(nm),...((m&&m.al)||[])]);
+  return classes.filter(c=>c.cls&&al.has(nkey(c.cls)));
+}
+function hapusMurid(idEnc){
+  if(!guard())return;
+  const id=du(idEnc), m=(U.murid||{})[id];
+  if(!m)return toast("Murid tidak ditemukan");
+  const cs=kelasMurid(id), bl=beliMurid(id);
+  if(cs.length){
+    return alert("TIDAK BISA DIHAPUS\n\n"+m.nm+" ("+id+") punya "+cs.length+
+      " kelas di log.\n\nSelama namanya masih ada di log, penomoran otomatis akan "+
+      "membuatnya lagi. Kalau ini duplikat, pakai 🔗 Gabungkan supaya datanya menyatu "+
+      "ke satu nomor induk.");
+  }
+  const ros=Object.entries(U.roster||{}).filter(([,a])=>Array.isArray(a)&&a.includes(id));
+  if(!confirm("Hapus murid "+m.nm+" ("+id+")?\n\n"+
+    "Tidak ada kelas di log atas nama ini.\n"+
+    bl.length+" riwayat pembelian"+(bl.length?" ("+rp(bl.reduce((a,o)=>a+(+o.nominal||0),0))+") ikut terhapus":"")+"\n"+
+    ros.length+" keanggotaan kelas reguler ikut dilepas\n\n"+
+    "Kalau ini sebenarnya duplikat dari murid lain, lebih baik batalkan dan pakai "+
+    "🔗 Gabungkan supaya riwayatnya tidak hilang.\n\nLanjutkan?"))return;
+  snapshot("Hapus murid "+m.nm);
+  mulaiMassal();
+  bl.forEach(o=>{delete U.beli[o.oid];pushBELI(o.oid,null);});
+  ros.forEach(([cls,arr])=>{
+    const sisa=arr.filter(x=>x!==id);
+    if(sisa.length)U.roster[cls]=sisa; else delete U.roster[cls];
+    pushROSTER(cls,sisa);
+  });
+  if(U.topup&&U.topup[m.nm]){
+    (U.topup[m.nm]||[]).forEach(t=>pushTU(m.nm,t.seq,null));
+    delete U.topup[m.nm];
+  }
+  if(U.mstat&&U.mstat[m.nm]){
+    delete U.mstat[m.nm];
+    if(CFG.url)push({action:"delrate",ids:["C:"+m.nm]});
+  }
+  delete U.murid[id];pushMURID(id,null);
+  selesaiMassal();cacheAll();lupakanIndex();lupakanRekap();
+  if(detailCtx&&detailCtx.name===m.nm)closeDetail();
+  renderAll();
+  toast(m.nm+" ("+id+") dihapus");
+}
+/* borongan: murid tanpa kelas DAN tanpa pembelian — sisa salah input */
+function hapusMuridKosong(){
+  if(!guard())return;
+  const L=Object.keys(U.murid||{}).filter(id=>
+    !kelasMurid(id).length&&!beliMurid(id).length);
+  if(!L.length)return toast("Tidak ada murid kosong — semuanya punya kelas atau pembelian");
+  if(!confirm(L.length+" murid tidak punya kelas di log maupun riwayat pembelian.\n\n"+
+    L.slice(0,10).map(id=>namaMid(id)+" ("+id+")").join("\n")+(L.length>10?"\n…":"")+
+    "\n\nBiasanya sisa salah input atau nama yang terdaftar dua kali.\n\nHapus semuanya?"))return;
+  snapshot("Hapus murid kosong");
+  mulaiMassal();
+  L.forEach(id=>{
+    const nm=namaMid(id);
+    Object.entries(U.roster||{}).forEach(([cls,arr])=>{
+      if(!Array.isArray(arr)||!arr.includes(id))return;
+      const sisa=arr.filter(x=>x!==id);
+      if(sisa.length)U.roster[cls]=sisa; else delete U.roster[cls];
+      pushROSTER(cls,sisa);
+    });
+    if(U.topup&&U.topup[nm]){(U.topup[nm]||[]).forEach(t=>pushTU(nm,t.seq,null));delete U.topup[nm];}
+    delete U.murid[id];pushMURID(id,null);
+  });
+  selesaiMassal();cacheAll();lupakanIndex();lupakanRekap();renderAll();
+  toast(L.length+" murid kosong dihapus");
+}
 function gabungMurid(ke,dari){
   if(!guard())return;
   if(ke===dari)return;
@@ -5355,6 +5432,10 @@ function renderMurid(){
               title="Semua data ${d.b.nm} dipindah ke ${d.a.id}, lalu ${d.b.id} dihapus">🔗 Simpan ${d.a.id}</button>
             <button class="btn small" onclick="gabungMurid('${d.b.id}','${d.a.id}')"
               title="Semua data ${d.a.nm} dipindah ke ${d.b.id}, lalu ${d.a.id} dihapus">🔗 Simpan ${d.b.id}</button>
+            ${!kelasMurid(d.a.id).length?`<button class="btn ghost small" style="color:var(--red)"
+              onclick="hapusMurid(du('${eu(d.a.id)}'))" title="${d.a.nm} tidak punya kelas di log">🗑 ${d.a.id}</button>`:""}
+            ${!kelasMurid(d.b.id).length?`<button class="btn ghost small" style="color:var(--red)"
+              onclick="hapusMurid(du('${eu(d.b.id)}'))" title="${d.b.nm} tidak punya kelas di log">🗑 ${d.b.id}</button>`:""}
             <button class="btn ghost small" onclick="abaikanDup('${d.a.id}','${d.b.id}')"
               title="Dua orang berbeda — jangan tampilkan lagi">✓ Orang berbeda</button>
           </div>
@@ -5481,6 +5562,9 @@ function blokMurid(nama){
       <span style="flex:1"></span>
       <button class="btn ghost small editonly" onclick="editKontakMurid('${id}')">✏️ Kontak</button>
       <button class="btn ghost small editonly" onclick="mintaGabung('${id}')">🔗 Gabungkan</button>
+      ${kelasMurid(id).length?"":`<button class="btn ghost small editonly" style="color:var(--red)"
+        onclick="hapusMurid(du('${eu(id)}'))"
+        title="Tidak ada kelas di log atas nama ini — aman dihapus">🗑 Hapus murid</button>`}
       <button class="btn ghost small" onclick="lihatDiTabMurid(du('${eu(r.nm)}'))">🎓 Buka di Data Murid</button>
     </div>
     ${r.tutor.length?`<div class="hint" style="margin:0 0 6px">Tutor: ${r.tutor.map(t=>
